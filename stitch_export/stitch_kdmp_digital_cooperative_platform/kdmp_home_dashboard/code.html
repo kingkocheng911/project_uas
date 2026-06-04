@@ -1,0 +1,342 @@
+<!DOCTYPE html><html class="light" lang="en" style=""><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>KDMP Home Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary-fixed": "#e2e2e2",
+                        "tertiary-container": "#c9a900",
+                        "tertiary-fixed-dim": "#e9c400",
+                        "on-background": "#191c1d",
+                        "secondary-fixed-dim": "#c6c6c7",
+                        "on-primary-fixed-variant": "#93000e",
+                        "surface-container-highest": "#e1e3e4",
+                        "on-surface-variant": "#5e3f3c",
+                        "on-error-container": "#93000a",
+                        "tertiary-fixed": "#ffe16d",
+                        "on-tertiary-fixed-variant": "#544600",
+                        "on-secondary-fixed": "#1a1c1c",
+                        "primary-container": "#d9001b",
+                        "on-tertiary-fixed": "#221b00",
+                        "inverse-on-surface": "#f0f1f2",
+                        "inverse-primary": "#ffb4ac",
+                        "on-secondary-fixed-variant": "#454747",
+                        "outline-variant": "#e8bcb8",
+                        "surface-tint": "#c00016",
+                        "on-primary-fixed": "#410003",
+                        "primary-fixed-dim": "#ffb4ac",
+                        "error": "#ba1a1a",
+                        "inverse-surface": "#2e3132",
+                        "on-tertiary-container": "#4c3f00",
+                        "background": "#f8f9fa",
+                        "surface": "#f8f9fa",
+                        "on-secondary-container": "#616363",
+                        "surface-container-high": "#e7e8e9",
+                        "secondary": "#5d5f5f",
+                        "surface-container": "#edeeef",
+                        "surface-bright": "#f8f9fa",
+                        "on-tertiary": "#ffffff",
+                        "surface-dim": "#d9dadb",
+                        "surface-variant": "#e1e3e4",
+                        "surface-container-low": "#f3f4f5",
+                        "primary-fixed": "#ffdad6",
+                        "primary": "#ab0013",
+                        "secondary-container": "#dfe0e0",
+                        "on-primary": "#ffffff",
+                        "on-secondary": "#ffffff",
+                        "outline": "#936e6a",
+                        "on-error": "#ffffff",
+                        "on-surface": "#191c1d",
+                        "tertiary": "#705d00",
+                        "on-primary-container": "#ffe9e6",
+                        "error-container": "#ffdad6",
+                        "surface-container-lowest": "#ffffff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "margin-desktop": "32px",
+                        "sm": "8px",
+                        "base": "4px",
+                        "margin-mobile": "16px",
+                        "md": "16px",
+                        "lg": "24px",
+                        "container-max": "1280px",
+                        "xs": "4px",
+                        "xl": "32px",
+                        "gutter": "16px"
+                    },
+                    "fontFamily": {
+                        "body-lg": ["Inter"],
+                        "label-lg": ["Inter"],
+                        "title-lg": ["Inter"],
+                        "label-md": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "display-lg": ["Inter"],
+                        "headline-lg": ["Inter"],
+                        "body-md": ["Inter"],
+                        "headline-lg-mobile": ["Inter"]
+                    },
+                    "fontSize": {
+                        "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "label-lg": ["14px", {"lineHeight": "20px", "fontWeight": "600"}],
+                        "title-lg": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                        "label-md": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                        "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "700"}],
+                        "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "700"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .glass-red {
+            background: rgba(217, 0, 27, 0.9);
+            backdrop-filter: blur(8px);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body-md antialiased">
+<!-- Top Navigation Bar -->
+<header class="bg-surface sticky top-0 z-50 docked full-width flex justify-between items-center px-margin-mobile w-full py-sm">
+<div class="flex items-center gap-sm">
+<span class="material-symbols-outlined text-primary" data-icon="menu">menu</span>
+<h1 class="font-headline-lg-mobile text-headline-lg-mobile font-bold text-primary">KDMP</h1>
+</div>
+<div class="flex items-center gap-md">
+<span class="material-symbols-outlined text-primary" data-icon="notifications">notifications</span>
+<div class="w-10 h-10 rounded-full bg-secondary-container overflow-hidden border-2 border-primary-container">
+<img alt="User Profile" class="w-full h-full object-cover" data-alt="A professional close-up studio portrait of a friendly Southeast Asian man with a neat haircut and casual corporate attire. The background is a soft, blurred modern office interior with warm ambient lighting. The overall aesthetic is clean, trustworthy, and high-fidelity, aligning with a premium digital banking or commerce application." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBK38PfAiyHOiE6kMysiQgsdlCCaiTZUI4b6gmDIwhe7ReUvEF9AOZtc7zqWWpVxTvrZR01xBh3zwriMDBPGCAo8CThIn0t0ntISl8DH-ep3Z-QGr7OWGhZ3xzhTCYILlx9u9FIcdh72iy8WgdEZ-5Ow0Z7K3GctB5GWYGI-vV-GtzOo52Gm493KbofV8djVAmlUkGGmTVDG9cAGxX5fu1r6zYUEtMTvVVdJdvfWy0C3YN2beA5eJaitKgtJFVoqPaqkjSAbfMpshmD">
+</div>
+</div>
+</header>
+<main class="max-w-container-max mx-auto pb-24">
+<!-- Search Bar Section -->
+<section class="px-margin-mobile py-md">
+<div class="relative group">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant" data-icon="search">search</span>
+<input class="w-full h-14 pl-12 pr-4 bg-surface-container-lowest border-none rounded-xl shadow-[0px_4px_12px_rgba(0,0,0,0.05)] focus:ring-2 focus:ring-primary transition-all font-body-md text-on-surface" placeholder="Search products or cooperatives" type="text">
+</div>
+</section>
+<!-- Membership & Wallet Section -->
+<section class="px-margin-mobile mb-lg">
+<div class="bg-primary-container rounded-[24px] p-lg text-on-primary-container shadow-lg relative overflow-hidden bg-gradient-to-br from-primary-container to-[#800000]">
+<div class="absolute -right-8 -top-8 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
+<div class="absolute -left-12 -bottom-12 w-40 h-40 bg-black/5 rounded-full"></div>
+<div class="relative z-10 flex flex-col items-center text-center space-y-2">
+  <div class="flex items-center gap-2 text-white/80">
+    <span class="material-symbols-outlined text-lg" data-icon="account_balance_wallet">account_balance_wallet</span>
+    <p class="font-label-md text-label-md uppercase tracking-wider">Available Balance</p>
+  </div>
+  <h2 class="font-display text-4xl font-bold text-white tracking-tight">Rp 450,000</h2>
+</div>
+</div>
+</section>
+<!-- Promo Carousel -->
+<section class="mb-lg">
+<div class="flex overflow-x-auto no-scrollbar snap-x snap-mandatory gap-md px-margin-mobile">
+<div class="flex-none w-[85%] sm:w-[400px] snap-start relative h-44 rounded-xl overflow-hidden shadow-md">
+<img class="w-full h-full object-cover" data-alt="A vibrant, high-quality photograph of fresh Indonesian groceries including rice bags, cooking oil, and fresh vegetables arranged neatly on a wooden table. The lighting is warm and inviting, emphasizing a community market feel. The color palette features rich earth tones and bright greens, with subtle red accents to match the KDMP brand. Minimalist typography overlays the image for a professional retail advertisement style." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAEo9wVK97Sm7CFLRk5gmqrR7Rx7OqVnBowIsYCjWr-AvQQJCerc8vhMtWMNCdLiELjh19V7rzxbgE46Ww3AkFW2B3PuMJco0sZAKu049RJ5770udteDtgEa3lNb24-lNAKx1juSxvers0eX5-KgLx6wi8EhjIk1b55rISqeUUM_-fxQd768DUSlqJUVNV72etYavzkansc89552Y5iqGzJEAyC-d46fAvYnMi1ytbWHpbh5hTSHOpLrqGsUDlpFGUHq7XRyFXRS2n0">
+<div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent p-md flex flex-col justify-end">
+<h3 class="text-white font-title-lg text-title-lg font-bold">Sembako Murah</h3>
+<p class="text-white/80 font-body-md text-body-md">Essential goods at village prices.</p>
+</div>
+</div>
+<div class="flex-none w-[85%] sm:w-[400px] snap-start relative h-44 rounded-xl overflow-hidden shadow-md">
+<img class="w-full h-full object-cover" data-alt="A sleek, modern retail environment with a large neon sign that says 'MEMBERS ONLY'. The scene shows a diverse group of people shopping in a clean, high-end cooperative store. The visual style is contemporary and minimalist, with a strong emphasis on whitespace and vibrant red branding elements. Soft, diffused lighting creates a premium and exclusive atmosphere." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCMQlE4Ymdce44uLRZ58MU8JfcVSyNTENFr4VaBD5CjFE_VRZY2k_2nJ0bg_V5ZS6PZzvR3xzXAXDf-lrHaciepbUeFWImXggMEcAU9qZ_qSOvM0G-wiw4DEXwfyrbOa6iVinYc84vatLeeRcrbPGe3piL6cdGMAtRLtDryP8kEvZ7CZdqR4FRoGYN48pvGAT4qXnYDIZu-HeQhS6G0mFIkmB2P-vt5mMBTkXXEH_9geMZmqYA51FLSgLhNaEOddSD3ZTbM1dlca31X">
+<div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent p-md flex flex-col justify-end">
+<h3 class="text-white font-title-lg text-title-lg font-bold">Member Discounts</h3>
+<p class="text-white/80 font-body-md text-body-md">Exclusive deals for KDMP members only.</p>
+</div>
+</div>
+</div>
+</section>
+<!-- Categories Grid -->
+<section class="px-margin-mobile mb-lg">
+<h3 class="font-title-lg text-title-lg font-bold mb-md">Categories</h3>
+<div class="grid grid-cols-5 gap-sm">
+<button class="flex flex-col items-center gap-xs">
+<div class="w-14 h-14 rounded-2xl bg-surface-container-low flex items-center justify-center text-primary group-hover:bg-primary-container transition-colors">
+<span class="material-symbols-outlined text-[28px]" data-icon="local_grocery_store">local_grocery_store</span>
+</div>
+<span class="font-label-md text-label-md text-center">Grocery</span>
+</button>
+<button class="flex flex-col items-center gap-xs">
+<div class="w-14 h-14 rounded-2xl bg-surface-container-low flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[28px]" data-icon="eco">eco</span>
+</div>
+<span class="font-label-md text-label-md text-center">Fresh</span>
+</button>
+<button class="flex flex-col items-center gap-xs">
+<div class="w-14 h-14 rounded-2xl bg-surface-container-low flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[28px]" data-icon="medical_services">medical_services</span>
+</div>
+<span class="font-label-md text-label-md text-center">Pharmacy</span>
+</button>
+<button class="flex flex-col items-center gap-xs">
+<div class="w-14 h-14 rounded-2xl bg-surface-container-low flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[28px]" data-icon="devices">devices</span>
+</div>
+<span class="font-label-md text-label-md text-center">Electronics</span>
+</button>
+<button class="flex flex-col items-center gap-xs">
+<div class="w-14 h-14 rounded-2xl bg-surface-container-low flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[28px]" data-icon="support_agent">support_agent</span>
+</div>
+<span class="font-label-md text-label-md text-center">Services</span>
+</button>
+</div>
+</section>
+<!-- Flash Sale Section -->
+<section class="px-margin-mobile mb-lg">
+<div class="flex justify-between items-center mb-md">
+<div class="flex items-center gap-sm">
+<h3 class="font-title-lg text-title-lg font-bold">Flash Sale</h3>
+<div class="flex items-center gap-xs bg-primary-container text-on-primary-container px-2 py-0.5 rounded-lg">
+<span class="material-symbols-outlined text-sm" data-icon="timer">timer</span>
+<span class="font-label-md text-label-md font-bold" id="countdown">02:22:44</span>
+</div>
+</div>
+<button class="text-primary font-label-lg text-label-lg">View All</button>
+</div>
+<div class="flex overflow-x-auto no-scrollbar gap-md pb-base">
+<!-- Product Card 1 -->
+<div class="flex-none w-40 bg-surface-container-lowest rounded-xl p-sm border border-outline-variant shadow-sm">
+<div class="relative w-full aspect-square rounded-lg overflow-hidden mb-sm">
+<img class="w-full h-full object-cover" data-alt="Close up high-fidelity photo of premium quality Indonesian jasmine rice in a clear bag, showing the white grains clearly. Background is a neutral, bright white studio setting. Professional retail photography style with sharp focus and clean composition." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCYGUUcwqUMgufcQqiugoWXViQWvRED6Ju6tw8B3P6vtnWsHvR0OoH1OzL_lyhRjSmQpf7spTfKDdzYlxy-tdnV25rlnYLJ1y_Na4ZUIs7NeuphU7Y-cvmf7qzMcEfOH1jVS3L7cWYhQ46193Gi6fru9GkiO2F1S4dcBsE-K7kfgnJnvTOAc5fMhtKVPFk92C_GZUsLxn4HI2APT6vghq021oVS03pLwR0rQYmSvtCfZgM0_WTgKCmCLCONxnwzGFOiOCKueChS1Kjx">
+<div class="absolute top-1 left-1 bg-error text-white text-[10px] font-bold px-1.5 py-0.5 rounded">25% OFF</div>
+</div>
+<h4 class="font-label-lg text-label-lg truncate mb-xs">Beras Premium 5kg</h4>
+<p class="text-primary font-bold text-body-lg mb-xs">Rp 65,000</p>
+<div class="w-full bg-surface-container-high h-1.5 rounded-full overflow-hidden mb-xs">
+<div class="bg-primary h-full w-[70%]"></div>
+</div>
+<p class="text-[10px] text-on-surface-variant">70% Claimed</p>
+</div>
+<!-- Product Card 2 -->
+<div class="flex-none w-40 bg-surface-container-lowest rounded-xl p-sm border border-outline-variant shadow-sm">
+<div class="relative w-full aspect-square rounded-lg overflow-hidden mb-sm">
+<img class="w-full h-full object-cover" data-alt="A bottle of golden cooking oil sitting on a clean kitchen counter, backlit by natural soft morning light. The oil has a clear, pure appearance. The surrounding environment is minimalist and bright, reflecting a modern light-mode UI design. High-resolution product shot." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDj7aNubhXpJ3yDOVlWGzFwo_1B8ih4-JT0z-3kbKJW2A1-t03GitLX6-4JcPTYZezlXa5QhVzAnHoM8cA5gxKaH7g6h6RJLJWeRslG9rV-O8Zt6jlG7rTuDMlkQw3hXduQYKiBMXFr_pLbw1RLqG5bd93S-dey2tE7UbmP1Yo4j6QWjzHNEQeWETOEeK8bOw6O7giju0IAx4KFh2hRQidG5lJuNnMCr5clrZTkBcSdbNNBjZdGN5F9ZffpJcQ92diS-8JH_yEwIfZc">
+<div class="absolute top-1 left-1 bg-error text-white text-[10px] font-bold px-1.5 py-0.5 rounded">15% OFF</div>
+</div>
+<h4 class="font-label-lg text-label-lg truncate mb-xs">Minyak Goreng 2L</h4>
+<p class="text-primary font-bold text-body-lg mb-xs">Rp 32,000</p>
+<div class="w-full bg-surface-container-high h-1.5 rounded-full overflow-hidden mb-xs">
+<div class="bg-primary h-full w-[35%]"></div>
+</div>
+<p class="text-[10px] text-on-surface-variant">35% Claimed</p>
+</div>
+<!-- Product Card 3 -->
+<div class="flex-none w-40 bg-surface-container-lowest rounded-xl p-sm border border-outline-variant shadow-sm">
+<div class="relative w-full aspect-square rounded-lg overflow-hidden mb-sm">
+<img class="w-full h-full object-cover" data-alt="A high-tech minimalist smartwatch with a white strap and a clean digital face showing health stats. It is placed on a smooth, matte white surface under crisp, professional studio lighting. The aesthetic is futuristic yet accessible, mirroring a high-end fintech and retail application." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC07iseQS0S0Rfhmc607HIkovcmPRprKhd0hMLfSbq2wCS7ABJQu5EI4bQ2DZo2QsRzo8KscF86Po-DW3lScOwUxep74FuKg_6Bam56l3-m_HbdOYclkx-cD5nuGOJRrZuO637e4KOM-90w3soZ-Qf8Fo4QDSsNj-cpi_EHXUEv2lihUAQ2gkL2eMPQB6T534cuNVR7HAScJgeGE0PzvkDdS-paU2rH_phcFVtcqilA0Eie92a0nVMdGLkGofaev9em_uRIMe9zGMGg">
+<div class="absolute top-1 left-1 bg-error text-white text-[10px] font-bold px-1.5 py-0.5 rounded">50% OFF</div>
+</div>
+<h4 class="font-label-lg text-label-lg truncate mb-xs">KDMP Smart Band</h4>
+<p class="text-primary font-bold text-body-lg mb-xs">Rp 199,000</p>
+<div class="w-full bg-surface-container-high h-1.5 rounded-full overflow-hidden mb-xs">
+<div class="bg-primary h-full w-[90%]"></div>
+</div>
+<p class="text-[10px] text-on-surface-variant">90% Claimed</p>
+</div>
+</div>
+</section>
+<!-- Nearby Store Section -->
+<section class="px-margin-mobile mb-md">
+<h3 class="font-title-lg text-title-lg font-bold mb-md">Nearby Cooperative</h3>
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-md flex items-center gap-md shadow-sm">
+<div class="w-16 h-16 rounded-lg overflow-hidden bg-secondary-container">
+<img class="w-full h-full object-cover" data-alt="The exterior of a modern, well-maintained village cooperative building in Indonesia. It features clean white walls and prominent KDMP red branding. The surrounding area is lush and green, under a clear blue sky. The photo is taken in bright daylight, conveying a sense of progress and reliability within the community." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAt1t-QERz4jvxjS9oSrwQE0ZfhA9Zqd9XsFWNG5g0tQnjox88qKjaxrOpiO_d_8B8BJGrqt3MXI54H0Fe5sF4Xg9NKvjqZGBpks6jCLJGB1pncW9rZ94urMeoS-LtF8dyeLXCV4nqtRONAE213FWFEbJyqpAY24zbtyqVzUnBsTfts8CPdr-EWk3JNDAdmIr1w9EVg8_I-a5af5gYFt1buDxIZNwGpcwNpO2jkMT0JlUhPOwqZQ4doz3uQxqTrXvsehp9zlaUuOr6p">
+</div>
+<div class="flex-1">
+<h4 class="font-label-lg text-label-lg font-bold">Cooperative Unit: Sukamaju Village</h4>
+<div class="flex items-center gap-xs text-on-surface-variant mb-xs">
+<span class="material-symbols-outlined text-sm" data-icon="location_on">location_on</span>
+<span class="font-label-md text-label-md">500m away • Jl. Merdeka No. 42</span>
+</div>
+<div class="flex gap-sm">
+<span class="bg-green-100 text-green-700 text-[10px] px-2 py-0.5 rounded-full font-bold">IN STOCK</span>
+<span class="bg-tertiary-fixed/30 text-tertiary font-bold text-[10px] px-2 py-0.5 rounded-full">PICKUP READY</span>
+</div>
+</div>
+<button class="w-10 h-10 rounded-full border border-primary flex items-center justify-center text-primary">
+<span class="material-symbols-outlined" data-icon="directions">directions</span>
+</button>
+</div>
+</section>
+</main>
+<!-- Bottom Navigation Bar -->
+<nav class="fixed bottom-0 left-0 right-0 h-16 bg-surface-container-lowest dark:bg-inverse-surface flex justify-around items-center z-50 rounded-t-xl shadow-[0px_-4px_12px_rgba(0,0,0,0.05)] md:max-w-md md:mx-auto">
+<a class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-full px-4 py-1 scale-90 transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="home" style="font-variation-settings: 'FILL' 1;">home</span>
+<span class="font-label-md text-label-md">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:bg-secondary-container transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="storefront">storefront</span>
+<span class="font-label-md text-label-md">Shop</span>
+</a><a class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:bg-secondary-container transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="history">history</span>
+<span class="font-label-md text-label-md">History</span>
+</a>
+
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:bg-secondary-container transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="receipt_long">receipt_long</span>
+<span class="font-label-md text-label-md">Orders</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:bg-secondary-container transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="person">person</span>
+<span class="font-label-md text-label-md">Profile</span>
+</a>
+</nav>
+<script>
+        // Countdown Timer Script
+        function updateTimer() {
+            const timerEl = document.getElementById('countdown');
+            let timeArr = timerEl.innerText.split(':').map(Number);
+            let seconds = timeArr[0] * 3600 + timeArr[1] * 60 + timeArr[2];
+            
+            if (seconds > 0) {
+                seconds--;
+                let h = Math.floor(seconds / 3600).toString().padStart(2, '0');
+                let m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
+                let s = (seconds % 60).toString().padStart(2, '0');
+                timerEl.innerText = `${h}:${m}:${s}`;
+            }
+        }
+        setInterval(updateTimer, 1000);
+
+        // Interaction scale effect
+        document.querySelectorAll('button, a').forEach(el => {
+            el.addEventListener('mousedown', () => {
+                el.classList.add('scale-95');
+            });
+            el.addEventListener('mouseup', () => {
+                el.classList.remove('scale-95');
+            });
+            el.addEventListener('mouseleave', () => {
+                el.classList.remove('scale-95');
+            });
+        });
+    </script>
+
+
+
+
+</body></html>
