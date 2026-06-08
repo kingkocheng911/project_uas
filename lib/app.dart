@@ -9,10 +9,11 @@ class KdmpApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'KDMP Digital Cooperative',
+      title: 'MepuPoin',
       debugShowCheckedModeBanner: false,
       theme: buildKdmpTheme(),
       home: const HomeShell(),
     );
   }
 }
+

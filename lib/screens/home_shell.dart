@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../mock_data.dart';
@@ -17,12 +19,24 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int _currentIndex = 0;
+  final List<Product> _cartItems = [];
 
   @override
   Widget build(BuildContext context) {
     final pages = <Widget>[
-      DashboardScreen(onOpenProduct: _openProduct, onChangeTab: _changeTab),
-      ShopScreen(onOpenProduct: _openProduct),
+      DashboardScreen(
+        cartItemCount: _cartItems.length,
+        onOpenProduct: _openProduct,
+        onChangeTab: _changeTab,
+        onOpenCart: _openCart,
+        onAddToCart: _addToCart,
+      ),
+      ShopScreen(
+        cartItemCount: _cartItems.length,
+        onOpenProduct: _openProduct,
+        onOpenCart: _openCart,
+        onAddToCart: _addToCart,
+      ),
       const HistoryScreen(),
       OrdersScreen(onOpenOrder: _openOrder),
       ProfileScreen(onOpenSetting: _openSetting),
@@ -47,9 +61,47 @@ class _HomeShellState extends State<HomeShell> {
   void _openProduct(Product product) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => ProductDetailScreen(product: product),
+        builder: (_) => ProductDetailScreen(
+          cartItemCount: _cartItems.length,
+          product: product,
+          onOpenCart: _openCart,
+          onAddToCart: _addToCart,
+        ),
       ),
     );
+  }
+
+  void _openCart() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => CartScreen(
+          items: List<Product>.of(_cartItems),
+          onRemoveItem: _removeFromCart,
+          onClearCart: _clearCart,
+          onCheckout: () {
+            Navigator.of(context).pop();
+            _changeTab(3);
+          },
+        ),
+      ),
+    );
+  }
+
+  void _addToCart(Product product) {
+    setState(() => _cartItems.add(product));
+    _showFeatureSnack(
+      context,
+      '${product.name} ditambahkan ke keranjang.',
+    );
+  }
+
+  void _removeFromCart(int index) {
+    if (index < 0 || index >= _cartItems.length) return;
+    setState(() => _cartItems.removeAt(index));
+  }
+
+  void _clearCart() {
+    setState(_cartItems.clear);
   }
 
   void _openOrder(OrderItem order) {
@@ -67,154 +119,381 @@ class _HomeShellState extends State<HomeShell> {
   }
 }
 
+void _showFeatureSnack(BuildContext context, String message) {
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(message)));
+}
+
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({
     super.key,
+    required this.cartItemCount,
     required this.onOpenProduct,
     required this.onChangeTab,
+    required this.onOpenCart,
+    required this.onAddToCart,
   });
 
+  final int cartItemCount;
   final ValueChanged<Product> onOpenProduct;
   final ValueChanged<int> onChangeTab;
+  final VoidCallback onOpenCart;
+  final ValueChanged<Product> onAddToCart;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF7F9FB),
+      body: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: _HomeRedHeader(
+              cartItemCount: cartItemCount,
+              onOpenCart: onOpenCart,
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: _MepuPoinBalanceCard(onTopUpTap: () {
+                _showFeatureSnack(
+                  context,
+                  'Isi Saldo MepuPoin siap dibuka.',
+                );
+              }),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+              child: _MepuPoinSearchBar(
+                onSearchTap: () => _showFeatureSnack(
+                  context,
+                  'Pencarian produk MepuPoin siap digunakan.',
+                ),
+                onFilterTap: () => _showFeatureSnack(
+                  context,
+                  'Filter produk siap digunakan.',
+                ),
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: _MepuPoinDeliveryActions(onShopTap: () => onChangeTab(1)),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
+              child: _MepuPoinBannerCarousel(onTap: () => onChangeTab(1)),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: _MepuPoinSectionHeader(
+              title: 'Kategori Cepat',
+              actionLabel: 'Lihat Semua',
+              onActionTap: () => onChangeTab(1),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: _MepuPoinShortcutGrid(onTap: () => onChangeTab(1)),
+          ),
+          SliverToBoxAdapter(
+            child: _MepuPoinSectionHeader(
+              title: 'Produk Unggulan',
+              actionLabel: 'Lihat Semua',
+              onActionTap: () => onChangeTab(1),
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            sliver: SliverGrid.builder(
+              itemCount: 4,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: 0.78,
+              ),
+              itemBuilder: (context, index) {
+                final product = products[(index + 2) % products.length];
+                return _MepuPoinRecommendationCard(
+                  product: product,
+                  onTap: () => onOpenProduct(product),
+                  onAddToCart: () => onAddToCart(product),
+                );
+              },
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: _MepuPoinSectionHeader(
+              title: 'Terbaru',
+              actionLabel: 'Lihat Semua',
+              onActionTap: () => onChangeTab(1),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height: 190,
+              child: ListView.separated(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                scrollDirection: Axis.horizontal,
+                itemCount: products.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 12),
+                itemBuilder: (context, index) {
+                  final product = products[index];
+                  return _MepuPoinMiniProductCard(
+                    product: product,
+                    ctaLabel: '+ Keranjang',
+                    onTap: () => onAddToCart(product),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HomeRedHeader extends StatelessWidget {
+  const _HomeRedHeader({
+    required this.cartItemCount,
+    required this.onOpenCart,
+  });
+
+  final int cartItemCount;
+  final VoidCallback onOpenCart;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return CustomScrollView(
-      slivers: [
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-            child: Row(
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Row(
+        children: [
+          Icon(
+            Icons.store_mall_directory_outlined,
+            size: 16,
+            color: theme.colorScheme.primary,
+          ),
+          const SizedBox(width: 5),
+          Text(
+            'MepuPoin',
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const Spacer(),
+          _MepuPoinHeaderButton(
+            icon: Icons.notifications_none_rounded,
+            onTap: () => _showFeatureSnack(
+              context,
+              'Notifikasi MepuPoin siap dibuka.',
+            ),
+          ),
+          const SizedBox(width: 8),
+          _MepuPoinHeaderButton(
+            icon: Icons.shopping_cart_outlined,
+            badgeCount: cartItemCount,
+            onTap: onOpenCart,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MepuPoinHeaderButton extends StatelessWidget {
+  const _MepuPoinHeaderButton({
+    required this.icon,
+    required this.onTap,
+    this.badgeCount = 0,
+  });
+
+  final IconData icon;
+  final VoidCallback onTap;
+  final int badgeCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: SizedBox(
+            width: 32,
+            height: 32,
+            child: Icon(icon, size: 18, color: const Color(0xFF111827)),
+          ),
+        ),
+        if (badgeCount > 0)
+          Positioned(
+            right: 1,
+            top: 0,
+            child: _CartCountBadge(count: badgeCount),
+          ),
+      ],
+    );
+  }
+}
+
+class _CartCountBadge extends StatelessWidget {
+  const _CartCountBadge({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primary,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white, width: 1.5),
+      ),
+      child: Text(
+        count > 99 ? '99+' : '$count',
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: Colors.white,
+          fontSize: 9,
+          fontWeight: FontWeight.w900,
+          height: 1.1,
+        ),
+      ),
+    );
+  }
+}
+
+class _MepuPoinBalanceCard extends StatelessWidget {
+  const _MepuPoinBalanceCard({required this.onTopUpTap});
+
+  final VoidCallback onTopUpTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  Icons.menu_rounded,
-                  color: theme.colorScheme.primary,
-                  size: 30,
-                ),
-                const SizedBox(width: 12),
                 Text(
-                  'KDMP',
-                  style: theme.textTheme.headlineMedium?.copyWith(
-                    color: theme.colorScheme.primary,
+                  'Saldo MepuPoin',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: const Color(0xFF64748B),
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-                const Spacer(),
-                _HeaderActionButton(
-                  icon: Icons.notifications_none_rounded,
-                  onTap: () => onChangeTab(2),
+                const SizedBox(height: 4),
+                Text(
+                  'Rp 150.000',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    color: const Color(0xFF111827),
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
-                const SizedBox(width: 10),
-                const ProfileAvatar(radius: 23),
               ],
             ),
           ),
-        ),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: const SearchField(
-              hintText: 'Search products or cooperatives',
+          FilledButton.icon(
+            onPressed: onTopUpTap,
+            icon: const Icon(Icons.add_circle_outline_rounded, size: 16),
+            label: const Text('Isi Saldo'),
+            style: FilledButton.styleFrom(
+              backgroundColor: theme.colorScheme.primary,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(112, 42),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              textStyle: theme.textTheme.labelMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(999),
+              ),
             ),
           ),
-        ),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-            child: BalanceCard(onChangeTab: onChangeTab),
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: SizedBox(
-            height: 196,
-            child: ListView.separated(
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-              scrollDirection: Axis.horizontal,
-              itemCount: promos.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 16),
-              itemBuilder: (context, index) => PromoCard(banner: promos[index]),
-            ),
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: SectionHeader(
-            title: 'Categories',
-            padding: const EdgeInsets.fromLTRB(20, 28, 20, 14),
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final itemWidth = (constraints.maxWidth - 32) / 5;
-                return Wrap(
-                  spacing: 8,
-                  runSpacing: 12,
-                  children: categories
-                      .map(
-                        (category) => SizedBox(
-                          width: itemWidth,
-                          child: CategoryButton(category: category),
-                        ),
-                      )
-                      .toList(),
-                );
-              },
-            ),
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: SectionHeader(
-            title: 'Flash Sale',
-            actionLabel: 'View All',
-            onActionTap: () => onChangeTab(1),
-            trailing: Container(
-              margin: const EdgeInsets.only(left: 12),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        ],
+      ),
+    );
+  }
+}
+
+class _MepuPoinSearchBar extends StatelessWidget {
+  const _MepuPoinSearchBar({
+    required this.onSearchTap,
+    required this.onFilterTap,
+  });
+
+  final VoidCallback onSearchTap;
+  final VoidCallback onFilterTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Row(
+      children: [
+        Expanded(
+          child: InkWell(
+            onTap: onSearchTap,
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              height: 42,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
-                color: theme.colorScheme.primary,
-                borderRadius: BorderRadius.circular(14),
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
               ),
-              child: Text(
-                '02:26:59',
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: Colors.white,
-                ),
-              ),
-            ),
-            padding: const EdgeInsets.fromLTRB(20, 28, 20, 14),
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: SizedBox(
-            height: 262,
-            child: ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              scrollDirection: Axis.horizontal,
-              itemCount: 3,
-              separatorBuilder: (_, _) => const SizedBox(width: 16),
-              itemBuilder: (context, index) => SizedBox(
-                width: 188,
-                child: ProductCard(
-                  product: products[index],
-                  onTap: () => onOpenProduct(products[index]),
-                ),
+              child: Row(
+                children: [
+                  const Icon(Icons.search_rounded, size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Cari sembako, alat tani, pupuk...',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: const Color(0xFF94A3B8),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
         ),
-        SliverToBoxAdapter(
-          child: SectionHeader(
-            title: 'Nearby Cooperative',
-            padding: const EdgeInsets.fromLTRB(20, 30, 20, 14),
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: const Padding(
-            padding: EdgeInsets.fromLTRB(20, 0, 20, 32),
-            child: CooperativeCard(),
+        const SizedBox(width: 10),
+        InkWell(
+          onTap: onFilterTap,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: const Icon(Icons.tune_rounded, size: 18),
           ),
         ),
       ],
@@ -222,14 +501,606 @@ class DashboardScreen extends StatelessWidget {
   }
 }
 
-class ShopScreen extends StatelessWidget {
-  const ShopScreen({super.key, required this.onOpenProduct});
+class _MepuPoinDeliveryActions extends StatelessWidget {
+  const _MepuPoinDeliveryActions({required this.onShopTap});
 
-  final ValueChanged<Product> onOpenProduct;
+  final VoidCallback onShopTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _MepuPoinPillAction(
+            label: 'Kirim ke Rumah',
+            icon: Icons.local_shipping_outlined,
+            active: true,
+            onTap: onShopTap,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _MepuPoinPillAction(
+            label: 'Ambil di Koperasi',
+            icon: Icons.storefront_rounded,
+            active: false,
+            onTap: onShopTap,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MepuPoinPillAction extends StatelessWidget {
+  const _MepuPoinPillAction({
+    required this.label,
+    required this.icon,
+    required this.active,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool active;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final foreground = active ? theme.colorScheme.primary : const Color(0xFF475569);
+
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 14),
+      label: Text(label),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: foreground,
+        backgroundColor: Colors.white,
+        side: BorderSide(
+          color: active ? const Color(0xFFFFD8D8) : const Color(0xFFE2E8F0),
+        ),
+        minimumSize: const Size.fromHeight(34),
+        textStyle: theme.textTheme.labelSmall?.copyWith(
+          fontWeight: FontWeight.w800,
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+      ),
+    );
+  }
+}
+
+class _MepuPoinBannerCarousel extends StatefulWidget {
+  const _MepuPoinBannerCarousel({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  State<_MepuPoinBannerCarousel> createState() => _MepuPoinBannerCarouselState();
+}
+
+class _MepuPoinBannerCarouselState extends State<_MepuPoinBannerCarousel> {
+  final PageController _controller = PageController();
+  int _currentIndex = 0;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (!mounted || !_controller.hasClients) return;
+      final nextIndex = (_currentIndex + 1) % _bannerSlides.length;
+      _controller.animateToPage(
+        nextIndex,
+        duration: const Duration(milliseconds: 360),
+        curve: Curves.easeOutCubic,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      children: [
+        SizedBox(
+          height: 156,
+          child: PageView.builder(
+            controller: _controller,
+            itemCount: _bannerSlides.length,
+            onPageChanged: (index) => setState(() => _currentIndex = index),
+            itemBuilder: (context, index) {
+              final slide = _bannerSlides[index];
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: InkWell(
+                  onTap: widget.onTap,
+                  borderRadius: BorderRadius.circular(18),
+                  child: Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: slide.colors,
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x1A000000),
+                          blurRadius: 18,
+                          offset: Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: Stack(
+                      children: [
+                        Positioned(
+                          right: -10,
+                          bottom: -18,
+                          child: Icon(
+                            slide.icon,
+                            color: Colors.white.withValues(alpha: 0.18),
+                            size: 118,
+                          ),
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              slide.eyebrow,
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                color: Colors.white.withValues(alpha: 0.86),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              slide.title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.headlineMedium?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w900,
+                                height: 1.08,
+                              ),
+                            ),
+                            const Spacer(),
+                            Row(
+                              children: [
+                                Text(
+                                  slide.cta,
+                                  style: theme.textTheme.labelLarge?.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                const Icon(
+                                  Icons.arrow_forward_rounded,
+                                  color: Colors.white,
+                                  size: 18,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            for (var index = 0; index < _bannerSlides.length; index++)
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                width: _currentIndex == index ? 18 : 7,
+                height: 7,
+                margin: const EdgeInsets.symmetric(horizontal: 3),
+                decoration: BoxDecoration(
+                  color: _currentIndex == index
+                      ? theme.colorScheme.primary
+                      : const Color(0xFFE2E8F0),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _BannerSlide {
+  const _BannerSlide({
+    required this.eyebrow,
+    required this.title,
+    required this.cta,
+    required this.icon,
+    required this.colors,
+  });
+
+  final String eyebrow;
+  final String title;
+  final String cta;
+  final IconData icon;
+  final List<Color> colors;
+}
+
+const _bannerSlides = <_BannerSlide>[
+  _BannerSlide(
+    eyebrow: 'Promo Hari Ini',
+    title: 'Diskon 50% Pupuk dan Sembako',
+    cta: 'Belanja Sekarang',
+    icon: Icons.local_offer_rounded,
+    colors: [Color(0xFFE21F26), Color(0xFF9F0016)],
+  ),
+  _BannerSlide(
+    eyebrow: 'Gratis Ongkir',
+    title: 'Kirim ke rumah untuk belanja harian',
+    cta: 'Cek Voucher',
+    icon: Icons.local_shipping_outlined,
+    colors: [Color(0xFF00608E), Color(0xFF003A5A)],
+  ),
+  _BannerSlide(
+    eyebrow: 'Produk Baru',
+    title: 'Pilihan alat tani dan kebutuhan rumah',
+    cta: 'Lihat Produk',
+    icon: Icons.storefront_rounded,
+    colors: [Color(0xFF166534), Color(0xFF0F3D25)],
+  ),
+];
+
+class _MepuPoinSectionHeader extends StatelessWidget {
+  const _MepuPoinSectionHeader({
+    required this.title,
+    this.actionLabel,
+    required this.onActionTap,
+  });
+
+  final String title;
+  final String? actionLabel;
+  final VoidCallback onActionTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: const Color(0xFF111827),
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const Spacer(),
+          if (actionLabel != null)
+            TextButton(
+              onPressed: onActionTap,
+              style: TextButton.styleFrom(
+                minimumSize: Size.zero,
+                padding: EdgeInsets.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Text(
+                actionLabel!,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MepuPoinShortcutGrid extends StatelessWidget {
+  const _MepuPoinShortcutGrid({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    const shortcuts = [
+      (Icons.devices_outlined, 'Elektronik'),
+      (Icons.checkroom_outlined, 'Fashion'),
+      (Icons.restaurant_outlined, 'Makanan'),
+      (Icons.sports_soccer_outlined, 'Olahraga'),
+      (Icons.home_work_outlined, 'Rumah'),
+      (Icons.more_horiz_rounded, 'Lainnya'),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+      child: SizedBox(
+        height: 82,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: shortcuts.length,
+          separatorBuilder: (_, _) => const SizedBox(width: 14),
+          itemBuilder: (context, index) {
+            final shortcut = shortcuts[index];
+            return SizedBox(
+              width: 68,
+              child: _MepuPoinShortcutItem(
+                icon: shortcut.$1,
+                label: shortcut.$2,
+                onTap: onTap,
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _MepuPoinShortcutItem extends StatelessWidget {
+  const _MepuPoinShortcutItem({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Column(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Icon(
+              icon,
+              size: 19,
+              color: theme.colorScheme.primary,
+            ),
+          ),
+          const SizedBox(height: 7),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: const Color(0xFF334155),
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MepuPoinMiniProductCard extends StatelessWidget {
+  const _MepuPoinMiniProductCard({
+    required this.product,
+    required this.ctaLabel,
+    required this.onTap,
+  });
+
+  final Product product;
+  final String ctaLabel;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: 118,
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: ProductMedia(
+                product: product,
+                borderRadius: BorderRadius.circular(8),
+                fit: BoxFit.cover,
+                padding: const EdgeInsets.all(6),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              product.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: const Color(0xFF111827),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              formatRupiah(product.price),
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 6),
+            OutlinedButton(
+              onPressed: onTap,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: theme.colorScheme.primary,
+                side: BorderSide(color: theme.colorScheme.primary),
+                minimumSize: const Size.fromHeight(26),
+                padding: EdgeInsets.zero,
+                textStyle: theme.textTheme.labelSmall?.copyWith(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              child: Text(ctaLabel),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MepuPoinRecommendationCard extends StatelessWidget {
+  const _MepuPoinRecommendationCard({
+    required this.product,
+    required this.onTap,
+    required this.onAddToCart,
+  });
+
+  final Product product;
+  final VoidCallback onTap;
+  final VoidCallback onAddToCart;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: ProductMedia(
+                product: product,
+                fit: BoxFit.cover,
+                borderRadius: BorderRadius.circular(10),
+                padding: const EdgeInsets.all(8),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            product.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: const Color(0xFF111827),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            formatRupiah(product.price),
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 7),
+          FilledButton(
+            onPressed: onAddToCart,
+            style: FilledButton.styleFrom(
+              backgroundColor: theme.colorScheme.primary,
+              foregroundColor: Colors.white,
+              minimumSize: const Size.fromHeight(32),
+              padding: EdgeInsets.zero,
+              textStyle: theme.textTheme.labelSmall?.copyWith(
+                fontWeight: FontWeight.w900,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: const Text('Beli'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class ShopScreen extends StatefulWidget {
+  const ShopScreen({
+    super.key,
+    required this.cartItemCount,
+    required this.onOpenProduct,
+    required this.onOpenCart,
+    required this.onAddToCart,
+  });
+
+  final int cartItemCount;
+  final ValueChanged<Product> onOpenProduct;
+  final VoidCallback onOpenCart;
+  final ValueChanged<Product> onAddToCart;
+
+  @override
+  State<ShopScreen> createState() => _ShopScreenState();
+}
+
+class _ShopScreenState extends State<ShopScreen> {
+  String selectedCategory = 'Semua';
+  String sortOption = 'Terpopuler';
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final categories = [
+      'Semua',
+      'Elektronik',
+      'Fashion',
+      'Makanan',
+      'Olahraga',
+      'Rumah',
+    ];
 
     return CustomScrollView(
       slivers: [
@@ -245,16 +1116,21 @@ class ShopScreen extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 Text(
-                  'KDMP',
+                  'MepuPoin',
                   style: theme.textTheme.headlineMedium?.copyWith(
                     color: theme.colorScheme.primary,
                   ),
                 ),
                 const Spacer(),
-                const _HeaderActionButton(icon: Icons.search_rounded),
+                _HeaderActionButton(
+                  icon: Icons.shopping_cart_outlined,
+                  badgeCount: widget.cartItemCount,
+                  onTap: widget.onOpenCart,
+                ),
                 const SizedBox(width: 10),
-                const _HeaderActionButton(
-                  icon: Icons.notifications_none_rounded,
+                _HeaderActionButton(
+                  icon: Icons.sort_rounded,
+                  onTap: () => _openSortSheet(context),
                 ),
               ],
             ),
@@ -266,32 +1142,41 @@ class ShopScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SearchField(hintText: 'Search products...'),
+                const SearchField(hintText: 'Cari produk...'),
                 const SizedBox(height: 16),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
+                SizedBox(
+                  height: 46,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: categories.length,
+                    separatorBuilder: (_, _) => const SizedBox(width: 10),
+                    itemBuilder: (context, index) {
+                      final category = categories[index];
+                      return _FilterChip(
+                        label: category,
+                        icon: index == 0
+                            ? Icons.apps_rounded
+                            : Icons.category_outlined,
+                        selected: selectedCategory == category,
+                        onTap: () => setState(() => selectedCategory = category),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
                   children: [
-                    _FilterChip(
-                      label: 'Category',
-                      icon: Icons.category_outlined,
-                      selected: true,
-                      onTap: () {},
+                    Icon(
+                      Icons.sort_rounded,
+                      size: 18,
+                      color: theme.colorScheme.primary,
                     ),
-                    _FilterChip(
-                      label: 'Price',
-                      icon: Icons.payments_outlined,
-                      onTap: () {},
-                    ),
-                    _FilterChip(
-                      label: 'Promo',
-                      icon: Icons.campaign_outlined,
-                      onTap: () {},
-                    ),
-                    _FilterChip(
-                      label: 'More',
-                      icon: Icons.tune_rounded,
-                      onTap: () {},
+                    const SizedBox(width: 6),
+                    Text(
+                      'Urutkan: $sortOption',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: const Color(0xFF475569),
+                      ),
                     ),
                   ],
                 ),
@@ -307,7 +1192,8 @@ class ShopScreen extends StatelessWidget {
               return ProductCard(
                 product: product,
                 variant: ProductCardVariant.catalog,
-                onTap: () => onOpenProduct(product),
+                  onTap: () => widget.onOpenProduct(product),
+                  onAddToCart: () => widget.onAddToCart(product),
               );
             }, childCount: products.length),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -321,6 +1207,50 @@ class ShopScreen extends StatelessWidget {
       ],
     );
   }
+
+  void _openSortSheet(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        final options = [
+          'Harga Terendah',
+          'Harga Tertinggi',
+          'Terbaru',
+          'Terpopuler',
+        ];
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Urutkan Produk',
+                  style: Theme.of(context).textTheme.headlineMedium,
+                ),
+                const SizedBox(height: 12),
+                for (final option in options)
+                  ListTile(
+                    leading: Icon(
+                      sortOption == option
+                          ? Icons.radio_button_checked
+                          : Icons.radio_button_unchecked,
+                    ),
+                    title: Text(option),
+                    onTap: () {
+                      setState(() => sortOption = option);
+                      Navigator.of(context).pop();
+                    },
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 class HistoryScreen extends StatelessWidget {
@@ -332,7 +1262,7 @@ class HistoryScreen extends StatelessWidget {
 
     return CustomScrollView(
       slivers: [
-        const SliverAppBar(pinned: true, title: Text('Activity History')),
+        const SliverAppBar(pinned: true, title: Text('History')),
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
@@ -397,77 +1327,312 @@ class HistoryScreen extends StatelessWidget {
   }
 }
 
-class OrdersScreen extends StatelessWidget {
+class OrdersScreen extends StatefulWidget {
   const OrdersScreen({super.key, required this.onOpenOrder});
 
   final ValueChanged<OrderItem> onOpenOrder;
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+  State<OrdersScreen> createState() => _OrdersScreenState();
+}
 
+class _OrdersScreenState extends State<OrdersScreen> {
+  int selectedTab = 0;
+
+  @override
+  Widget build(BuildContext context) {
     return CustomScrollView(
       slivers: [
-        const SliverAppBar(pinned: true, title: Text('Orders')),
+        const SliverAppBar(pinned: true, title: Text('Transaksi')),
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
-            child: Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(28),
-                border: Border.all(color: const Color(0xFFE8BCB8)),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Icon(
-                      Icons.local_shipping_outlined,
-                      color: theme.colorScheme.primary,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '1 pesanan sedang dikirim',
-                          style: theme.textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Buka detail untuk lihat status pengiriman terbaru.',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: const Color(0xFF6D5A58),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+            child: _SegmentedTabs(
+              labels: const ['Pembayaran Pending', 'Aktif'],
+              selectedIndex: selectedTab,
+              onChanged: (index) => setState(() => selectedTab = index),
             ),
           ),
         ),
-        SliverList.builder(
-          itemCount: orders.length,
-          itemBuilder: (context, index) {
-            final order = orders[index];
-            return Padding(
-              padding: EdgeInsets.fromLTRB(20, index == 0 ? 12 : 8, 20, 8),
-              child: OrderCard(order: order, onTap: () => onOpenOrder(order)),
-            );
-          },
-        ),
+        if (selectedTab == 0) ...[
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              child: _PendingPaymentCard(
+                order: orders.first,
+                onPay: () => _showFeatureSnack(
+                  context,
+                  'Halaman pembayaran siap dibuka.',
+                ),
+                onCancel: () => _showFeatureSnack(
+                  context,
+                  'Konfirmasi pembatalan pesanan siap ditampilkan.',
+                ),
+              ),
+            ),
+          ),
+        ] else ...[
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              child: _ActiveOrderProgressCard(
+                order: orders.first,
+                onTrack: () => widget.onOpenOrder(orders.first),
+              ),
+            ),
+          ),
+          SliverList.builder(
+            itemCount: orders.length,
+            itemBuilder: (context, index) {
+              final order = orders[index];
+              return Padding(
+                padding: EdgeInsets.fromLTRB(20, index == 0 ? 8 : 8, 20, 8),
+                child: OrderCard(
+                  order: order,
+                  onTap: () => widget.onOpenOrder(order),
+                ),
+              );
+            },
+          ),
+        ],
         const SliverToBoxAdapter(child: SizedBox(height: 24)),
+      ],
+    );
+  }
+}
+
+class _SegmentedTabs extends StatelessWidget {
+  const _SegmentedTabs({
+    required this.labels,
+    required this.selectedIndex,
+    required this.onChanged,
+  });
+
+  final List<String> labels;
+  final int selectedIndex;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFECEEF0),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        children: [
+          for (var index = 0; index < labels.length; index++)
+            Expanded(
+              child: InkWell(
+                onTap: () => onChanged(index),
+                borderRadius: BorderRadius.circular(999),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: selectedIndex == index
+                        ? theme.colorScheme.primary
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    labels[index],
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: selectedIndex == index
+                          ? Colors.white
+                          : const Color(0xFF475569),
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PendingPaymentCard extends StatelessWidget {
+  const _PendingPaymentCard({
+    required this.order,
+    required this.onPay,
+    required this.onCancel,
+  });
+
+  final OrderItem order;
+  final VoidCallback onPay;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF3CD),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(
+                  Icons.schedule_rounded,
+                  color: Color(0xFFB7791F),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(order.id, style: theme.textTheme.titleMedium),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Batas bayar: 23:14:59',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: const Color(0xFFB7791F),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Text('Total Pembayaran', style: theme.textTheme.labelLarge),
+          const SizedBox(height: 4),
+          Text(
+            formatRupiah(order.total),
+            style: theme.textTheme.headlineMedium?.copyWith(
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton(
+                  onPressed: onPay,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: theme.colorScheme.primary,
+                    minimumSize: const Size.fromHeight(48),
+                  ),
+                  child: const Text('Bayar Sekarang'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: onCancel,
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                  ),
+                  child: const Text('Batalkan'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ActiveOrderProgressCard extends StatelessWidget {
+  const _ActiveOrderProgressCard({required this.order, required this.onTrack});
+
+  final OrderItem order;
+  final VoidCallback onTrack;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            order.id,
+            style: theme.textTheme.titleLarge?.copyWith(color: Colors.white),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Resi: MEP-240608-8821',
+            style: theme.textTheme.bodyMedium?.copyWith(color: Colors.white70),
+          ),
+          const SizedBox(height: 20),
+          const Row(
+            children: [
+              Expanded(child: _ProgressStep(label: 'Dikonfirmasi', done: true)),
+              Expanded(child: _ProgressStep(label: 'Diproses', done: true)),
+              Expanded(child: _ProgressStep(label: 'Dikirim', done: true)),
+              Expanded(child: _ProgressStep(label: 'Tiba', done: false)),
+            ],
+          ),
+          const SizedBox(height: 20),
+          FilledButton.icon(
+            onPressed: onTrack,
+            icon: const Icon(Icons.location_searching_rounded),
+            label: const Text('Lacak Pesanan'),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: theme.colorScheme.primary,
+              minimumSize: const Size.fromHeight(50),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProgressStep extends StatelessWidget {
+  const _ProgressStep({required this.label, required this.done});
+
+  final String label;
+  final bool done;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Icon(
+          done ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+          color: done ? Colors.white : Colors.white54,
+        ),
+        const SizedBox(height: 6),
+        Text(
+          label,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: done ? Colors.white : Colors.white60,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
       ],
     );
   }
@@ -487,13 +1652,16 @@ class ProfileScreen extends StatelessWidget {
         SliverAppBar(
           pinned: true,
           leading: IconButton(
-            onPressed: () {},
+            onPressed: () => _showFeatureSnack(
+              context,
+              'Kamu sudah berada di tab Akun.',
+            ),
             icon: const Icon(Icons.arrow_back_rounded),
           ),
-          title: const Text('KDMP Profile'),
+          title: const Text('Akun'),
           actions: [
             IconButton(
-              onPressed: () {},
+              onPressed: () => onOpenSetting(profileSettings.last),
               icon: const Icon(Icons.settings_outlined),
             ),
           ],
@@ -609,7 +1777,7 @@ class ProfileScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'PAYMENT METHOD LINKED',
+                        'SALDO MEPUPOIN',
                         style: theme.textTheme.labelLarge?.copyWith(
                           color: Colors.white70,
                         ),
@@ -624,25 +1792,37 @@ class ProfileScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 18),
                       Row(
-                        children: const [
+                        children: [
                           Expanded(
                             child: ProfileActionChip(
                               label: 'History',
                               icon: Icons.history,
+                              onTap: () => _showFeatureSnack(
+                                context,
+                                'Riwayat saldo MepuPoin siap dibuka.',
+                              ),
                             ),
                           ),
-                          SizedBox(width: 12),
+                          const SizedBox(width: 12),
                           Expanded(
                             child: ProfileActionChip(
                               label: 'Vouchers',
                               icon: Icons.confirmation_number_outlined,
+                              onTap: () => _showFeatureSnack(
+                                context,
+                                'Voucher MepuPoin siap dibuka.',
+                              ),
                             ),
                           ),
-                          SizedBox(width: 12),
+                          const SizedBox(width: 12),
                           Expanded(
                             child: ProfileActionChip(
                               label: 'Promo',
                               icon: Icons.star_rounded,
+                              onTap: () => _showFeatureSnack(
+                                context,
+                                'Promo MepuPoin siap dibuka.',
+                              ),
                             ),
                           ),
                         ],
@@ -658,7 +1838,7 @@ class ProfileScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Account Settings',
+                          'Pengaturan Akun',
                           style: theme.textTheme.headlineMedium,
                         ),
                         const SizedBox(height: 12),
@@ -674,18 +1854,26 @@ class ProfileScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 22),
                 Row(
-                  children: const [
+                  children: [
                     Expanded(
                       child: MiniStatCard(
                         icon: Icons.receipt_long_outlined,
                         label: 'History',
+                        onTap: () => _showFeatureSnack(
+                          context,
+                          'Riwayat aktivitas siap dibuka.',
+                        ),
                       ),
                     ),
-                    SizedBox(width: 16),
+                    const SizedBox(width: 16),
                     Expanded(
                       child: MiniStatCard(
                         icon: Icons.remove_red_eye_outlined,
                         label: 'Viewed',
+                        onTap: () => _showFeatureSnack(
+                          context,
+                          'Produk yang dilihat siap dibuka.',
+                        ),
                       ),
                     ),
                   ],
@@ -697,22 +1885,35 @@ class ProfileScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Support', style: theme.textTheme.headlineMedium),
+                        Text('Bantuan', style: theme.textTheme.headlineMedium),
                         const SizedBox(height: 18),
-                        const SupportOption(
+                        SupportOption(
                           icon: Icons.live_help_outlined,
                           title: 'FAQ',
                           subtitle: 'Find quick answers',
+                          onTap: () => _showFeatureSnack(
+                            context,
+                            'FAQ MepuPoin siap dibuka.',
+                          ),
                         ),
                         const SizedBox(height: 14),
-                        const SupportButton(label: 'Contact Us'),
+                        SupportButton(
+                          label: 'Contact Us',
+                          onTap: () => _showFeatureSnack(
+                            context,
+                            'Tim support MepuPoin siap dihubungi.',
+                          ),
+                        ),
                       ],
                     ),
                   ),
                 ),
                 const SizedBox(height: 22),
                 OutlinedButton.icon(
-                  onPressed: () {},
+                  onPressed: () => _showFeatureSnack(
+                    context,
+                    'Sesi akun MepuPoin tetap aman.',
+                  ),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(double.infinity, 70),
                     side: BorderSide(
@@ -727,7 +1928,7 @@ class ProfileScreen extends StatelessWidget {
                     Icons.logout_rounded,
                     color: theme.colorScheme.primary,
                   ),
-                  label: const Text('Logout from Account'),
+                  label: const Text('Keluar dari Akun'),
                 ),
               ],
             ),
@@ -739,9 +1940,18 @@ class ProfileScreen extends StatelessWidget {
 }
 
 class ProductDetailScreen extends StatefulWidget {
-  const ProductDetailScreen({super.key, required this.product});
+  const ProductDetailScreen({
+    super.key,
+    required this.product,
+    required this.cartItemCount,
+    required this.onOpenCart,
+    required this.onAddToCart,
+  });
 
   final Product product;
+  final int cartItemCount;
+  final VoidCallback onOpenCart;
+  final ValueChanged<Product> onAddToCart;
 
   @override
   State<ProductDetailScreen> createState() => _ProductDetailScreenState();
@@ -806,18 +2016,24 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                             onTap: () => Navigator.of(context).pop(),
                           ),
                         ),
-                        const Positioned(
+                        Positioned(
                           top: 18,
                           right: 86,
                           child: _CircleActionButton(
                             icon: Icons.share_outlined,
+                            onTap: () => _showFeatureSnack(
+                              context,
+                              'Link produk siap dibagikan.',
+                            ),
                           ),
                         ),
-                        const Positioned(
+                        Positioned(
                           top: 18,
                           right: 18,
                           child: _CircleActionButton(
                             icon: Icons.shopping_cart_outlined,
+                            badgeCount: widget.cartItemCount,
+                            onTap: widget.onOpenCart,
                           ),
                         ),
                         Positioned(
@@ -945,7 +2161,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                           ),
                           const SizedBox(height: 28),
                           Text(
-                            'Related Cooperative Products',
+                            'Produk Terkait',
                             style: theme.textTheme.headlineMedium,
                           ),
                           const SizedBox(height: 18),
@@ -965,7 +2181,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                     Navigator.of(context).pushReplacement(
                                       MaterialPageRoute<void>(
                                         builder: (_) => ProductDetailScreen(
+                                          cartItemCount: widget.cartItemCount,
                                           product: related[index],
+                                          onOpenCart: widget.onOpenCart,
+                                          onAddToCart: widget.onAddToCart,
                                         ),
                                       ),
                                     );
@@ -1023,7 +2242,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     children: [
                       Expanded(
                         child: OutlinedButton(
-                          onPressed: () {},
+                          onPressed: () => widget.onAddToCart(product),
                           style: OutlinedButton.styleFrom(
                             minimumSize: const Size.fromHeight(62),
                             side: BorderSide(
@@ -1034,13 +2253,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                               borderRadius: BorderRadius.circular(18),
                             ),
                           ),
-                          child: const Text('Add to Cart'),
+                          child: const Text('Tambah ke Keranjang'),
                         ),
                       ),
                       const SizedBox(width: 14),
                       Expanded(
                         child: FilledButton.icon(
-                          onPressed: () {},
+                          onPressed: () => _showFeatureSnack(
+                            context,
+                            'Checkout ${product.name} siap diproses di tab Transaksi.',
+                          ),
                           style: FilledButton.styleFrom(
                             minimumSize: const Size.fromHeight(62),
                             backgroundColor: theme.colorScheme.primary,
@@ -1049,7 +2271,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                             ),
                           ),
                           icon: const Icon(Icons.shopping_bag_outlined),
-                          label: const Text('Buy Now'),
+                          label: const Text('Beli Sekarang'),
                         ),
                       ),
                     ],
@@ -1191,7 +2413,10 @@ class OrderDetailScreen extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           FilledButton(
-            onPressed: () {},
+            onPressed: () => _showFeatureSnack(
+              context,
+              'Pelacakan pesanan ${order.id} siap dibuka.',
+            ),
             style: FilledButton.styleFrom(
               minimumSize: const Size.fromHeight(58),
               backgroundColor: theme.colorScheme.primary,
@@ -1258,6 +2483,256 @@ class SettingDetailScreen extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class CartScreen extends StatefulWidget {
+  const CartScreen({
+    super.key,
+    required this.items,
+    required this.onRemoveItem,
+    required this.onClearCart,
+    required this.onCheckout,
+  });
+
+  final List<Product> items;
+  final ValueChanged<int> onRemoveItem;
+  final VoidCallback onClearCart;
+  final VoidCallback onCheckout;
+
+  @override
+  State<CartScreen> createState() => _CartScreenState();
+}
+
+class _CartScreenState extends State<CartScreen> {
+  late final List<Product> cartProducts = List<Product>.of(widget.items);
+  late bool selectAll = cartProducts.isNotEmpty;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final totalPrice = selectAll
+        ? cartProducts.fold<int>(0, (total, product) => total + product.price)
+        : 0;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Keranjang'),
+        actions: [
+          TextButton(
+            onPressed: cartProducts.isEmpty
+                ? null
+                : () {
+                    widget.onClearCart();
+                    setState(cartProducts.clear);
+                    _showFeatureSnack(context, 'Keranjang dikosongkan.');
+                  },
+            child: const Text('Hapus Semua'),
+          ),
+        ],
+      ),
+      body: cartProducts.isEmpty
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(28),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.shopping_cart_outlined,
+                      size: 84,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      'Keranjang masih kosong',
+                      style: theme.textTheme.headlineMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Tambahkan produk favorit dari Home atau Shop.',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodyLarge,
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
+              children: [
+                CheckboxListTile(
+                  value: selectAll,
+                  onChanged: (value) => setState(() => selectAll = value ?? false),
+                  title: const Text('Pilih Semua'),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: EdgeInsets.zero,
+                ),
+                const SizedBox(height: 8),
+                for (var index = 0; index < cartProducts.length; index++)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Builder(
+                      builder: (context) {
+                        final product = cartProducts[index];
+                        return Dismissible(
+                          key: ValueKey('${product.id}-$index'),
+                          direction: DismissDirection.endToStart,
+                          background: Container(
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 20),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.error,
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: const Icon(
+                              Icons.delete_outline,
+                              color: Colors.white,
+                            ),
+                          ),
+                          onDismissed: (_) {
+                            widget.onRemoveItem(index);
+                            setState(() => cartProducts.removeAt(index));
+                          },
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: Row(
+                        children: [
+                          Checkbox(
+                            value: selectAll,
+                            onChanged: (value) =>
+                                setState(() => selectAll = value ?? false),
+                          ),
+                          SizedBox(
+                            width: 72,
+                            height: 72,
+                            child: ProductMedia(
+                              product: product,
+                              borderRadius: BorderRadius.circular(12),
+                              fit: BoxFit.cover,
+                              padding: const EdgeInsets.all(6),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  product.name,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.titleMedium,
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  formatRupiah(product.price),
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    color: theme.colorScheme.primary,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    _QuantityMiniButton(icon: Icons.remove),
+                                    const Padding(
+                                      padding: EdgeInsets.symmetric(horizontal: 10),
+                                      child: Text('1'),
+                                    ),
+                                    _QuantityMiniButton(icon: Icons.add),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () {
+                              widget.onRemoveItem(index);
+                              setState(() => cartProducts.removeAt(index));
+                              _showFeatureSnack(
+                                context,
+                                '${product.name} dihapus dari keranjang.',
+                              );
+                            },
+                            icon: const Icon(Icons.delete_outline),
+                          ),
+                        ],
+                      ),
+                    ),
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Total', style: theme.textTheme.labelMedium),
+                    const SizedBox(height: 4),
+                    Text(
+                      formatRupiah(totalPrice),
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              FilledButton(
+                onPressed: totalPrice == 0 ? null : widget.onCheckout,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(138, 52),
+                  backgroundColor: theme.colorScheme.primary,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                child: const Text('Checkout'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QuantityMiniButton extends StatelessWidget {
+  const _QuantityMiniButton({required this.icon});
+
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 28,
+      height: 28,
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Icon(icon, size: 16),
     );
   }
 }
@@ -1344,7 +2819,7 @@ class BalanceCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'KDMP Points',
+                        'MepuPoin Points',
                         style: theme.textTheme.titleMedium?.copyWith(
                           color: Colors.white,
                         ),
@@ -1393,7 +2868,10 @@ class BalanceCard extends StatelessWidget {
                     child: QuickActionButton(
                       label: 'Transfer',
                       icon: Icons.send_rounded,
-                      onTap: () {},
+                      onTap: () => _showFeatureSnack(
+                        context,
+                        'Transfer saldo MepuPoin siap digunakan.',
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -1571,11 +3049,13 @@ class ProductCard extends StatelessWidget {
     super.key,
     required this.product,
     required this.onTap,
+    this.onAddToCart,
     this.variant = ProductCardVariant.flashSale,
   });
 
   final Product product;
   final VoidCallback onTap;
+  final VoidCallback? onAddToCart;
   final ProductCardVariant variant;
 
   @override
@@ -1677,14 +3157,18 @@ class ProductCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primary,
-                      shape: BoxShape.circle,
+                  InkWell(
+                    onTap: onAddToCart,
+                    borderRadius: BorderRadius.circular(999),
+                    child: Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.add_rounded, color: Colors.white),
                     ),
-                    child: const Icon(Icons.add_rounded, color: Colors.white),
                   ),
                 ],
               ),
@@ -2007,27 +3491,44 @@ class ProfileAvatar extends StatelessWidget {
 }
 
 class _HeaderActionButton extends StatelessWidget {
-  const _HeaderActionButton({required this.icon, this.onTap});
+  const _HeaderActionButton({
+    required this.icon,
+    required this.onTap,
+    this.badgeCount = 0,
+  });
 
   final IconData icon;
-  final VoidCallback? onTap;
+  final VoidCallback onTap;
+  final int badgeCount;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: SizedBox(
-          width: 46,
-          height: 46,
-          child: Icon(icon, color: Theme.of(context).colorScheme.primary),
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(16),
+            child: SizedBox(
+              width: 46,
+              height: 46,
+              child: Icon(icon, color: Theme.of(context).colorScheme.primary),
+            ),
+          ),
         ),
-      ),
+        if (badgeCount > 0)
+          Positioned(
+            right: -2,
+            top: -2,
+            child: _CartCountBadge(count: badgeCount),
+          ),
+      ],
     );
   }
+
 }
 
 class _FilterChip extends StatelessWidget {
@@ -2093,8 +3594,8 @@ class KdmpBottomNavigationBar extends StatelessWidget {
       (Icons.home_filled, 'Home'),
       (Icons.storefront_rounded, 'Shop'),
       (Icons.history_rounded, 'History'),
-      (Icons.receipt_long_outlined, 'Orders'),
-      (Icons.person_outline_rounded, 'Profile'),
+      (Icons.receipt_long_outlined, 'Transaksi'),
+      (Icons.person_outline_rounded, 'Akun'),
     ];
 
     return SafeArea(
@@ -2323,64 +3824,84 @@ class SettingTile extends StatelessWidget {
 }
 
 class ProfileActionChip extends StatelessWidget {
-  const ProfileActionChip({super.key, required this.label, required this.icon});
+  const ProfileActionChip({
+    super.key,
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
 
   final String label;
   final IconData icon;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 112,
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, color: Colors.white, size: 28),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(color: Colors.white),
-          ),
-        ],
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(22),
+      child: Container(
+        height: 112,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(22),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: Colors.white, size: 28),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(color: Colors.white),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
 class MiniStatCard extends StatelessWidget {
-  const MiniStatCard({super.key, required this.icon, required this.label});
+  const MiniStatCard({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
 
   final IconData icon;
   final String label;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Card(
-      child: SizedBox(
-        height: 164,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 68,
-              height: 68,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primary.withValues(alpha: 0.09),
-                shape: BoxShape.circle,
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(24),
+      child: Card(
+        child: SizedBox(
+          height: 164,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 68,
+                height: 68,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.09),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: theme.colorScheme.primary, size: 34),
               ),
-              child: Icon(icon, color: theme.colorScheme.primary, size: 34),
-            ),
-            const SizedBox(height: 18),
-            Text(label, style: theme.textTheme.headlineSmall),
-          ],
+              const SizedBox(height: 18),
+              Text(label, style: theme.textTheme.headlineSmall),
+            ],
+          ),
         ),
       ),
     );
@@ -2393,63 +3914,74 @@ class SupportOption extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.subtitle,
+    required this.onTap,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE8BCB8)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: theme.colorScheme.primary, size: 28),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: theme.textTheme.titleLarge),
-                Text(
-                  subtitle,
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    color: const Color(0xFF6D5A58),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFE8BCB8)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: theme.colorScheme.primary, size: 28),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: theme.textTheme.titleLarge),
+                  Text(
+                    subtitle,
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      color: const Color(0xFF6D5A58),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
 class SupportButton extends StatelessWidget {
-  const SupportButton({super.key, required this.label});
+  const SupportButton({super.key, required this.label, required this.onTap});
 
   final String label;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      height: 62,
-      decoration: BoxDecoration(
-        color: const Color(0xFFE4E5E7),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Center(
-        child: Text(label, style: Theme.of(context).textTheme.titleLarge),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        width: double.infinity,
+        height: 62,
+        decoration: BoxDecoration(
+          color: const Color(0xFFE4E5E7),
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Center(
+          child: Text(label, style: Theme.of(context).textTheme.titleLarge),
+        ),
       ),
     );
   }
@@ -2488,24 +4020,40 @@ class FeatureCard extends StatelessWidget {
 }
 
 class _CircleActionButton extends StatelessWidget {
-  const _CircleActionButton({required this.icon, this.onTap});
+  const _CircleActionButton({
+    required this.icon,
+    this.onTap,
+    this.badgeCount = 0,
+  });
 
   final IconData icon;
   final VoidCallback? onTap;
+  final int badgeCount;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white.withValues(alpha: 0.92),
-      shape: const CircleBorder(),
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Icon(icon, color: const Color(0xFF2A2727)),
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Material(
+          color: Colors.white.withValues(alpha: 0.92),
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Icon(icon, color: const Color(0xFF2A2727)),
+            ),
+          ),
         ),
-      ),
+        if (badgeCount > 0)
+          Positioned(
+            right: -2,
+            top: -2,
+            child: _CartCountBadge(count: badgeCount),
+          ),
+      ],
     );
   }
 }
@@ -2680,3 +4228,4 @@ IconData _featureIcon(int index) {
   ];
   return icons[index % icons.length];
 }
+

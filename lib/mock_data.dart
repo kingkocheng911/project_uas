@@ -21,7 +21,7 @@ const promos = <PromoBanner>[
   ),
   PromoBanner(
     title: 'Member Discounts',
-    subtitle: 'Exclusive deals for KDMP members only.',
+    subtitle: 'Exclusive deals for MepuPoin members only.',
     icon: Icons.workspace_premium_rounded,
     colors: [Color(0xFF8E0011), Color(0xFFD9001B)],
     imageUrl:
@@ -71,7 +71,7 @@ const products = <Product>[
   ),
   Product(
     id: 'smartband',
-    name: 'KDMP Smart Band',
+    name: 'MepuPoin Smart Band',
     price: 199000,
     originalPrice: 249000,
     claimedPercent: 90,
@@ -166,25 +166,25 @@ const orders = <OrderItem>[
     createdAt: '25 May 2026, 15:40',
     total: 32000,
     progressLabel: 'Pesanan siap diambil di koperasi',
-    address: 'KDMP Sukamaju - Pickup Counter',
+    address: 'MepuPoin Sukamaju - Pickup Counter',
     items: ['Minyak Goreng 2L'],
   ),
   OrderItem(
     id: 'ORD-240523-03',
-    title: 'KDMP Smart Band',
+    title: 'MepuPoin Smart Band',
     status: 'Completed',
     createdAt: '23 May 2026, 13:10',
     total: 199000,
     progressLabel: 'Pesanan selesai dan poin masuk',
     address: 'Jl. Merdeka No. 42, Sukamaju Village',
-    items: ['KDMP Smart Band', 'Garansi 1 Tahun'],
+    items: ['MepuPoin Smart Band', 'Garansi 1 Tahun'],
   ),
 ];
 
 const activities = <ActivityEntry>[
   ActivityEntry(
     title: 'Pembayaran berhasil',
-    subtitle: 'Top up saldo KDMP sebesar Rp 250.000 berhasil diproses.',
+    subtitle: 'Top up saldo MepuPoin sebesar Rp 250.000 berhasil diproses.',
     icon: Icons.account_balance_wallet_outlined,
     color: Color(0xFF1A936F),
     time: '10 menit lalu',
@@ -232,3 +232,4 @@ const profileSettings = <SettingShortcut>[
     icon: Icons.shield_outlined,
   ),
 ];
+
