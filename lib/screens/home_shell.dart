@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../mock_data.dart';
 import '../models.dart';
@@ -9,6 +10,85 @@ const _profileImageUrl =
     'https://lh3.googleusercontent.com/aida-public/AB6AXuBK38PfAiyHOiE6kMysiQgsdlCCaiTZUI4b6gmDIwhe7ReUvEF9AOZtc7zqWWpVxTvrZR01xBh3zwriMDBPGCAo8CThIn0t0ntISl8DH-ep3Z-QGr7OWGhZ3xzhTCYILlx9u9FIcdh72iy8WgdEZ-5Ow0Z7K3GctB5GWYGI-vV-GtzOo52Gm493KbofV8djVAmlUkGGmTVDG9cAGxX5fu1r6zYUEtMTvVVdJdvfWy0C3YN2beA5eJaitKgtJFVoqPaqkjSAbfMpshmD';
 const _cooperativeImageUrl =
     'https://images.unsplash.com/photo-1516321497487-e288fb19713f?auto=format&fit=crop&w=600&q=80';
+
+const _initialProductStocks = <String, int>{
+  'rice': 24,
+  'oil': 36,
+  'smartband': 12,
+  'honey': 18,
+  'coffee': 28,
+  'powerbank': 10,
+};
+
+class UserProfile {
+  const UserProfile({
+    required this.name,
+    required this.phone,
+    required this.email,
+  });
+
+  final String name;
+  final String phone;
+  final String email;
+}
+
+class CheckoutVoucher {
+  const CheckoutVoucher({
+    required this.code,
+    required this.title,
+    required this.description,
+    required this.icon,
+    required this.minimumSpend,
+    required this.calculateDiscount,
+  });
+
+  final String code;
+  final String title;
+  final String description;
+  final IconData icon;
+  final int minimumSpend;
+  final int Function(int subtotal, int deliveryFee, int serviceFee)
+  calculateDiscount;
+}
+
+const _checkoutVouchers = <CheckoutVoucher>[
+  CheckoutVoucher(
+    code: 'ONGKIRHEMAT',
+    title: 'Gratis Ongkir',
+    description: 'Potongan ongkir sampai Rp 8.000',
+    icon: Icons.local_shipping_outlined,
+    minimumSpend: 50000,
+    calculateDiscount: _freeDeliveryDiscount,
+  ),
+  CheckoutVoucher(
+    code: 'MEPU10',
+    title: 'Diskon Belanja 10%',
+    description: 'Maksimal potongan Rp 25.000',
+    icon: Icons.percent_rounded,
+    minimumSpend: 100000,
+    calculateDiscount: _tenPercentDiscount,
+  ),
+  CheckoutVoucher(
+    code: 'ANGGOTA15',
+    title: 'Voucher Anggota',
+    description: 'Potongan langsung Rp 15.000',
+    icon: Icons.workspace_premium_outlined,
+    minimumSpend: 75000,
+    calculateDiscount: _memberVoucherDiscount,
+  ),
+];
+
+int _freeDeliveryDiscount(int subtotal, int deliveryFee, int serviceFee) {
+  return deliveryFee.clamp(0, 8000).toInt();
+}
+
+int _tenPercentDiscount(int subtotal, int deliveryFee, int serviceFee) {
+  return (subtotal * 0.10).round().clamp(0, 25000).toInt();
+}
+
+int _memberVoucherDiscount(int subtotal, int deliveryFee, int serviceFee) {
+  return 15000.clamp(0, subtotal + deliveryFee + serviceFee).toInt();
+}
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -19,27 +99,53 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int _currentIndex = 0;
+  int _mepuBalance = 150000;
+  UserProfile _profile = const UserProfile(
+    name: 'Budi Speed',
+    phone: '+62 812-3456-7890',
+    email: 'budi.santoso@email.com',
+  );
+  final Map<String, int> _productStocks = Map<String, int>.of(
+    _initialProductStocks,
+  );
   final List<Product> _cartItems = [];
+  final List<OrderItem> _orderItems = List<OrderItem>.of(orders);
+  final Map<String, List<Product>> _orderProducts = {};
 
   @override
   Widget build(BuildContext context) {
     final pages = <Widget>[
       DashboardScreen(
         cartItemCount: _cartItems.length,
+        mepuBalance: _mepuBalance,
+        productStocks: _productStocks,
         onOpenProduct: _openProduct,
         onChangeTab: _changeTab,
         onOpenCart: _openCart,
         onAddToCart: _addToCart,
+        onTopUp: _openTopUpDialog,
       ),
       ShopScreen(
         cartItemCount: _cartItems.length,
+        productStocks: _productStocks,
         onOpenProduct: _openProduct,
         onOpenCart: _openCart,
         onAddToCart: _addToCart,
       ),
       const HistoryScreen(),
-      OrdersScreen(onOpenOrder: _openOrder),
-      ProfileScreen(onOpenSetting: _openSetting),
+      OrdersScreen(
+        orders: _orderItems,
+        onOpenOrder: _openOrder,
+        onPayOrder: _payOrder,
+        onCancelOrder: _cancelOrder,
+      ),
+      ProfileScreen(
+        profile: _profile,
+        mepuBalance: _mepuBalance,
+        onTopUp: _openTopUpDialog,
+        onEditProfile: _openEditProfile,
+        onOpenSetting: _openSetting,
+      ),
     ];
 
     return Scaffold(
@@ -64,8 +170,12 @@ class _HomeShellState extends State<HomeShell> {
         builder: (_) => ProductDetailScreen(
           cartItemCount: _cartItems.length,
           product: product,
+          stock: _stockOf(product),
+          productStocks: _productStocks,
           onOpenCart: _openCart,
           onAddToCart: _addToCart,
+          onAddItemsToCart: _addItemsToCart,
+          onBuyNow: _buyNow,
         ),
       ),
     );
@@ -78,21 +188,203 @@ class _HomeShellState extends State<HomeShell> {
           items: List<Product>.of(_cartItems),
           onRemoveItem: _removeFromCart,
           onClearCart: _clearCart,
-          onCheckout: () {
-            Navigator.of(context).pop();
-            _changeTab(3);
-          },
+          onCheckout: (items) => _openCheckout(items, clearCart: true),
         ),
       ),
     );
   }
 
   void _addToCart(Product product) {
+    if (!_hasAvailableStock([product], includeCartItems: true)) return;
     setState(() => _cartItems.add(product));
     _showFeatureSnack(
       context,
       '${product.name} ditambahkan ke keranjang.',
+      title: 'Produk Ditambahkan',
+      icon: Icons.shopping_cart_checkout_rounded,
     );
+  }
+
+  void _addItemsToCart(List<Product> items) {
+    if (items.isEmpty) return;
+    if (!_hasAvailableStock(items, includeCartItems: true)) return;
+    setState(() => _cartItems.addAll(items));
+    final firstProduct = items.first;
+    final message = items.length == 1
+        ? '${firstProduct.name} ditambahkan ke keranjang.'
+        : '${firstProduct.name} x ${items.length} ditambahkan ke keranjang.';
+    _showFeatureSnack(
+      context,
+      message,
+      title: 'Produk Ditambahkan',
+      icon: Icons.shopping_cart_checkout_rounded,
+    );
+  }
+
+  void _buyNow(List<Product> items) {
+    _openCheckout(items, clearCart: false);
+  }
+
+  void _openCheckout(List<Product> items, {required bool clearCart}) {
+    if (items.isEmpty) return;
+    if (!_hasAvailableStock(items, includeCartItems: false)) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => CheckoutScreen(
+          items: List<Product>.of(items),
+          mepuBalance: _mepuBalance,
+          productStocks: _productStocks,
+          onPlaceOrder:
+              (
+                checkoutItems,
+                paymentMethod,
+                deliveryMethod,
+                address,
+                finalTotal,
+                voucherLabel,
+              ) {
+                final order = _createOrder(
+                  checkoutItems,
+                  paymentMethod: paymentMethod,
+                  deliveryMethod: deliveryMethod,
+                  address: address,
+                  finalTotal: finalTotal,
+                  voucherLabel: voucherLabel,
+                );
+                setState(() {
+                  _orderItems.insert(0, order);
+                  _orderProducts[order.id] = List<Product>.of(checkoutItems);
+                  _decreaseStock(checkoutItems);
+                  if (clearCart) _cartItems.clear();
+                  _currentIndex = 3;
+                });
+                return order;
+              },
+        ),
+      ),
+    );
+  }
+
+  OrderItem _createOrder(
+    List<Product> items, {
+    required String paymentMethod,
+    required String deliveryMethod,
+    required String address,
+    required int finalTotal,
+    String? voucherLabel,
+  }) {
+    final groupedItems = _summarizeProducts(items);
+    final orderItems = [
+      ...groupedItems,
+      if (voucherLabel != null) 'Voucher: $voucherLabel',
+    ];
+    final itemTitle = groupedItems.length == 1
+        ? groupedItems.first
+        : '${groupedItems.first} + ${groupedItems.length - 1} produk';
+
+    return OrderItem(
+      id: _generateOrderId(),
+      title: itemTitle,
+      status: 'Payment Pending',
+      createdAt: _formatOrderDate(DateTime.now()),
+      total: finalTotal,
+      progressLabel: 'Menunggu pembayaran via $paymentMethod',
+      address: deliveryMethod == 'Ambil di Koperasi'
+          ? 'MepuPoin Sukamaju - Pickup Counter'
+          : address,
+      items: orderItems,
+    );
+  }
+
+  List<String> _summarizeProducts(List<Product> items) {
+    final counts = <String, int>{};
+    for (final item in items) {
+      counts[item.name] = (counts[item.name] ?? 0) + 1;
+    }
+    return counts.entries
+        .map(
+          (entry) =>
+              entry.value == 1 ? entry.key : '${entry.key} x ${entry.value}',
+        )
+        .toList();
+  }
+
+  int _stockOf(Product product) => _productStocks[product.id] ?? 0;
+
+  Map<String, int> _countProducts(List<Product> items) {
+    final counts = <String, int>{};
+    for (final item in items) {
+      counts[item.id] = (counts[item.id] ?? 0) + 1;
+    }
+    return counts;
+  }
+
+  bool _hasAvailableStock(
+    List<Product> items, {
+    required bool includeCartItems,
+  }) {
+    final requestedCounts = _countProducts(items);
+    final cartCounts = includeCartItems
+        ? _countProducts(_cartItems)
+        : <String, int>{};
+    for (final entry in requestedCounts.entries) {
+      final product = products.firstWhere((item) => item.id == entry.key);
+      final available = _productStocks[entry.key] ?? 0;
+      final totalRequested = entry.value + (cartCounts[entry.key] ?? 0);
+      if (totalRequested > available) {
+        _showFeatureSnack(
+          context,
+          'Stok ${product.name} tersisa $available. Kurangi jumlah pembelian atau pilih produk lain.',
+          title: 'Stok Tidak Cukup',
+          icon: Icons.inventory_2_outlined,
+        );
+        return false;
+      }
+    }
+    return true;
+  }
+
+  void _decreaseStock(List<Product> items) {
+    final counts = _countProducts(items);
+    for (final entry in counts.entries) {
+      final currentStock = _productStocks[entry.key] ?? 0;
+      _productStocks[entry.key] = (currentStock - entry.value)
+          .clamp(0, currentStock)
+          .toInt();
+    }
+  }
+
+  void _increaseStock(List<Product> items) {
+    final counts = _countProducts(items);
+    for (final entry in counts.entries) {
+      _productStocks[entry.key] =
+          (_productStocks[entry.key] ?? 0) + entry.value;
+    }
+  }
+
+  String _generateOrderId() {
+    final now = DateTime.now();
+    String twoDigits(int value) => value.toString().padLeft(2, '0');
+    return 'ORD-${twoDigits(now.day)}${twoDigits(now.month)}${now.year.toString().substring(2)}-${(_orderItems.length + 1).toString().padLeft(2, '0')}';
+  }
+
+  String _formatOrderDate(DateTime date) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    String twoDigits(int value) => value.toString().padLeft(2, '0');
+    return '${date.day} ${months[date.month - 1]} ${date.year}, ${twoDigits(date.hour)}:${twoDigits(date.minute)}';
   }
 
   void _removeFromCart(int index) {
@@ -102,6 +394,74 @@ class _HomeShellState extends State<HomeShell> {
 
   void _clearCart() {
     setState(_cartItems.clear);
+  }
+
+  Future<void> _openTopUpDialog() async {
+    final amount = await showDialog<int>(
+      context: context,
+      builder: (_) => const _TopUpDialog(),
+    );
+    if (!mounted || amount == null || amount <= 0) return;
+
+    setState(() => _mepuBalance += amount);
+    _showFeatureSnack(
+      context,
+      'Saldo bertambah ${formatRupiah(amount)}. Saldo sekarang ${formatRupiah(_mepuBalance)}.',
+      title: 'Top Up Berhasil',
+      icon: Icons.account_balance_wallet_outlined,
+    );
+  }
+
+  void _payOrder(OrderItem order) {
+    final index = _orderItems.indexWhere((item) => item.id == order.id);
+    if (index == -1) return;
+    final usesMepuBalance = order.progressLabel.contains('Saldo MepuPoin');
+    if (usesMepuBalance && _mepuBalance < order.total) {
+      _showFeatureSnack(
+        context,
+        'Saldo kamu kurang ${formatRupiah(order.total - _mepuBalance)} untuk membayar pesanan ini.',
+        title: 'Saldo Tidak Cukup',
+        icon: Icons.account_balance_wallet_outlined,
+        actionLabel: 'Isi Saldo',
+        onAction: _openTopUpDialog,
+      );
+      return;
+    }
+    setState(() {
+      if (usesMepuBalance) {
+        _mepuBalance -= order.total;
+      }
+      _orderItems[index] = OrderItem(
+        id: order.id,
+        title: order.title,
+        status: 'On Delivery',
+        createdAt: order.createdAt,
+        total: order.total,
+        progressLabel: 'Pembayaran berhasil, pesanan sedang diproses',
+        address: order.address,
+        items: order.items,
+      );
+    });
+    _showFeatureSnack(
+      context,
+      'Pembayaran berhasil. Pesanan masuk ke Aktif.',
+      title: 'Pembayaran Berhasil',
+      icon: Icons.verified_rounded,
+    );
+  }
+
+  void _cancelOrder(OrderItem order) {
+    final cancelledItems = _orderProducts.remove(order.id) ?? const <Product>[];
+    setState(() {
+      _orderItems.removeWhere((item) => item.id == order.id);
+      _increaseStock(cancelledItems);
+    });
+    _showFeatureSnack(
+      context,
+      'Pesanan ${order.id} dibatalkan.',
+      title: 'Pesanan Dibatalkan',
+      icon: Icons.cancel_outlined,
+    );
   }
 
   void _openOrder(OrderItem order) {
@@ -117,29 +477,649 @@ class _HomeShellState extends State<HomeShell> {
       ),
     );
   }
+
+  Future<void> _openEditProfile() async {
+    final updatedProfile = await Navigator.of(context).push<UserProfile>(
+      MaterialPageRoute<UserProfile>(
+        builder: (_) => EditProfileScreen(profile: _profile),
+      ),
+    );
+    if (!mounted || updatedProfile == null) return;
+
+    setState(() => _profile = updatedProfile);
+    _showFeatureSnack(
+      context,
+      'Data profil berhasil diperbarui.',
+      title: 'Profil Tersimpan',
+      icon: Icons.verified_user_outlined,
+    );
+  }
 }
 
-void _showFeatureSnack(BuildContext context, String message) {
-  ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(message)));
+Future<void> _showFeatureSnack(
+  BuildContext context,
+  String message, {
+  String title = 'Informasi',
+  IconData icon = Icons.info_outline_rounded,
+  String actionLabel = 'Mengerti',
+  VoidCallback? onAction,
+}) {
+  return showDialog<void>(
+    context: context,
+    builder: (dialogContext) => _ProfessionalPopup(
+      icon: icon,
+      title: title,
+      message: message,
+      primaryLabel: actionLabel,
+      onPrimary: () {
+        Navigator.of(dialogContext).pop();
+        onAction?.call();
+      },
+    ),
+  );
+}
+
+class _ProfessionalPopup extends StatelessWidget {
+  const _ProfessionalPopup({
+    required this.icon,
+    required this.title,
+    required this.message,
+    required this.primaryLabel,
+    required this.onPrimary,
+    this.child,
+  });
+
+  final IconData icon;
+  final String title;
+  final String message;
+  final String primaryLabel;
+  final VoidCallback onPrimary;
+  final Widget? child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Icon(icon, color: theme.colorScheme.primary),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          message,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: const Color(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              if (child case final Widget content) ...[
+                const SizedBox(height: 18),
+                content,
+              ],
+              const SizedBox(height: 22),
+              FilledButton(
+                onPressed: onPrimary,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 50),
+                  backgroundColor: theme.colorScheme.primary,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                child: Text(primaryLabel),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TopUpDialog extends StatefulWidget {
+  const _TopUpDialog();
+
+  @override
+  State<_TopUpDialog> createState() => _TopUpDialogState();
+}
+
+class _TopUpDialogState extends State<_TopUpDialog> {
+  final TextEditingController _amountController = TextEditingController();
+  int _selectedAmount = 100000;
+  String _selectedMethod = 'Virtual Account';
+  String? _errorText;
+
+  static const _quickAmounts = [50000, 100000, 250000, 500000];
+  static const _adminFee = 1000;
+
+  @override
+  void initState() {
+    super.initState();
+    _amountController.text = _selectedAmount.toString();
+  }
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final amount = _currentAmount();
+    final totalPayment = amount + (amount > 0 ? _adminFee : 0);
+
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      backgroundColor: Colors.transparent,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 430),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(28),
+          child: Material(
+            color: Colors.white,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.fromLTRB(22, 22, 22, 24),
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFFD9001B), Color(0xFF8B0011)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 50,
+                              height: 50,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.16),
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                              child: const Icon(
+                                Icons.account_balance_wallet_outlined,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Isi Saldo MepuPoin',
+                                    style: theme.textTheme.titleLarge?.copyWith(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Saldo masuk instan setelah pembayaran berhasil.',
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: Colors.white70,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 22),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.18),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Saldo yang akan masuk',
+                                style: theme.textTheme.labelLarge?.copyWith(
+                                  color: Colors.white70,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                formatRupiah(amount),
+                                style: theme.textTheme.displayLarge?.copyWith(
+                                  color: Colors.white,
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(22, 20, 22, 18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _TopUpSectionTitle(
+                          icon: Icons.payments_outlined,
+                          title: 'Pilih Nominal',
+                        ),
+                        const SizedBox(height: 12),
+                        GridView.builder(
+                          itemCount: _quickAmounts.length,
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                mainAxisSpacing: 10,
+                                crossAxisSpacing: 10,
+                                childAspectRatio: 2.7,
+                              ),
+                          itemBuilder: (context, index) {
+                            final quickAmount = _quickAmounts[index];
+                            return _TopUpAmountChip(
+                              amount: quickAmount,
+                              selected: _selectedAmount == quickAmount,
+                              onTap: () => _selectAmount(quickAmount),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: _amountController,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                          ],
+                          decoration: InputDecoration(
+                            labelText: 'Nominal Manual',
+                            prefixText: 'Rp ',
+                            helperText: 'Minimal top up Rp 10.000',
+                            errorText: _errorText,
+                          ),
+                          onChanged: (_) {
+                            if (_errorText != null) {
+                              setState(() => _errorText = null);
+                            }
+                            setState(() => _selectedAmount = _currentAmount());
+                          },
+                        ),
+                        const SizedBox(height: 20),
+                        _TopUpSectionTitle(
+                          icon: Icons.credit_card_rounded,
+                          title: 'Metode Pembayaran',
+                        ),
+                        const SizedBox(height: 12),
+                        _TopUpMethodTile(
+                          icon: Icons.account_balance_rounded,
+                          title: 'Virtual Account',
+                          subtitle: 'BCA, BRI, BNI, Mandiri',
+                          selected: _selectedMethod == 'Virtual Account',
+                          onTap: () => _selectMethod('Virtual Account'),
+                        ),
+                        const SizedBox(height: 10),
+                        _TopUpMethodTile(
+                          icon: Icons.qr_code_2_rounded,
+                          title: 'QRIS',
+                          subtitle: 'Bayar dari e-wallet atau mobile banking',
+                          selected: _selectedMethod == 'QRIS',
+                          onTap: () => _selectMethod('QRIS'),
+                        ),
+                        const SizedBox(height: 18),
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                          ),
+                          child: Column(
+                            children: [
+                              _TopUpSummaryRow(
+                                label: 'Saldo masuk',
+                                value: formatRupiah(amount),
+                              ),
+                              const SizedBox(height: 10),
+                              _TopUpSummaryRow(
+                                label: 'Biaya admin',
+                                value: amount > 0
+                                    ? formatRupiah(_adminFee)
+                                    : '-',
+                              ),
+                              const Divider(height: 24),
+                              _TopUpSummaryRow(
+                                label: 'Total bayar',
+                                value: formatRupiah(totalPayment),
+                                emphasized: true,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () => Navigator.of(context).pop(),
+                                style: OutlinedButton.styleFrom(
+                                  minimumSize: const Size.fromHeight(52),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                ),
+                                child: const Text('Batal'),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: FilledButton.icon(
+                                onPressed: _submit,
+                                style: FilledButton.styleFrom(
+                                  minimumSize: const Size.fromHeight(52),
+                                  backgroundColor: theme.colorScheme.primary,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                ),
+                                icon: const Icon(
+                                  Icons.lock_outline_rounded,
+                                  size: 18,
+                                ),
+                                label: const Text('Bayar'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _selectAmount(int amount) {
+    setState(() {
+      _selectedAmount = amount;
+      _amountController.text = amount.toString();
+      _errorText = null;
+    });
+  }
+
+  void _selectMethod(String method) {
+    setState(() => _selectedMethod = method);
+  }
+
+  int _currentAmount() {
+    final digits = _amountController.text.replaceAll(RegExp(r'[^0-9]'), '');
+    return int.tryParse(digits) ?? 0;
+  }
+
+  void _submit() {
+    final amount = _currentAmount();
+    if (amount < 10000) {
+      setState(() => _errorText = 'Minimal top up Rp 10.000');
+      return;
+    }
+    Navigator.of(context).pop(amount);
+  }
+}
+
+class _TopUpSectionTitle extends StatelessWidget {
+  const _TopUpSectionTitle({required this.icon, required this.title});
+
+  final IconData icon;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: theme.colorScheme.primary),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TopUpMethodTile extends StatelessWidget {
+  const _TopUpMethodTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: selected
+              ? theme.colorScheme.primary.withValues(alpha: 0.08)
+              : Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: selected
+                ? theme.colorScheme.primary.withValues(alpha: 0.38)
+                : const Color(0xFFE2E8F0),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: selected
+                    ? theme.colorScheme.primary.withValues(alpha: 0.12)
+                    : const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(icon, color: theme.colorScheme.primary),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              selected
+                  ? Icons.check_circle_rounded
+                  : Icons.radio_button_unchecked_rounded,
+              color: selected
+                  ? theme.colorScheme.primary
+                  : const Color(0xFFCBD5E1),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TopUpSummaryRow extends StatelessWidget {
+  const _TopUpSummaryRow({
+    required this.label,
+    required this.value,
+    this.emphasized = false,
+  });
+
+  final String label;
+  final String value;
+  final bool emphasized;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final style = emphasized
+        ? theme.textTheme.titleMedium?.copyWith(
+            color: theme.colorScheme.primary,
+            fontWeight: FontWeight.w900,
+          )
+        : theme.textTheme.bodyMedium?.copyWith(
+            color: const Color(0xFF475569),
+            fontWeight: FontWeight.w600,
+          );
+
+    return Row(
+      children: [
+        Expanded(child: Text(label, style: style)),
+        Text(value, style: style),
+      ],
+    );
+  }
+}
+
+class _TopUpAmountChip extends StatelessWidget {
+  const _TopUpAmountChip({
+    required this.amount,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final int amount;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(
+          color: selected
+              ? theme.colorScheme.primary
+              : theme.colorScheme.primary.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: selected
+                ? theme.colorScheme.primary
+                : theme.colorScheme.primary.withValues(alpha: 0.18),
+          ),
+        ),
+        child: Text(
+          formatRupiah(amount),
+          style: theme.textTheme.labelLarge?.copyWith(
+            color: selected ? Colors.white : theme.colorScheme.primary,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({
     super.key,
     required this.cartItemCount,
+    required this.mepuBalance,
+    required this.productStocks,
     required this.onOpenProduct,
     required this.onChangeTab,
     required this.onOpenCart,
     required this.onAddToCart,
+    required this.onTopUp,
   });
 
   final int cartItemCount;
+  final int mepuBalance;
+  final Map<String, int> productStocks;
   final ValueChanged<Product> onOpenProduct;
   final ValueChanged<int> onChangeTab;
   final VoidCallback onOpenCart;
   final ValueChanged<Product> onAddToCart;
+  final VoidCallback onTopUp;
 
   @override
   Widget build(BuildContext context) {
@@ -156,12 +1136,10 @@ class DashboardScreen extends StatelessWidget {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-              child: _MepuPoinBalanceCard(onTopUpTap: () {
-                _showFeatureSnack(
-                  context,
-                  'Isi Saldo MepuPoin siap dibuka.',
-                );
-              }),
+              child: _MepuPoinBalanceCard(
+                balance: mepuBalance,
+                onTopUpTap: onTopUp,
+              ),
             ),
           ),
           SliverToBoxAdapter(
@@ -172,10 +1150,8 @@ class DashboardScreen extends StatelessWidget {
                   context,
                   'Pencarian produk MepuPoin siap digunakan.',
                 ),
-                onFilterTap: () => _showFeatureSnack(
-                  context,
-                  'Filter produk siap digunakan.',
-                ),
+                onFilterTap: () =>
+                    _showFeatureSnack(context, 'Filter produk siap digunakan.'),
               ),
             ),
           ),
@@ -222,6 +1198,7 @@ class DashboardScreen extends StatelessWidget {
                 final product = products[(index + 2) % products.length];
                 return _MepuPoinRecommendationCard(
                   product: product,
+                  stock: productStocks[product.id] ?? 0,
                   onTap: () => onOpenProduct(product),
                   onAddToCart: () => onAddToCart(product),
                 );
@@ -247,6 +1224,7 @@ class DashboardScreen extends StatelessWidget {
                   final product = products[index];
                   return _MepuPoinMiniProductCard(
                     product: product,
+                    stock: productStocks[product.id] ?? 0,
                     ctaLabel: '+ Keranjang',
                     onTap: () => onAddToCart(product),
                   );
@@ -261,10 +1239,7 @@ class DashboardScreen extends StatelessWidget {
 }
 
 class _HomeRedHeader extends StatelessWidget {
-  const _HomeRedHeader({
-    required this.cartItemCount,
-    required this.onOpenCart,
-  });
+  const _HomeRedHeader({required this.cartItemCount, required this.onOpenCart});
 
   final int cartItemCount;
   final VoidCallback onOpenCart;
@@ -293,10 +1268,8 @@ class _HomeRedHeader extends StatelessWidget {
           const Spacer(),
           _MepuPoinHeaderButton(
             icon: Icons.notifications_none_rounded,
-            onTap: () => _showFeatureSnack(
-              context,
-              'Notifikasi MepuPoin siap dibuka.',
-            ),
+            onTap: () =>
+                _showFeatureSnack(context, 'Notifikasi MepuPoin siap dibuka.'),
           ),
           const SizedBox(width: 8),
           _MepuPoinHeaderButton(
@@ -376,8 +1349,9 @@ class _CartCountBadge extends StatelessWidget {
 }
 
 class _MepuPoinBalanceCard extends StatelessWidget {
-  const _MepuPoinBalanceCard({required this.onTopUpTap});
+  const _MepuPoinBalanceCard({required this.balance, required this.onTopUpTap});
 
+  final int balance;
   final VoidCallback onTopUpTap;
 
   @override
@@ -406,7 +1380,7 @@ class _MepuPoinBalanceCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Rp 150.000',
+                  formatRupiah(balance),
                   style: theme.textTheme.titleLarge?.copyWith(
                     color: const Color(0xFF111827),
                     fontWeight: FontWeight.w800,
@@ -548,7 +1522,9 @@ class _MepuPoinPillAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final foreground = active ? theme.colorScheme.primary : const Color(0xFF475569);
+    final foreground = active
+        ? theme.colorScheme.primary
+        : const Color(0xFF475569);
 
     return OutlinedButton.icon(
       onPressed: onTap,
@@ -576,7 +1552,8 @@ class _MepuPoinBannerCarousel extends StatefulWidget {
   final VoidCallback onTap;
 
   @override
-  State<_MepuPoinBannerCarousel> createState() => _MepuPoinBannerCarouselState();
+  State<_MepuPoinBannerCarousel> createState() =>
+      _MepuPoinBannerCarouselState();
 }
 
 class _MepuPoinBannerCarouselState extends State<_MepuPoinBannerCarousel> {
@@ -888,11 +1865,7 @@ class _MepuPoinShortcutItem extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
               border: Border.all(color: const Color(0xFFE2E8F0)),
             ),
-            child: Icon(
-              icon,
-              size: 19,
-              color: theme.colorScheme.primary,
-            ),
+            child: Icon(icon, size: 19, color: theme.colorScheme.primary),
           ),
           const SizedBox(height: 7),
           Text(
@@ -913,11 +1886,13 @@ class _MepuPoinShortcutItem extends StatelessWidget {
 class _MepuPoinMiniProductCard extends StatelessWidget {
   const _MepuPoinMiniProductCard({
     required this.product,
+    required this.stock,
     required this.ctaLabel,
     required this.onTap,
   });
 
   final Product product;
+  final int stock;
   final String ctaLabel;
   final VoidCallback onTap;
 
@@ -965,9 +1940,20 @@ class _MepuPoinMiniProductCard extends StatelessWidget {
                 fontWeight: FontWeight.w900,
               ),
             ),
+            const SizedBox(height: 2),
+            Text(
+              stock > 0 ? 'Stok $stock' : 'Stok habis',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: stock > 0
+                    ? const Color(0xFF15803D)
+                    : theme.colorScheme.error,
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
             const SizedBox(height: 6),
             OutlinedButton(
-              onPressed: onTap,
+              onPressed: stock > 0 ? onTap : null,
               style: OutlinedButton.styleFrom(
                 foregroundColor: theme.colorScheme.primary,
                 side: BorderSide(color: theme.colorScheme.primary),
@@ -993,11 +1979,13 @@ class _MepuPoinMiniProductCard extends StatelessWidget {
 class _MepuPoinRecommendationCard extends StatelessWidget {
   const _MepuPoinRecommendationCard({
     required this.product,
+    required this.stock,
     required this.onTap,
     required this.onAddToCart,
   });
 
   final Product product;
+  final int stock;
   final VoidCallback onTap;
   final VoidCallback onAddToCart;
 
@@ -1045,9 +2033,20 @@ class _MepuPoinRecommendationCard extends StatelessWidget {
               fontWeight: FontWeight.w900,
             ),
           ),
+          const SizedBox(height: 3),
+          Text(
+            stock > 0 ? 'Stok $stock' : 'Stok habis',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: stock > 0
+                  ? const Color(0xFF15803D)
+                  : theme.colorScheme.error,
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
           const SizedBox(height: 7),
           FilledButton(
-            onPressed: onAddToCart,
+            onPressed: stock > 0 ? onAddToCart : null,
             style: FilledButton.styleFrom(
               backgroundColor: theme.colorScheme.primary,
               foregroundColor: Colors.white,
@@ -1072,12 +2071,14 @@ class ShopScreen extends StatefulWidget {
   const ShopScreen({
     super.key,
     required this.cartItemCount,
+    required this.productStocks,
     required this.onOpenProduct,
     required this.onOpenCart,
     required this.onAddToCart,
   });
 
   final int cartItemCount;
+  final Map<String, int> productStocks;
   final ValueChanged<Product> onOpenProduct;
   final VoidCallback onOpenCart;
   final ValueChanged<Product> onAddToCart;
@@ -1158,7 +2159,8 @@ class _ShopScreenState extends State<ShopScreen> {
                             ? Icons.apps_rounded
                             : Icons.category_outlined,
                         selected: selectedCategory == category,
-                        onTap: () => setState(() => selectedCategory = category),
+                        onTap: () =>
+                            setState(() => selectedCategory = category),
                       );
                     },
                   ),
@@ -1191,9 +2193,10 @@ class _ShopScreenState extends State<ShopScreen> {
               final product = products[index];
               return ProductCard(
                 product: product,
+                stock: widget.productStocks[product.id] ?? 0,
                 variant: ProductCardVariant.catalog,
-                  onTap: () => widget.onOpenProduct(product),
-                  onAddToCart: () => widget.onAddToCart(product),
+                onTap: () => widget.onOpenProduct(product),
+                onAddToCart: () => widget.onAddToCart(product),
               );
             }, childCount: products.length),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -1209,46 +2212,91 @@ class _ShopScreenState extends State<ShopScreen> {
   }
 
   void _openSortSheet(BuildContext context) {
-    showModalBottomSheet<void>(
+    showDialog<void>(
       context: context,
-      showDragHandle: true,
-      builder: (context) {
+      builder: (dialogContext) {
         final options = [
           'Harga Terendah',
           'Harga Tertinggi',
           'Terbaru',
           'Terpopuler',
         ];
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Urutkan Produk',
-                  style: Theme.of(context).textTheme.headlineMedium,
+        return _ProfessionalPopup(
+          icon: Icons.sort_rounded,
+          title: 'Urutkan Produk',
+          message: 'Pilih urutan katalog yang ingin ditampilkan.',
+          primaryLabel: 'Tutup',
+          onPrimary: () => Navigator.of(dialogContext).pop(),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final option in options)
+                _PopupOptionTile(
+                  label: option,
+                  selected: sortOption == option,
+                  onTap: () {
+                    setState(() => sortOption = option);
+                    Navigator.of(dialogContext).pop();
+                  },
                 ),
-                const SizedBox(height: 12),
-                for (final option in options)
-                  ListTile(
-                    leading: Icon(
-                      sortOption == option
-                          ? Icons.radio_button_checked
-                          : Icons.radio_button_unchecked,
-                    ),
-                    title: Text(option),
-                    onTap: () {
-                      setState(() => sortOption = option);
-                      Navigator.of(context).pop();
-                    },
-                  ),
-              ],
-            ),
+            ],
           ),
         );
       },
+    );
+  }
+}
+
+class _PopupOptionTile extends StatelessWidget {
+  const _PopupOptionTile({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: selected
+              ? theme.colorScheme.primary.withValues(alpha: 0.08)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              selected
+                  ? Icons.radio_button_checked_rounded
+                  : Icons.radio_button_off_rounded,
+              color: selected
+                  ? theme.colorScheme.primary
+                  : const Color(0xFF94A3B8),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: selected
+                      ? theme.colorScheme.primary
+                      : const Color(0xFF111827),
+                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1328,9 +2376,18 @@ class HistoryScreen extends StatelessWidget {
 }
 
 class OrdersScreen extends StatefulWidget {
-  const OrdersScreen({super.key, required this.onOpenOrder});
+  const OrdersScreen({
+    super.key,
+    required this.orders,
+    required this.onOpenOrder,
+    required this.onPayOrder,
+    required this.onCancelOrder,
+  });
 
+  final List<OrderItem> orders;
   final ValueChanged<OrderItem> onOpenOrder;
+  final ValueChanged<OrderItem> onPayOrder;
+  final ValueChanged<OrderItem> onCancelOrder;
 
   @override
   State<OrdersScreen> createState() => _OrdersScreenState();
@@ -1341,6 +2398,13 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final pendingOrders = widget.orders
+        .where((order) => order.status == 'Payment Pending')
+        .toList();
+    final activeOrders = widget.orders
+        .where((order) => order.status != 'Payment Pending')
+        .toList();
+
     return CustomScrollView(
       slivers: [
         const SliverAppBar(pinned: true, title: Text('Transaksi')),
@@ -1355,48 +2419,105 @@ class _OrdersScreenState extends State<OrdersScreen> {
           ),
         ),
         if (selectedTab == 0) ...[
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-              child: _PendingPaymentCard(
-                order: orders.first,
-                onPay: () => _showFeatureSnack(
-                  context,
-                  'Halaman pembayaran siap dibuka.',
-                ),
-                onCancel: () => _showFeatureSnack(
-                  context,
-                  'Konfirmasi pembatalan pesanan siap ditampilkan.',
-                ),
+          if (pendingOrders.isEmpty)
+            const SliverToBoxAdapter(
+              child: _EmptyState(
+                icon: Icons.payments_outlined,
+                title: 'Tidak ada pembayaran pending',
+                subtitle:
+                    'Checkout produk dari keranjang untuk membuat transaksi baru.',
               ),
+            )
+          else
+            SliverList.builder(
+              itemCount: pendingOrders.length,
+              itemBuilder: (context, index) {
+                final order = pendingOrders[index];
+                return Padding(
+                  padding: EdgeInsets.fromLTRB(20, index == 0 ? 0 : 8, 20, 12),
+                  child: _PendingPaymentCard(
+                    order: order,
+                    onPay: () => widget.onPayOrder(order),
+                    onCancel: () => widget.onCancelOrder(order),
+                  ),
+                );
+              },
             ),
-          ),
         ] else ...[
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-              child: _ActiveOrderProgressCard(
-                order: orders.first,
-                onTrack: () => widget.onOpenOrder(orders.first),
+          if (activeOrders.isEmpty)
+            const SliverToBoxAdapter(
+              child: _EmptyState(
+                icon: Icons.receipt_long_outlined,
+                title: 'Belum ada pesanan aktif',
+                subtitle: 'Pesanan yang sudah dibayar akan muncul di sini.',
+              ),
+            )
+          else ...[
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                child: _ActiveOrderProgressCard(
+                  order: activeOrders.first,
+                  onTrack: () => widget.onOpenOrder(activeOrders.first),
+                ),
               ),
             ),
-          ),
-          SliverList.builder(
-            itemCount: orders.length,
-            itemBuilder: (context, index) {
-              final order = orders[index];
-              return Padding(
-                padding: EdgeInsets.fromLTRB(20, index == 0 ? 8 : 8, 20, 8),
-                child: OrderCard(
-                  order: order,
-                  onTap: () => widget.onOpenOrder(order),
-                ),
-              );
-            },
-          ),
+            SliverList.builder(
+              itemCount: activeOrders.length,
+              itemBuilder: (context, index) {
+                final order = activeOrders[index];
+                return Padding(
+                  padding: EdgeInsets.fromLTRB(20, index == 0 ? 8 : 8, 20, 8),
+                  child: OrderCard(
+                    order: order,
+                    onTap: () => widget.onOpenOrder(order),
+                  ),
+                );
+              },
+            ),
+          ],
         ],
         const SliverToBoxAdapter(child: SizedBox(height: 24)),
       ],
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(28, 48, 28, 24),
+      child: Column(
+        children: [
+          Icon(icon, size: 72, color: theme.colorScheme.primary),
+          const SizedBox(height: 18),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.headlineMedium,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyLarge?.copyWith(
+              color: const Color(0xFF64748B),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1639,8 +2760,19 @@ class _ProgressStep extends StatelessWidget {
 }
 
 class ProfileScreen extends StatelessWidget {
-  const ProfileScreen({super.key, required this.onOpenSetting});
+  const ProfileScreen({
+    super.key,
+    required this.profile,
+    required this.mepuBalance,
+    required this.onTopUp,
+    required this.onEditProfile,
+    required this.onOpenSetting,
+  });
 
+  final UserProfile profile;
+  final int mepuBalance;
+  final VoidCallback onTopUp;
+  final VoidCallback onEditProfile;
   final ValueChanged<SettingShortcut> onOpenSetting;
 
   @override
@@ -1652,10 +2784,8 @@ class ProfileScreen extends StatelessWidget {
         SliverAppBar(
           pinned: true,
           leading: IconButton(
-            onPressed: () => _showFeatureSnack(
-              context,
-              'Kamu sudah berada di tab Akun.',
-            ),
+            onPressed: () =>
+                _showFeatureSnack(context, 'Kamu sudah berada di tab Akun.'),
             icon: const Icon(Icons.arrow_back_rounded),
           ),
           title: const Text('Akun'),
@@ -1696,7 +2826,7 @@ class ProfileScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 18),
                         Text(
-                          'Budi Speed',
+                          profile.name,
                           style: theme.textTheme.headlineLarge,
                         ),
                         const SizedBox(height: 8),
@@ -1710,7 +2840,7 @@ class ProfileScreen extends StatelessWidget {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              '+62 812-3456-7890',
+                              profile.phone,
                               style: theme.textTheme.titleMedium?.copyWith(
                                 color: const Color(0xFF6D5A58),
                               ),
@@ -1728,7 +2858,7 @@ class ProfileScreen extends StatelessWidget {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              'budi.santoso@email.com',
+                              profile.email,
                               style: theme.textTheme.titleMedium?.copyWith(
                                 color: const Color(0xFF6D5A58),
                               ),
@@ -1737,7 +2867,7 @@ class ProfileScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 24),
                         OutlinedButton(
-                          onPressed: () => onOpenSetting(profileSettings.first),
+                          onPressed: onEditProfile,
                           style: OutlinedButton.styleFrom(
                             side: BorderSide(
                               color: theme.colorScheme.primary,
@@ -1784,7 +2914,7 @@ class ProfileScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        '1.250.000 Rp',
+                        formatRupiah(mepuBalance),
                         style: theme.textTheme.displayLarge?.copyWith(
                           color: Colors.white,
                           fontSize: 36,
@@ -1795,12 +2925,9 @@ class ProfileScreen extends StatelessWidget {
                         children: [
                           Expanded(
                             child: ProfileActionChip(
-                              label: 'History',
-                              icon: Icons.history,
-                              onTap: () => _showFeatureSnack(
-                                context,
-                                'Riwayat saldo MepuPoin siap dibuka.',
-                              ),
+                              label: 'Top Up',
+                              icon: Icons.add_card_outlined,
+                              onTap: onTopUp,
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -1808,10 +2935,7 @@ class ProfileScreen extends StatelessWidget {
                             child: ProfileActionChip(
                               label: 'Vouchers',
                               icon: Icons.confirmation_number_outlined,
-                              onTap: () => _showFeatureSnack(
-                                context,
-                                'Voucher MepuPoin siap dibuka.',
-                              ),
+                              onTap: () => _showVoucherList(context),
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -1944,14 +3068,22 @@ class ProductDetailScreen extends StatefulWidget {
     super.key,
     required this.product,
     required this.cartItemCount,
+    required this.stock,
+    required this.productStocks,
     required this.onOpenCart,
     required this.onAddToCart,
+    required this.onAddItemsToCart,
+    required this.onBuyNow,
   });
 
   final Product product;
   final int cartItemCount;
+  final int stock;
+  final Map<String, int> productStocks;
   final VoidCallback onOpenCart;
   final ValueChanged<Product> onAddToCart;
+  final ValueChanged<List<Product>> onAddItemsToCart;
+  final ValueChanged<List<Product>> onBuyNow;
 
   @override
   State<ProductDetailScreen> createState() => _ProductDetailScreenState();
@@ -1963,6 +3095,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final product = widget.product;
+    final stock = widget.stock;
     final related = products
         .where((item) => product.relatedIds.contains(item.id))
         .toList();
@@ -2127,11 +3260,23 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                               ],
                             ),
                           ),
+                          const SizedBox(height: 14),
+                          StatusPill(
+                            label: stock > 0
+                                ? 'Stok tersedia: $stock'
+                                : 'Stok habis',
+                            foreground: stock > 0
+                                ? const Color(0xFF116C46)
+                                : theme.colorScheme.error,
+                            background: stock > 0
+                                ? const Color(0xFFDFF5E8)
+                                : const Color(0xFFFFE4E6),
+                          ),
                           const SizedBox(height: 26),
                           const Divider(color: Color(0xFFE9C7C3)),
                           const SizedBox(height: 22),
                           Text(
-                            'Description',
+                            'Deskripsi Produk',
                             style: theme.textTheme.headlineMedium,
                           ),
                           const SizedBox(height: 14),
@@ -2176,6 +3321,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                 width: 220,
                                 child: ProductCard(
                                   product: related[index],
+                                  stock:
+                                      widget.productStocks[related[index].id] ??
+                                      0,
                                   variant: ProductCardVariant.compact,
                                   onTap: () {
                                     Navigator.of(context).pushReplacement(
@@ -2183,8 +3331,17 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                         builder: (_) => ProductDetailScreen(
                                           cartItemCount: widget.cartItemCount,
                                           product: related[index],
+                                          stock:
+                                              widget
+                                                  .productStocks[related[index]
+                                                  .id] ??
+                                              0,
+                                          productStocks: widget.productStocks,
                                           onOpenCart: widget.onOpenCart,
                                           onAddToCart: widget.onAddToCart,
+                                          onAddItemsToCart:
+                                              widget.onAddItemsToCart,
+                                          onBuyNow: widget.onBuyNow,
                                         ),
                                       ),
                                     );
@@ -2230,7 +3387,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         ),
                         Expanded(
                           child: IconButton(
-                            onPressed: () => setState(() => quantity++),
+                            onPressed: quantity < stock
+                                ? () => setState(() => quantity++)
+                                : null,
                             icon: const Icon(Icons.add_rounded),
                           ),
                         ),
@@ -2242,7 +3401,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     children: [
                       Expanded(
                         child: OutlinedButton(
-                          onPressed: () => widget.onAddToCart(product),
+                          onPressed: stock > 0
+                              ? () => widget.onAddItemsToCart(
+                                  List<Product>.filled(quantity, product),
+                                )
+                              : null,
                           style: OutlinedButton.styleFrom(
                             minimumSize: const Size.fromHeight(62),
                             side: BorderSide(
@@ -2259,10 +3422,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       const SizedBox(width: 14),
                       Expanded(
                         child: FilledButton.icon(
-                          onPressed: () => _showFeatureSnack(
-                            context,
-                            'Checkout ${product.name} siap diproses di tab Transaksi.',
-                          ),
+                          onPressed: stock > 0
+                              ? () => widget.onBuyNow(
+                                  List<Product>.filled(quantity, product),
+                                )
+                              : null,
                           style: FilledButton.styleFrom(
                             minimumSize: const Size.fromHeight(62),
                             backgroundColor: theme.colorScheme.primary,
@@ -2281,6 +3445,669 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class CheckoutScreen extends StatefulWidget {
+  const CheckoutScreen({
+    super.key,
+    required this.items,
+    required this.mepuBalance,
+    required this.productStocks,
+    required this.onPlaceOrder,
+  });
+
+  final List<Product> items;
+  final int mepuBalance;
+  final Map<String, int> productStocks;
+  final OrderItem Function(
+    List<Product> items,
+    String paymentMethod,
+    String deliveryMethod,
+    String address,
+    int finalTotal,
+    String? voucherLabel,
+  )
+  onPlaceOrder;
+
+  @override
+  State<CheckoutScreen> createState() => _CheckoutScreenState();
+}
+
+class _CheckoutScreenState extends State<CheckoutScreen> {
+  String deliveryMethod = 'Kirim ke Rumah';
+  String paymentMethod = 'Saldo MepuPoin';
+  CheckoutVoucher? selectedVoucher;
+  final address = 'Jl. Merdeka No. 42, Sukamaju Village';
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final groupedItems = _groupCheckoutItems(widget.items);
+    final subtotal = widget.items.fold<int>(
+      0,
+      (sum, product) => sum + product.price,
+    );
+    final deliveryFee = deliveryMethod == 'Kirim ke Rumah' ? 8000 : 0;
+    final serviceFee = 1500;
+    final voucherDiscount = _voucherDiscount(
+      selectedVoucher,
+      subtotal,
+      deliveryFee,
+      serviceFee,
+    );
+    final total = (subtotal + deliveryFee + serviceFee - voucherDiscount).clamp(
+      0,
+      subtotal + deliveryFee + serviceFee,
+    ).toInt();
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Checkout')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 140),
+        children: [
+          _CheckoutSection(
+            title: 'Produk Dibeli',
+            child: Column(
+              children: [
+                for (final item in groupedItems)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 58,
+                          height: 58,
+                          child: ProductMedia(
+                            product: item.product,
+                            borderRadius: BorderRadius.circular(12),
+                            fit: BoxFit.cover,
+                            padding: const EdgeInsets.all(6),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                item.product.name,
+                                style: theme.textTheme.titleMedium,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${formatRupiah(item.product.price)} x ${item.quantity}',
+                                style: theme.textTheme.bodyMedium,
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                'Stok tersedia: ${widget.productStocks[item.product.id] ?? 0}',
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  color: const Color(0xFF15803D),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Text(
+                          formatRupiah(item.product.price * item.quantity),
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          _CheckoutSection(
+            title: 'Pengiriman',
+            child: Column(
+              children: [
+                _CheckoutOption(
+                  title: const Text('Kirim ke Rumah'),
+                  subtitle: Text(address),
+                  selected: deliveryMethod == 'Kirim ke Rumah',
+                  onTap: () =>
+                      setState(() => deliveryMethod = 'Kirim ke Rumah'),
+                ),
+                _CheckoutOption(
+                  title: const Text('Ambil di Koperasi'),
+                  subtitle: const Text('MepuPoin Sukamaju - Pickup Counter'),
+                  selected: deliveryMethod == 'Ambil di Koperasi',
+                  onTap: () =>
+                      setState(() => deliveryMethod = 'Ambil di Koperasi'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          _CheckoutSection(
+            title: 'Voucher',
+            child: Column(
+              children: [
+                _VoucherSelector(
+                  selectedVoucher: selectedVoucher,
+                  subtotal: subtotal,
+                  deliveryFee: deliveryFee,
+                  serviceFee: serviceFee,
+                  onSelect: (voucher) => setState(() {
+                    selectedVoucher = voucher;
+                  }),
+                ),
+                if (selectedVoucher != null) ...[
+                  const SizedBox(height: 12),
+                  _AppliedVoucherCard(
+                    voucher: selectedVoucher!,
+                    discount: voucherDiscount,
+                    onRemove: () => setState(() => selectedVoucher = null),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          _CheckoutSection(
+            title: 'Metode Pembayaran',
+            child: Column(
+              children: [
+                _CheckoutOption(
+                  title: const Text('Saldo MepuPoin'),
+                  subtitle: Text(
+                    'Saldo tersedia ${formatRupiah(widget.mepuBalance)}',
+                  ),
+                  selected: paymentMethod == 'Saldo MepuPoin',
+                  onTap: () => setState(() => paymentMethod = 'Saldo MepuPoin'),
+                ),
+                _CheckoutOption(
+                  title: const Text('Transfer Bank'),
+                  subtitle: const Text('Virtual account koperasi'),
+                  selected: paymentMethod == 'Transfer Bank',
+                  onTap: () => setState(() => paymentMethod = 'Transfer Bank'),
+                ),
+                _CheckoutOption(
+                  title: const Text('Bayar di Koperasi'),
+                  subtitle: const Text('Bayar saat mengambil pesanan'),
+                  selected: paymentMethod == 'Bayar di Koperasi',
+                  onTap: () =>
+                      setState(() => paymentMethod = 'Bayar di Koperasi'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          _CheckoutSection(
+            title: 'Ringkasan Pembayaran',
+            child: Column(
+              children: [
+                _PriceRow(label: 'Subtotal', value: subtotal),
+                _PriceRow(label: 'Ongkir', value: deliveryFee),
+                _PriceRow(label: 'Biaya layanan', value: serviceFee),
+                if (voucherDiscount > 0)
+                  _PriceRow(
+                    label: 'Voucher',
+                    value: -voucherDiscount,
+                    isDiscount: true,
+                  ),
+                const Divider(height: 24),
+                _PriceRow(label: 'Total Bayar', value: total, emphasized: true),
+              ],
+            ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Total Bayar', style: theme.textTheme.labelMedium),
+                    const SizedBox(height: 4),
+                    Text(
+                      formatRupiah(total),
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              FilledButton.icon(
+                onPressed: () => _placeOrder(context),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(160, 52),
+                  backgroundColor: theme.colorScheme.primary,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                icon: const Icon(Icons.check_circle_outline_rounded),
+                label: const Text('Buat Pesanan'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _placeOrder(BuildContext context) {
+    final groupedItems = _groupCheckoutItems(widget.items);
+    for (final item in groupedItems) {
+      final stock = widget.productStocks[item.product.id] ?? 0;
+      if (item.quantity > stock) {
+        _showFeatureSnack(
+          context,
+          'Stok ${item.product.name} tersisa $stock. Kurangi jumlah pembelian sebelum checkout.',
+          title: 'Stok Tidak Cukup',
+          icon: Icons.inventory_2_outlined,
+        );
+        return;
+      }
+    }
+
+    final subtotal = widget.items.fold<int>(
+      0,
+      (sum, product) => sum + product.price,
+    );
+    final deliveryFee = deliveryMethod == 'Kirim ke Rumah' ? 8000 : 0;
+    const serviceFee = 1500;
+    final voucherDiscount = _voucherDiscount(
+      selectedVoucher,
+      subtotal,
+      deliveryFee,
+      serviceFee,
+    );
+    final total = (subtotal + deliveryFee + serviceFee - voucherDiscount).clamp(
+      0,
+      subtotal + deliveryFee + serviceFee,
+    ).toInt();
+    if (paymentMethod == 'Saldo MepuPoin' && widget.mepuBalance < total) {
+      _showFeatureSnack(
+        context,
+        'Saldo kamu kurang ${formatRupiah(total - widget.mepuBalance)}. Isi saldo dulu atau pilih metode pembayaran lain.',
+        title: 'Saldo Tidak Cukup',
+        icon: Icons.account_balance_wallet_outlined,
+      );
+      return;
+    }
+
+    final order = widget.onPlaceOrder(
+      widget.items,
+      paymentMethod,
+      deliveryMethod,
+      address,
+      total,
+      selectedVoucher?.code,
+    );
+    _showFeatureSnack(
+      context,
+      '${order.id} menunggu pembayaran. Lanjutkan dari tab Transaksi.',
+      title: 'Pesanan Berhasil Dibuat',
+      icon: Icons.check_circle_outline_rounded,
+      actionLabel: 'Lihat Transaksi',
+      onAction: () => Navigator.of(context).popUntil((route) => route.isFirst),
+    );
+  }
+
+  List<_CheckoutLineItem> _groupCheckoutItems(List<Product> items) {
+    final lines = <String, _CheckoutLineItem>{};
+    for (final product in items) {
+      final existing = lines[product.id];
+      lines[product.id] = existing == null
+          ? _CheckoutLineItem(product: product, quantity: 1)
+          : _CheckoutLineItem(
+              product: product,
+              quantity: existing.quantity + 1,
+            );
+    }
+    return lines.values.toList();
+  }
+}
+
+class _CheckoutLineItem {
+  const _CheckoutLineItem({required this.product, required this.quantity});
+
+  final Product product;
+  final int quantity;
+}
+
+int _voucherDiscount(
+  CheckoutVoucher? voucher,
+  int subtotal,
+  int deliveryFee,
+  int serviceFee,
+) {
+  if (voucher == null || subtotal < voucher.minimumSpend) return 0;
+  return voucher
+      .calculateDiscount(subtotal, deliveryFee, serviceFee)
+      .clamp(0, subtotal + deliveryFee + serviceFee)
+      .toInt();
+}
+
+class _VoucherSelector extends StatelessWidget {
+  const _VoucherSelector({
+    required this.selectedVoucher,
+    required this.subtotal,
+    required this.deliveryFee,
+    required this.serviceFee,
+    required this.onSelect,
+  });
+
+  final CheckoutVoucher? selectedVoucher;
+  final int subtotal;
+  final int deliveryFee;
+  final int serviceFee;
+  final ValueChanged<CheckoutVoucher> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      children: [
+        for (final voucher in _checkoutVouchers)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Builder(
+              builder: (context) {
+                final eligible = subtotal >= voucher.minimumSpend;
+                final selected = selectedVoucher?.code == voucher.code;
+                final discount = _voucherDiscount(
+                  voucher,
+                  subtotal,
+                  deliveryFee,
+                  serviceFee,
+                );
+
+                return InkWell(
+                  onTap: eligible ? () => onSelect(voucher) : null,
+                  borderRadius: BorderRadius.circular(18),
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? theme.colorScheme.primary.withValues(alpha: 0.08)
+                          : const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: selected
+                            ? theme.colorScheme.primary.withValues(alpha: 0.36)
+                            : const Color(0xFFE2E8F0),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 46,
+                          height: 46,
+                          decoration: BoxDecoration(
+                            color: eligible
+                                ? theme.colorScheme.primary.withValues(alpha: 0.10)
+                                : const Color(0xFFE2E8F0),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Icon(
+                            voucher.icon,
+                            color: eligible
+                                ? theme.colorScheme.primary
+                                : const Color(0xFF94A3B8),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      voucher.title,
+                                      style: theme.textTheme.titleMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w900,
+                                            color: eligible
+                                                ? const Color(0xFF111827)
+                                                : const Color(0xFF94A3B8),
+                                          ),
+                                    ),
+                                  ),
+                                  Text(
+                                    voucher.code,
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      color: theme.colorScheme.primary,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                voucher.description,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: eligible
+                                      ? const Color(0xFF64748B)
+                                      : const Color(0xFF94A3B8),
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                eligible
+                                    ? 'Hemat ${formatRupiah(discount)}'
+                                    : 'Min. belanja ${formatRupiah(voucher.minimumSpend)}',
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  color: eligible
+                                      ? const Color(0xFF15803D)
+                                      : const Color(0xFFB45309),
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Icon(
+                          selected
+                              ? Icons.check_circle_rounded
+                              : eligible
+                              ? Icons.radio_button_unchecked_rounded
+                              : Icons.lock_outline_rounded,
+                          color: selected
+                              ? theme.colorScheme.primary
+                              : const Color(0xFFCBD5E1),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _AppliedVoucherCard extends StatelessWidget {
+  const _AppliedVoucherCard({
+    required this.voucher,
+    required this.discount,
+    required this.onRemove,
+  });
+
+  final CheckoutVoucher voucher;
+  final int discount;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEFFDF5),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFBBF7D0)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.confirmation_number_outlined, color: Color(0xFF15803D)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '${voucher.code} dipakai, hemat ${formatRupiah(discount)}',
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: const Color(0xFF166534),
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          TextButton(onPressed: onRemove, child: const Text('Hapus')),
+        ],
+      ),
+    );
+  }
+}
+
+class _CheckoutSection extends StatelessWidget {
+  const _CheckoutSection({required this.title, required this.child});
+
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: Theme.of(context).textTheme.headlineMedium),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _CheckoutOption extends StatelessWidget {
+  const _CheckoutOption({
+    required this.title,
+    required this.subtitle,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final Widget title;
+  final Widget subtitle;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: [
+            Icon(
+              selected
+                  ? Icons.radio_button_checked_rounded
+                  : Icons.radio_button_off_rounded,
+              color: selected
+                  ? theme.colorScheme.primary
+                  : const Color(0xFF94A3B8),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  DefaultTextStyle(
+                    style: theme.textTheme.titleMedium ?? const TextStyle(),
+                    child: title,
+                  ),
+                  const SizedBox(height: 3),
+                  DefaultTextStyle(
+                    style:
+                        theme.textTheme.bodyMedium?.copyWith(
+                          color: const Color(0xFF64748B),
+                        ) ??
+                        const TextStyle(),
+                    child: subtitle,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PriceRow extends StatelessWidget {
+  const _PriceRow({
+    required this.label,
+    required this.value,
+    this.emphasized = false,
+    this.isDiscount = false,
+  });
+
+  final String label;
+  final int value;
+  final bool emphasized;
+  final bool isDiscount;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final style = emphasized
+        ? theme.textTheme.titleLarge?.copyWith(
+            color: theme.colorScheme.primary,
+            fontWeight: FontWeight.w900,
+          )
+        : theme.textTheme.bodyLarge?.copyWith(
+            color: isDiscount ? const Color(0xFF15803D) : null,
+            fontWeight: isDiscount ? FontWeight.w800 : null,
+          );
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Expanded(child: Text(label, style: style)),
+          Text(
+            isDiscount ? '-${formatRupiah(value.abs())}' : formatRupiah(value),
+            style: style,
+          ),
+        ],
       ),
     );
   }
@@ -2487,6 +4314,205 @@ class SettingDetailScreen extends StatelessWidget {
   }
 }
 
+class EditProfileScreen extends StatefulWidget {
+  const EditProfileScreen({super.key, required this.profile});
+
+  final UserProfile profile;
+
+  @override
+  State<EditProfileScreen> createState() => _EditProfileScreenState();
+}
+
+class _EditProfileScreenState extends State<EditProfileScreen> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _nameController;
+  late final TextEditingController _phoneController;
+  late final TextEditingController _emailController;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.profile.name);
+    _phoneController = TextEditingController(text: widget.profile.phone);
+    _emailController = TextEditingController(text: widget.profile.email);
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Edit Profile')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(26),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Column(
+              children: [
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    const ProfileAvatar(radius: 56, bordered: false),
+                    Positioned(
+                      right: -4,
+                      bottom: 2,
+                      child: Material(
+                        color: theme.colorScheme.primary,
+                        shape: const CircleBorder(),
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          onTap: () => _showFeatureSnack(
+                            context,
+                            'Fitur ubah foto profil siap dikembangkan.',
+                            title: 'Foto Profil',
+                            icon: Icons.photo_camera_outlined,
+                          ),
+                          child: const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: Icon(
+                              Icons.photo_camera_outlined,
+                              color: Colors.white,
+                              size: 18,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  'Perbarui Data Akun',
+                  style: theme.textTheme.headlineMedium,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Informasi ini digunakan untuk pesanan, notifikasi, dan verifikasi akun.',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          Form(
+            key: _formKey,
+            child: Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                children: [
+                  TextFormField(
+                    controller: _nameController,
+                    textInputAction: TextInputAction.next,
+                    decoration: const InputDecoration(
+                      labelText: 'Nama Lengkap',
+                      prefixIcon: Icon(Icons.person_outline_rounded),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.trim().length < 3) {
+                        return 'Nama minimal 3 karakter';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 14),
+                  TextFormField(
+                    controller: _phoneController,
+                    keyboardType: TextInputType.phone,
+                    textInputAction: TextInputAction.next,
+                    decoration: const InputDecoration(
+                      labelText: 'Nomor Telepon',
+                      prefixIcon: Icon(Icons.phone_outlined),
+                    ),
+                    validator: (value) {
+                      final phone = value?.trim() ?? '';
+                      if (phone.length < 10) {
+                        return 'Nomor telepon belum valid';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 14),
+                  TextFormField(
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(
+                      labelText: 'Email',
+                      prefixIcon: Icon(Icons.mail_outline_rounded),
+                    ),
+                    validator: (value) {
+                      final email = value?.trim() ?? '';
+                      if (!email.contains('@') || !email.contains('.')) {
+                        return 'Email belum valid';
+                      }
+                      return null;
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+          ),
+          child: FilledButton.icon(
+            onPressed: _saveProfile,
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(56),
+              backgroundColor: theme.colorScheme.primary,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+            icon: const Icon(Icons.save_outlined),
+            label: const Text('Simpan Perubahan'),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _saveProfile() {
+    if (!_formKey.currentState!.validate()) return;
+
+    Navigator.of(context).pop(
+      UserProfile(
+        name: _nameController.text.trim(),
+        phone: _phoneController.text.trim(),
+        email: _emailController.text.trim(),
+      ),
+    );
+  }
+}
+
 class CartScreen extends StatefulWidget {
   const CartScreen({
     super.key,
@@ -2499,7 +4525,7 @@ class CartScreen extends StatefulWidget {
   final List<Product> items;
   final ValueChanged<int> onRemoveItem;
   final VoidCallback onClearCart;
-  final VoidCallback onCheckout;
+  final ValueChanged<List<Product>> onCheckout;
 
   @override
   State<CartScreen> createState() => _CartScreenState();
@@ -2564,7 +4590,8 @@ class _CartScreenState extends State<CartScreen> {
               children: [
                 CheckboxListTile(
                   value: selectAll,
-                  onChanged: (value) => setState(() => selectAll = value ?? false),
+                  onChanged: (value) =>
+                      setState(() => selectAll = value ?? false),
                   title: const Text('Pilih Semua'),
                   controlAffinity: ListTileControlAffinity.leading,
                   contentPadding: EdgeInsets.zero,
@@ -2595,77 +4622,88 @@ class _CartScreenState extends State<CartScreen> {
                             widget.onRemoveItem(index);
                             setState(() => cartProducts.removeAt(index));
                           },
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
-                      ),
-                      child: Row(
-                        children: [
-                          Checkbox(
-                            value: selectAll,
-                            onChanged: (value) =>
-                                setState(() => selectAll = value ?? false),
-                          ),
-                          SizedBox(
-                            width: 72,
-                            height: 72,
-                            child: ProductMedia(
-                              product: product,
-                              borderRadius: BorderRadius.circular(12),
-                              fit: BoxFit.cover,
-                              padding: const EdgeInsets.all(6),
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(
+                                color: const Color(0xFFE2E8F0),
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            child: Row(
                               children: [
-                                Text(
-                                  product.name,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.titleMedium,
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  formatRupiah(product.price),
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    color: theme.colorScheme.primary,
-                                    fontWeight: FontWeight.w800,
+                                Checkbox(
+                                  value: selectAll,
+                                  onChanged: (value) => setState(
+                                    () => selectAll = value ?? false,
                                   ),
                                 ),
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    _QuantityMiniButton(icon: Icons.remove),
-                                    const Padding(
-                                      padding: EdgeInsets.symmetric(horizontal: 10),
-                                      child: Text('1'),
-                                    ),
-                                    _QuantityMiniButton(icon: Icons.add),
-                                  ],
+                                SizedBox(
+                                  width: 72,
+                                  height: 72,
+                                  child: ProductMedia(
+                                    product: product,
+                                    borderRadius: BorderRadius.circular(12),
+                                    fit: BoxFit.cover,
+                                    padding: const EdgeInsets.all(6),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        product.name,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.textTheme.titleMedium,
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        formatRupiah(product.price),
+                                        style: theme.textTheme.titleMedium
+                                            ?.copyWith(
+                                              color: theme.colorScheme.primary,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        children: [
+                                          _QuantityMiniButton(
+                                            icon: Icons.remove,
+                                          ),
+                                          const Padding(
+                                            padding: EdgeInsets.symmetric(
+                                              horizontal: 10,
+                                            ),
+                                            child: Text('1'),
+                                          ),
+                                          _QuantityMiniButton(icon: Icons.add),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                IconButton(
+                                  onPressed: () {
+                                    widget.onRemoveItem(index);
+                                    setState(
+                                      () => cartProducts.removeAt(index),
+                                    );
+                                    _showFeatureSnack(
+                                      context,
+                                      '${product.name} dihapus dari keranjang.',
+                                    );
+                                  },
+                                  icon: const Icon(Icons.delete_outline),
                                 ),
                               ],
                             ),
                           ),
-                          IconButton(
-                            onPressed: () {
-                              widget.onRemoveItem(index);
-                              setState(() => cartProducts.removeAt(index));
-                              _showFeatureSnack(
-                                context,
-                                '${product.name} dihapus dari keranjang.',
-                              );
-                            },
-                            icon: const Icon(Icons.delete_outline),
-                          ),
-                        ],
-                      ),
-                    ),
                         );
                       },
                     ),
@@ -2700,7 +4738,9 @@ class _CartScreenState extends State<CartScreen> {
                 ),
               ),
               FilledButton(
-                onPressed: totalPrice == 0 ? null : widget.onCheckout,
+                onPressed: totalPrice == 0
+                    ? null
+                    : () => widget.onCheckout(List<Product>.of(cartProducts)),
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(138, 52),
                   backgroundColor: theme.colorScheme.primary,
@@ -3049,11 +5089,13 @@ class ProductCard extends StatelessWidget {
     super.key,
     required this.product,
     required this.onTap,
+    this.stock,
     this.onAddToCart,
     this.variant = ProductCardVariant.flashSale,
   });
 
   final Product product;
+  final int? stock;
   final VoidCallback onTap;
   final VoidCallback? onAddToCart;
   final ProductCardVariant variant;
@@ -3063,6 +5105,7 @@ class ProductCard extends StatelessWidget {
     final theme = Theme.of(context);
     final isCatalog = variant == ProductCardVariant.catalog;
     final isCompact = variant == ProductCardVariant.compact;
+    final currentStock = stock;
 
     return InkWell(
       onTap: onTap,
@@ -3150,21 +5193,29 @@ class ProductCard extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      'Stock: ${100 - product.claimedPercent} remaining',
+                      currentStock == null
+                          ? 'Stock: ${100 - product.claimedPercent} remaining'
+                          : currentStock > 0
+                          ? 'Stok tersedia: $currentStock'
+                          : 'Stok habis',
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: const Color(0xFF1A7F42),
+                        color: currentStock == 0
+                            ? theme.colorScheme.error
+                            : const Color(0xFF1A7F42),
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
                   InkWell(
-                    onTap: onAddToCart,
+                    onTap: currentStock == 0 ? null : onAddToCart,
                     borderRadius: BorderRadius.circular(999),
                     child: Container(
                       width: 42,
                       height: 42,
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.primary,
+                        color: currentStock == 0
+                            ? const Color(0xFFCBD5E1)
+                            : theme.colorScheme.primary,
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(Icons.add_rounded, color: Colors.white),
@@ -3528,7 +5579,6 @@ class _HeaderActionButton extends StatelessWidget {
       ],
     );
   }
-
 }
 
 class _FilterChip extends StatelessWidget {
@@ -4228,4 +6278,3 @@ IconData _featureIcon(int index) {
   ];
   return icons[index % icons.length];
 }
-

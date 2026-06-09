@@ -39,7 +39,7 @@ const products = <Product>[
     rewardPoints: 75,
     badge: 'Cooperatively Sourced',
     description:
-        'Beras premium dari koperasi desa dengan kualitas stabil, aroma wangi, dan cocok untuk kebutuhan keluarga harian.',
+        'Beras pilihan dari mitra koperasi desa dengan bulir utuh, tekstur pulen, dan kualitas yang dikurasi untuk kebutuhan keluarga. Dikemas higienis agar tetap segar sampai ke rumah anggota.',
     icon: Icons.rice_bowl_rounded,
     tone: Color(0xFFB88A44),
     imageUrl:
@@ -61,7 +61,7 @@ const products = <Product>[
     rewardPoints: 28,
     badge: 'Daily Essential',
     description:
-        'Minyak goreng jernih dengan harga ramah anggota, tersedia untuk pembelian reguler maupun program sembako bulanan.',
+        'Minyak goreng jernih untuk kebutuhan dapur harian dengan harga anggota yang stabil. Cocok untuk memasak rumah tangga, usaha kecil, maupun paket sembako bulanan koperasi.',
     icon: Icons.water_drop_outlined,
     tone: Color(0xFFC89D28),
     imageUrl:
@@ -78,7 +78,7 @@ const products = <Product>[
     rewardPoints: 120,
     badge: 'Member Favorite',
     description:
-        'Perangkat wearable untuk anggota aktif dengan pelacakan kesehatan, notifikasi transaksi, dan fitur pembayaran cepat.',
+        'Smart band modern untuk anggota aktif MepuPoin dengan pemantauan aktivitas, notifikasi transaksi, dan dukungan pembayaran cepat. Ringan dipakai harian dan mudah dipasangkan dengan ponsel.',
     icon: Icons.watch_outlined,
     tone: Color(0xFF616A72),
     imageUrl:
@@ -100,7 +100,7 @@ const products = <Product>[
     rewardPoints: 32,
     badge: 'Natural Product',
     description:
-        'Madu hutan murni hasil UMKM anggota koperasi, cocok untuk konsumsi keluarga maupun paket hadiah komunitas.',
+        'Madu hutan dari UMKM anggota koperasi dengan rasa alami dan aroma khas. Diproses secara hati-hati untuk menjaga kualitas, cocok untuk konsumsi keluarga, hampers, atau kebutuhan usaha minuman.',
     icon: Icons.emoji_food_beverage_outlined,
     tone: Color(0xFF924B2E),
     highlights: [
@@ -120,7 +120,7 @@ const products = <Product>[
     rewardPoints: 24,
     badge: 'Freshly Roasted',
     description:
-        'Kopi arabika blend dari pegunungan desa binaan, diproses oleh koperasi untuk cita rasa seimbang dan segar.',
+        'Kopi arabika blend dari petani desa binaan dengan profil rasa seimbang, aroma hangat, dan tingkat sangrai yang nyaman untuk diminum setiap hari. Digiling sesuai kebutuhan agar tetap segar.',
     icon: Icons.coffee_outlined,
     tone: Color(0xFF5A3727),
     highlights: [
@@ -140,7 +140,7 @@ const products = <Product>[
     rewardPoints: 64,
     badge: 'Tech Essentials',
     description:
-        'Power bank untuk operasional lapangan anggota dan perangkat toko digital, lengkap dengan proteksi pengisian aman.',
+        'Power bank berkapasitas besar untuk mendukung aktivitas lapangan, perjalanan, dan operasional toko digital. Dilengkapi proteksi pengisian agar perangkat tetap aman dan siap digunakan.',
     icon: Icons.battery_charging_full_rounded,
     tone: Color(0xFF325B83),
     highlights: ['Fast Charge', 'Safe Battery', 'Portable', 'Business Ready'],
@@ -232,4 +232,3 @@ const profileSettings = <SettingShortcut>[
     icon: Icons.shield_outlined,
   ),
 ];
-
