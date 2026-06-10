@@ -1,15 +1,30 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../mock_data.dart';
 import '../models.dart';
+import 'manage_addresses_screen.dart';
+import 'notification_history_screen.dart';
+import 'notification_settings_screen.dart';
+import 'payment_methods_screen.dart';
+import 'security_settings_screen.dart';
 
 const _profileImageUrl =
     'https://lh3.googleusercontent.com/aida-public/AB6AXuBK38PfAiyHOiE6kMysiQgsdlCCaiTZUI4b6gmDIwhe7ReUvEF9AOZtc7zqWWpVxTvrZR01xBh3zwriMDBPGCAo8CThIn0t0ntISl8DH-ep3Z-QGr7OWGhZ3xzhTCYILlx9u9FIcdh72iy8WgdEZ-5Ow0Z7K3GctB5GWYGI-vV-GtzOo52Gm493KbofV8djVAmlUkGGmTVDG9cAGxX5fu1r6zYUEtMTvVVdJdvfWy0C3YN2beA5eJaitKgtJFVoqPaqkjSAbfMpshmD';
 const _cooperativeImageUrl =
     'https://images.unsplash.com/photo-1516321497487-e288fb19713f?auto=format&fit=crop&w=600&q=80';
+const _profileAvatarOptions = <String>[
+  _profileImageUrl,
+  'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=400&q=80',
+  'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&q=80',
+  'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80',
+  'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=400&q=80',
+];
+const _initialsAvatarKey = '__initials__';
 
 const _initialProductStocks = <String, int>{
   'rice': 24,
@@ -25,11 +40,13 @@ class UserProfile {
     required this.name,
     required this.phone,
     required this.email,
+    required this.avatarUrl,
   });
 
   final String name;
   final String phone;
   final String email;
+  final String avatarUrl;
 }
 
 class CheckoutVoucher {
@@ -91,7 +108,16 @@ int _memberVoucherDiscount(int subtotal, int deliveryFee, int serviceFee) {
 }
 
 class HomeShell extends StatefulWidget {
-  const HomeShell({super.key});
+  const HomeShell({
+    super.key,
+    required this.initialProfile,
+    required this.onLogout,
+    this.onProfileChanged,
+  });
+
+  final UserProfile initialProfile;
+  final VoidCallback onLogout;
+  final ValueChanged<UserProfile>? onProfileChanged;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -100,17 +126,19 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _currentIndex = 0;
   int _mepuBalance = 150000;
-  UserProfile _profile = const UserProfile(
-    name: 'Budi Speed',
-    phone: '+62 812-3456-7890',
-    email: 'budi.santoso@email.com',
-  );
+  late UserProfile _profile;
   final Map<String, int> _productStocks = Map<String, int>.of(
     _initialProductStocks,
   );
   final List<Product> _cartItems = [];
   final List<OrderItem> _orderItems = List<OrderItem>.of(orders);
   final Map<String, List<Product>> _orderProducts = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _profile = widget.initialProfile;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -132,7 +160,6 @@ class _HomeShellState extends State<HomeShell> {
         onOpenCart: _openCart,
         onAddToCart: _addToCart,
       ),
-      const HistoryScreen(),
       OrdersScreen(
         orders: _orderItems,
         onOpenOrder: _openOrder,
@@ -145,6 +172,11 @@ class _HomeShellState extends State<HomeShell> {
         onTopUp: _openTopUpDialog,
         onEditProfile: _openEditProfile,
         onOpenSetting: _openSetting,
+        onChangeTab: _changeTab,
+        onOpenPromo: _openPromoCenter,
+        onOpenFaq: _openFaq,
+        onOpenContactSupport: _openContactSupport,
+        onLogout: _handleLogout,
       ),
     ];
 
@@ -162,6 +194,12 @@ class _HomeShellState extends State<HomeShell> {
 
   void _changeTab(int index) {
     setState(() => _currentIndex = index);
+  }
+
+  void _openOrder(OrderItem order) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => OrderDetailScreen(order: order)),
+    );
   }
 
   void _openProduct(Product product) {
@@ -186,8 +224,7 @@ class _HomeShellState extends State<HomeShell> {
       MaterialPageRoute<void>(
         builder: (_) => CartScreen(
           items: List<Product>.of(_cartItems),
-          onRemoveItem: _removeFromCart,
-          onClearCart: _clearCart,
+          onCartChanged: _setCartItems,
           onCheckout: (items) => _openCheckout(items, clearCart: true),
         ),
       ),
@@ -234,6 +271,8 @@ class _HomeShellState extends State<HomeShell> {
           items: List<Product>.of(items),
           mepuBalance: _mepuBalance,
           productStocks: _productStocks,
+          onCompletePayment: _payOrder,
+          onCancelOrder: _cancelOrder,
           onPlaceOrder:
               (
                 checkoutItems,
@@ -255,8 +294,10 @@ class _HomeShellState extends State<HomeShell> {
                   _orderItems.insert(0, order);
                   _orderProducts[order.id] = List<Product>.of(checkoutItems);
                   _decreaseStock(checkoutItems);
+                  if (paymentMethod == 'Saldo MepuPoin') {
+                    _mepuBalance -= finalTotal;
+                  }
                   if (clearCart) _cartItems.clear();
-                  _currentIndex = 3;
                 });
                 return order;
               },
@@ -273,6 +314,7 @@ class _HomeShellState extends State<HomeShell> {
     required int finalTotal,
     String? voucherLabel,
   }) {
+    final orderId = _generateOrderId();
     final groupedItems = _summarizeProducts(items);
     final orderItems = [
       ...groupedItems,
@@ -283,17 +325,44 @@ class _HomeShellState extends State<HomeShell> {
         : '${groupedItems.first} + ${groupedItems.length - 1} produk';
 
     return OrderItem(
-      id: _generateOrderId(),
+      id: orderId,
       title: itemTitle,
-      status: 'Payment Pending',
+      status: _initialOrderStatus(paymentMethod),
       createdAt: _formatOrderDate(DateTime.now()),
       total: finalTotal,
-      progressLabel: 'Menunggu pembayaran via $paymentMethod',
+      progressLabel: _initialProgressLabel(
+        orderId: orderId,
+        paymentMethod: paymentMethod,
+      ),
       address: deliveryMethod == 'Ambil di Koperasi'
           ? 'MepuPoin Sukamaju - Pickup Counter'
           : address,
       items: orderItems,
     );
+  }
+
+  String _initialOrderStatus(String paymentMethod) {
+    if (paymentMethod == 'Saldo MepuPoin') {
+      return 'On Delivery';
+    }
+    return 'Payment Pending';
+  }
+
+  String _initialProgressLabel({
+    required String orderId,
+    required String paymentMethod,
+  }) {
+    if (paymentMethod == 'Saldo MepuPoin') {
+      return 'Pembayaran saldo berhasil, pesanan sedang diproses';
+    }
+    if (paymentMethod == 'Transfer Bank') {
+      final codeSuffix = orderId.replaceAll(RegExp(r'[^0-9]'), '');
+      final vaSuffix = codeSuffix.length > 8
+          ? codeSuffix.substring(codeSuffix.length - 8)
+          : codeSuffix.padLeft(8, '0');
+      return 'Virtual Account BNI 8808$vaSuffix • bayar sebelum 23:14';
+    }
+    return 'Bayar di kasir koperasi saat mengambil pesanan';
   }
 
   List<String> _summarizeProducts(List<Product> items) {
@@ -387,13 +456,12 @@ class _HomeShellState extends State<HomeShell> {
     return '${date.day} ${months[date.month - 1]} ${date.year}, ${twoDigits(date.hour)}:${twoDigits(date.minute)}';
   }
 
-  void _removeFromCart(int index) {
-    if (index < 0 || index >= _cartItems.length) return;
-    setState(() => _cartItems.removeAt(index));
-  }
-
-  void _clearCart() {
-    setState(_cartItems.clear);
+  void _setCartItems(List<Product> items) {
+    setState(() {
+      _cartItems
+        ..clear()
+        ..addAll(items);
+    });
   }
 
   Future<void> _openTopUpDialog() async {
@@ -412,9 +480,9 @@ class _HomeShellState extends State<HomeShell> {
     );
   }
 
-  void _payOrder(OrderItem order) {
+  OrderItem? _payOrder(OrderItem order) {
     final index = _orderItems.indexWhere((item) => item.id == order.id);
-    if (index == -1) return;
+    if (index == -1) return null;
     final usesMepuBalance = order.progressLabel.contains('Saldo MepuPoin');
     if (usesMepuBalance && _mepuBalance < order.total) {
       _showFeatureSnack(
@@ -425,13 +493,14 @@ class _HomeShellState extends State<HomeShell> {
         actionLabel: 'Isi Saldo',
         onAction: _openTopUpDialog,
       );
-      return;
+      return null;
     }
+    late final OrderItem updatedOrder;
     setState(() {
       if (usesMepuBalance) {
         _mepuBalance -= order.total;
       }
-      _orderItems[index] = OrderItem(
+      updatedOrder = OrderItem(
         id: order.id,
         title: order.title,
         status: 'On Delivery',
@@ -441,6 +510,7 @@ class _HomeShellState extends State<HomeShell> {
         address: order.address,
         items: order.items,
       );
+      _orderItems[index] = updatedOrder;
     });
     _showFeatureSnack(
       context,
@@ -448,6 +518,7 @@ class _HomeShellState extends State<HomeShell> {
       title: 'Pembayaran Berhasil',
       icon: Icons.verified_rounded,
     );
+    return updatedOrder;
   }
 
   void _cancelOrder(OrderItem order) {
@@ -464,18 +535,47 @@ class _HomeShellState extends State<HomeShell> {
     );
   }
 
-  void _openOrder(OrderItem order) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => OrderDetailScreen(order: order)),
-    );
-  }
-
   void _openSetting(SettingShortcut setting) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => SettingDetailScreen(setting: setting),
+        builder: (_) {
+          switch (setting.title) {
+            case 'Saved Addresses':
+              return const ManageAddressesScreen();
+            case 'Payment Methods':
+              return const PaymentMethodsScreen();
+            case 'Notifications':
+              return const NotificationSettingsScreen();
+            case 'Security':
+              return const SecuritySettingsScreen();
+            default:
+              return SettingDetailScreen(setting: setting);
+          }
+        },
       ),
     );
+  }
+
+  void _openPromoCenter() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const PromoCenterScreen()),
+    );
+  }
+
+  void _openFaq() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const FaqScreen()),
+    );
+  }
+
+  void _openContactSupport() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const ContactSupportScreen()),
+    );
+  }
+
+  void _handleLogout() {
+    widget.onLogout();
   }
 
   Future<void> _openEditProfile() async {
@@ -487,6 +587,7 @@ class _HomeShellState extends State<HomeShell> {
     if (!mounted || updatedProfile == null) return;
 
     setState(() => _profile = updatedProfile);
+    widget.onProfileChanged?.call(updatedProfile);
     _showFeatureSnack(
       context,
       'Data profil berhasil diperbarui.',
@@ -504,104 +605,200 @@ Future<void> _showFeatureSnack(
   String actionLabel = 'Mengerti',
   VoidCallback? onAction,
 }) {
-  return showDialog<void>(
-    context: context,
-    builder: (dialogContext) => _ProfessionalPopup(
-      icon: icon,
-      title: title,
-      message: message,
-      primaryLabel: actionLabel,
-      onPrimary: () {
-        Navigator.of(dialogContext).pop();
-        onAction?.call();
-      },
-    ),
+  _TopNotificationController.instance.show(
+    context,
+    title: title,
+    message: message,
+    icon: icon,
+    actionLabel: actionLabel == 'Mengerti' ? null : actionLabel,
+    onAction: onAction,
+  );
+  return Future<void>.value();
+}
+
+Future<void> _showVoucherList(BuildContext context) {
+  return _showFeatureSnack(
+    context,
+    'Voucher tersedia: ONGKIRHEMAT, MEPU10, dan ANGGOTA15. Gunakan saat checkout sesuai syarat minimum belanja.',
+    title: 'Voucher Anggota',
+    icon: Icons.confirmation_number_outlined,
   );
 }
 
-class _ProfessionalPopup extends StatelessWidget {
-  const _ProfessionalPopup({
-    required this.icon,
+class _TopNotificationController {
+  _TopNotificationController._();
+
+  static final instance = _TopNotificationController._();
+  OverlayEntry? _entry;
+  Timer? _timer;
+
+  void show(
+    BuildContext context, {
+    required String title,
+    required String message,
+    required IconData icon,
+    String? actionLabel,
+    VoidCallback? onAction,
+  }) {
+    _timer?.cancel();
+    _entry?.remove();
+
+    final overlay = Overlay.of(context);
+    if (overlay.mounted == false) return;
+
+    _entry = OverlayEntry(
+      builder: (context) => _TopNotificationBanner(
+        title: title,
+        message: message,
+        icon: icon,
+        actionLabel: actionLabel,
+        onTapAction: () {
+          hide();
+          onAction?.call();
+        },
+      ),
+    );
+
+    overlay.insert(_entry!);
+    _timer = Timer(const Duration(seconds: 1), hide);
+  }
+
+  void hide() {
+    _timer?.cancel();
+    _timer = null;
+    _entry?.remove();
+    _entry = null;
+  }
+}
+
+class _TopNotificationBanner extends StatefulWidget {
+  const _TopNotificationBanner({
     required this.title,
     required this.message,
-    required this.primaryLabel,
-    required this.onPrimary,
-    this.child,
+    required this.icon,
+    this.actionLabel,
+    this.onTapAction,
   });
 
-  final IconData icon;
   final String title;
   final String message;
-  final String primaryLabel;
-  final VoidCallback onPrimary;
-  final Widget? child;
+  final IconData icon;
+  final String? actionLabel;
+  final VoidCallback? onTapAction;
+
+  @override
+  State<_TopNotificationBanner> createState() => _TopNotificationBannerState();
+}
+
+class _TopNotificationBannerState extends State<_TopNotificationBanner>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 220),
+  )..forward();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Dialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primary.withValues(alpha: 0.10),
-                      borderRadius: BorderRadius.circular(18),
+    return SafeArea(
+      child: IgnorePointer(
+        ignoring: widget.onTapAction == null,
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+            child: SlideTransition(
+              position:
+                  Tween<Offset>(
+                    begin: const Offset(0, -0.35),
+                    end: Offset.zero,
+                  ).animate(
+                    CurvedAnimation(
+                      parent: _controller,
+                      curve: Curves.easeOutCubic,
                     ),
-                    child: Icon(icon, color: theme.colorScheme.primary),
                   ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: widget.onTapAction,
+                  borderRadius: BorderRadius.circular(18),
+                  child: Container(
+                    constraints: const BoxConstraints(maxWidth: 420),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x18000000),
+                          blurRadius: 16,
+                          offset: Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Text(
-                          title,
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w900,
+                        Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary.withValues(
+                              alpha: 0.1,
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            widget.icon,
+                            color: theme.colorScheme.primary,
+                            size: 18,
                           ),
                         ),
-                        const SizedBox(height: 6),
-                        Text(
-                          message,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: const Color(0xFF64748B),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                widget.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.labelLarge?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  color: const Color(0xFF111827),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                widget.message,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: const Color(0xFF64748B),
+                                  height: 1.25,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
                   ),
-                ],
-              ),
-              if (child case final Widget content) ...[
-                const SizedBox(height: 18),
-                content,
-              ],
-              const SizedBox(height: 22),
-              FilledButton(
-                onPressed: onPrimary,
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 50),
-                  backgroundColor: theme.colorScheme.primary,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
                 ),
-                child: Text(primaryLabel),
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -1166,16 +1363,6 @@ class DashboardScreen extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
               child: _MepuPoinBannerCarousel(onTap: () => onChangeTab(1)),
             ),
-          ),
-          SliverToBoxAdapter(
-            child: _MepuPoinSectionHeader(
-              title: 'Kategori Cepat',
-              actionLabel: 'Lihat Semua',
-              onActionTap: () => onChangeTab(1),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: _MepuPoinShortcutGrid(onTap: () => onChangeTab(1)),
           ),
           SliverToBoxAdapter(
             child: _MepuPoinSectionHeader(
@@ -1796,93 +1983,6 @@ class _MepuPoinSectionHeader extends StatelessWidget {
   }
 }
 
-class _MepuPoinShortcutGrid extends StatelessWidget {
-  const _MepuPoinShortcutGrid({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    const shortcuts = [
-      (Icons.devices_outlined, 'Elektronik'),
-      (Icons.checkroom_outlined, 'Fashion'),
-      (Icons.restaurant_outlined, 'Makanan'),
-      (Icons.sports_soccer_outlined, 'Olahraga'),
-      (Icons.home_work_outlined, 'Rumah'),
-      (Icons.more_horiz_rounded, 'Lainnya'),
-    ];
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-      child: SizedBox(
-        height: 82,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          itemCount: shortcuts.length,
-          separatorBuilder: (_, _) => const SizedBox(width: 14),
-          itemBuilder: (context, index) {
-            final shortcut = shortcuts[index];
-            return SizedBox(
-              width: 68,
-              child: _MepuPoinShortcutItem(
-                icon: shortcut.$1,
-                label: shortcut.$2,
-                onTap: onTap,
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-}
-
-class _MepuPoinShortcutItem extends StatelessWidget {
-  const _MepuPoinShortcutItem({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Column(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: Icon(icon, size: 19, color: theme.colorScheme.primary),
-          ),
-          const SizedBox(height: 7),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: const Color(0xFF334155),
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _MepuPoinMiniProductCard extends StatelessWidget {
   const _MepuPoinMiniProductCard({
     required this.product,
@@ -2094,14 +2194,8 @@ class _ShopScreenState extends State<ShopScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final categories = [
-      'Semua',
-      'Elektronik',
-      'Fashion',
-      'Makanan',
-      'Olahraga',
-      'Rumah',
-    ];
+    final categories = ['Semua', 'Makanan', 'Olahraga', 'Rumah'];
+    final displayedProducts = _buildSortedProducts();
 
     return CustomScrollView(
       slivers: [
@@ -2110,12 +2204,6 @@ class _ShopScreenState extends State<ShopScreen> {
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
             child: Row(
               children: [
-                Icon(
-                  Icons.menu_rounded,
-                  color: theme.colorScheme.primary,
-                  size: 30,
-                ),
-                const SizedBox(width: 12),
                 Text(
                   'MepuPoin',
                   style: theme.textTheme.headlineMedium?.copyWith(
@@ -2130,8 +2218,8 @@ class _ShopScreenState extends State<ShopScreen> {
                 ),
                 const SizedBox(width: 10),
                 _HeaderActionButton(
-                  icon: Icons.sort_rounded,
-                  onTap: () => _openSortSheet(context),
+                  icon: Icons.swap_vert_rounded,
+                  onTap: () => _openSortMenuFromButton(context),
                 ),
               ],
             ),
@@ -2166,21 +2254,32 @@ class _ShopScreenState extends State<ShopScreen> {
                   ),
                 ),
                 const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.sort_rounded,
-                      size: 18,
-                      color: theme.colorScheme.primary,
+                InkWell(
+                  onTapDown: (details) =>
+                      _openSortMenu(context, details.globalPosition),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 2,
+                      vertical: 6,
                     ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Urutkan: $sortOption',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        color: const Color(0xFF475569),
-                      ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _sortIndicatorIcon(),
+                          size: 18,
+                          color: theme.colorScheme.primary,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Urutkan: $sortOption',
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            color: const Color(0xFF475569),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ],
             ),
@@ -2190,7 +2289,7 @@ class _ShopScreenState extends State<ShopScreen> {
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
           sliver: SliverGrid(
             delegate: SliverChildBuilderDelegate((context, index) {
-              final product = products[index];
+              final product = displayedProducts[index];
               return ProductCard(
                 product: product,
                 stock: widget.productStocks[product.id] ?? 0,
@@ -2198,7 +2297,7 @@ class _ShopScreenState extends State<ShopScreen> {
                 onTap: () => widget.onOpenProduct(product),
                 onAddToCart: () => widget.onAddToCart(product),
               );
-            }, childCount: products.length),
+            }, childCount: displayedProducts.length),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
               mainAxisSpacing: 16,
@@ -2211,93 +2310,89 @@ class _ShopScreenState extends State<ShopScreen> {
     );
   }
 
-  void _openSortSheet(BuildContext context) {
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        final options = [
-          'Harga Terendah',
-          'Harga Tertinggi',
-          'Terbaru',
-          'Terpopuler',
-        ];
-        return _ProfessionalPopup(
-          icon: Icons.sort_rounded,
-          title: 'Urutkan Produk',
-          message: 'Pilih urutan katalog yang ingin ditampilkan.',
-          primaryLabel: 'Tutup',
-          onPrimary: () => Navigator.of(dialogContext).pop(),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final option in options)
-                _PopupOptionTile(
-                  label: option,
-                  selected: sortOption == option,
-                  onTap: () {
-                    setState(() => sortOption = option);
-                    Navigator.of(dialogContext).pop();
-                  },
-                ),
-            ],
-          ),
-        );
-      },
-    );
+  Future<void> _openSortMenuFromButton(BuildContext context) async {
+    final overlayBox =
+        Overlay.of(context).context.findRenderObject() as RenderBox;
+    final topRight = Offset(overlayBox.size.width - 24, kToolbarHeight + 24);
+    await _openSortMenu(context, topRight);
   }
-}
 
-class _PopupOptionTile extends StatelessWidget {
-  const _PopupOptionTile({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        decoration: BoxDecoration(
-          color: selected
-              ? theme.colorScheme.primary.withValues(alpha: 0.08)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              selected
-                  ? Icons.radio_button_checked_rounded
-                  : Icons.radio_button_off_rounded,
-              color: selected
-                  ? theme.colorScheme.primary
-                  : const Color(0xFF94A3B8),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                label,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  color: selected
-                      ? theme.colorScheme.primary
-                      : const Color(0xFF111827),
-                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
+  Future<void> _openSortMenu(
+    BuildContext context,
+    Offset globalPosition,
+  ) async {
+    const options = [
+      'Harga Terendah',
+      'Harga Tertinggi',
+      'Terbaru',
+      'Terpopuler',
+    ];
+    final overlayBox =
+        Overlay.of(context).context.findRenderObject() as RenderBox;
+    final selected = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        globalPosition.dx,
+        globalPosition.dy,
+        overlayBox.size.width - globalPosition.dx,
+        overlayBox.size.height - globalPosition.dy,
       ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      items: [
+        for (final option in options)
+          PopupMenuItem<String>(
+            value: option,
+            child: Row(
+              children: [
+                Icon(
+                  sortOption == option
+                      ? Icons.radio_button_checked_rounded
+                      : Icons.radio_button_off_rounded,
+                  color: sortOption == option
+                      ? Theme.of(context).colorScheme.primary
+                      : const Color(0xFF94A3B8),
+                  size: 18,
+                ),
+                const SizedBox(width: 10),
+                Text(option),
+              ],
+            ),
+          ),
+      ],
     );
+
+    if (!context.mounted || selected == null || selected == sortOption) return;
+    setState(() => sortOption = selected);
+  }
+
+  List<Product> _buildSortedProducts() {
+    final sortedProducts = List<Product>.of(products);
+
+    switch (sortOption) {
+      case 'Harga Terendah':
+        sortedProducts.sort((a, b) => a.price.compareTo(b.price));
+      case 'Harga Tertinggi':
+        sortedProducts.sort((a, b) => b.price.compareTo(a.price));
+      case 'Terbaru':
+        sortedProducts.sort((a, b) => b.id.compareTo(a.id));
+      case 'Terpopuler':
+        sortedProducts.sort(
+          (a, b) => b.claimedPercent.compareTo(a.claimedPercent),
+        );
+    }
+
+    return sortedProducts;
+  }
+
+  IconData _sortIndicatorIcon() {
+    switch (sortOption) {
+      case 'Harga Terendah':
+        return Icons.arrow_downward_rounded;
+      case 'Harga Tertinggi':
+        return Icons.arrow_upward_rounded;
+      default:
+        return Icons.swap_vert_rounded;
+    }
   }
 }
 
@@ -2398,58 +2493,40 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final pendingOrders = widget.orders
-        .where((order) => order.status == 'Payment Pending')
-        .toList();
     final activeOrders = widget.orders
-        .where((order) => order.status != 'Payment Pending')
+        .where(
+          (order) =>
+              order.status == 'On Delivery' ||
+              order.status == 'Ready for Pickup',
+        )
+        .toList();
+    final historyOrders = widget.orders
+        .where(
+          (order) =>
+              order.status == 'Payment Pending' || order.status == 'Completed',
+        )
         .toList();
 
     return CustomScrollView(
       slivers: [
-        const SliverAppBar(pinned: true, title: Text('Transaksi')),
+        const SliverAppBar(pinned: true, title: Text('Pesanan')),
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
             child: _SegmentedTabs(
-              labels: const ['Pembayaran Pending', 'Aktif'],
+              labels: const ['Pesanan Aktif', 'Histori Pesanan'],
               selectedIndex: selectedTab,
               onChanged: (index) => setState(() => selectedTab = index),
             ),
           ),
         ),
         if (selectedTab == 0) ...[
-          if (pendingOrders.isEmpty)
-            const SliverToBoxAdapter(
-              child: _EmptyState(
-                icon: Icons.payments_outlined,
-                title: 'Tidak ada pembayaran pending',
-                subtitle:
-                    'Checkout produk dari keranjang untuk membuat transaksi baru.',
-              ),
-            )
-          else
-            SliverList.builder(
-              itemCount: pendingOrders.length,
-              itemBuilder: (context, index) {
-                final order = pendingOrders[index];
-                return Padding(
-                  padding: EdgeInsets.fromLTRB(20, index == 0 ? 0 : 8, 20, 12),
-                  child: _PendingPaymentCard(
-                    order: order,
-                    onPay: () => widget.onPayOrder(order),
-                    onCancel: () => widget.onCancelOrder(order),
-                  ),
-                );
-              },
-            ),
-        ] else ...[
           if (activeOrders.isEmpty)
             const SliverToBoxAdapter(
               child: _EmptyState(
                 icon: Icons.receipt_long_outlined,
                 title: 'Belum ada pesanan aktif',
-                subtitle: 'Pesanan yang sudah dibayar akan muncul di sini.',
+                subtitle: 'Pesanan yang sedang diproses akan muncul di sini.',
               ),
             )
           else ...[
@@ -2476,6 +2553,36 @@ class _OrdersScreenState extends State<OrdersScreen> {
               },
             ),
           ],
+        ] else ...[
+          if (historyOrders.isEmpty)
+            const SliverToBoxAdapter(
+              child: _EmptyState(
+                icon: Icons.history_rounded,
+                title: 'Belum ada histori pesanan',
+                subtitle:
+                    'Pesanan selesai dan transaksi lain akan tersimpan di sini.',
+              ),
+            )
+          else
+            SliverList.builder(
+              itemCount: historyOrders.length,
+              itemBuilder: (context, index) {
+                final order = historyOrders[index];
+                return Padding(
+                  padding: EdgeInsets.fromLTRB(20, index == 0 ? 0 : 8, 20, 12),
+                  child: order.status == 'Payment Pending'
+                      ? _PendingPaymentCard(
+                          order: order,
+                          onPay: () => widget.onPayOrder(order),
+                          onCancel: () => widget.onCancelOrder(order),
+                        )
+                      : OrderCard(
+                          order: order,
+                          onTap: () => widget.onOpenOrder(order),
+                        ),
+                );
+              },
+            ),
         ],
         const SliverToBoxAdapter(child: SizedBox(height: 24)),
       ],
@@ -2592,6 +2699,8 @@ class _PendingPaymentCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isTransferBank = order.progressLabel.contains('Virtual Account');
+    final isPayAtCoop = order.progressLabel.contains('kasir koperasi');
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -2625,7 +2734,11 @@ class _PendingPaymentCard extends StatelessWidget {
                     Text(order.id, style: theme.textTheme.titleMedium),
                     const SizedBox(height: 4),
                     Text(
-                      'Batas bayar: 23:14:59',
+                      isTransferBank
+                          ? 'Batas bayar: 23:14:59'
+                          : isPayAtCoop
+                          ? 'Bayar saat ambil pesanan di koperasi'
+                          : 'Pembayaran menunggu konfirmasi',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: const Color(0xFFB7791F),
                         fontWeight: FontWeight.w700,
@@ -2646,6 +2759,13 @@ class _PendingPaymentCard extends StatelessWidget {
               fontWeight: FontWeight.w900,
             ),
           ),
+          const SizedBox(height: 10),
+          Text(
+            order.progressLabel,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: const Color(0xFF64748B),
+            ),
+          ),
           const SizedBox(height: 18),
           Row(
             children: [
@@ -2656,7 +2776,13 @@ class _PendingPaymentCard extends StatelessWidget {
                     backgroundColor: theme.colorScheme.primary,
                     minimumSize: const Size.fromHeight(48),
                   ),
-                  child: const Text('Bayar Sekarang'),
+                  child: Text(
+                    isTransferBank
+                        ? 'Konfirmasi Bayar'
+                        : isPayAtCoop
+                        ? 'Tandai Dibayar'
+                        : 'Bayar Sekarang',
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -2686,6 +2812,7 @@ class _ActiveOrderProgressCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tracking = _buildTrackingView(order);
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -2702,23 +2829,31 @@ class _ActiveOrderProgressCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Resi: MEP-240608-8821',
+            tracking.referenceLabel,
             style: theme.textTheme.bodyMedium?.copyWith(color: Colors.white70),
           ),
           const SizedBox(height: 20),
-          const Row(
+          Row(
             children: [
-              Expanded(child: _ProgressStep(label: 'Dikonfirmasi', done: true)),
-              Expanded(child: _ProgressStep(label: 'Diproses', done: true)),
-              Expanded(child: _ProgressStep(label: 'Dikirim', done: true)),
-              Expanded(child: _ProgressStep(label: 'Tiba', done: false)),
+              for (var i = 0; i < tracking.steps.length; i++)
+                Expanded(
+                  child: _ProgressStep(
+                    label: tracking.steps[i].label,
+                    done: i <= tracking.activeStepIndex,
+                  ),
+                ),
             ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            tracking.summary,
+            style: theme.textTheme.bodyMedium?.copyWith(color: Colors.white),
           ),
           const SizedBox(height: 20),
           FilledButton.icon(
             onPressed: onTrack,
             icon: const Icon(Icons.location_searching_rounded),
-            label: const Text('Lacak Pesanan'),
+            label: Text(tracking.trackButtonLabel),
             style: FilledButton.styleFrom(
               backgroundColor: Colors.white,
               foregroundColor: theme.colorScheme.primary,
@@ -2759,6 +2894,86 @@ class _ProgressStep extends StatelessWidget {
   }
 }
 
+class _TrackingViewData {
+  const _TrackingViewData({
+    required this.referenceLabel,
+    required this.summary,
+    required this.trackButtonLabel,
+    required this.activeStepIndex,
+    required this.steps,
+  });
+
+  final String referenceLabel;
+  final String summary;
+  final String trackButtonLabel;
+  final int activeStepIndex;
+  final List<_TrackingStepData> steps;
+}
+
+class _TrackingStepData {
+  const _TrackingStepData(this.label);
+
+  final String label;
+}
+
+_TrackingViewData _buildTrackingView(OrderItem order) {
+  if (_isPickupOrder(order)) {
+    final steps = const [
+      _TrackingStepData('Dikonfirmasi'),
+      _TrackingStepData('Disiapkan'),
+      _TrackingStepData('Siap Diambil'),
+      _TrackingStepData('Selesai'),
+    ];
+    return _TrackingViewData(
+      referenceLabel: 'Kode ambil: PKP-${order.id.split('-').last}',
+      summary: order.progressLabel,
+      trackButtonLabel: 'Lihat Status Pickup',
+      activeStepIndex: _pickupTrackingIndex(order.status),
+      steps: steps,
+    );
+  }
+
+  final steps = const [
+    _TrackingStepData('Dikonfirmasi'),
+    _TrackingStepData('Dikemas'),
+    _TrackingStepData('Dikirim'),
+    _TrackingStepData('Sampai'),
+  ];
+  return _TrackingViewData(
+    referenceLabel: 'Resi: MEP-${order.id.replaceAll('ORD-', '')}',
+    summary: order.progressLabel,
+    trackButtonLabel: 'Lacak Kurir',
+    activeStepIndex: _deliveryTrackingIndex(order.status),
+    steps: steps,
+  );
+}
+
+bool _isPickupOrder(OrderItem order) =>
+    order.address.contains('Pickup Counter') ||
+    order.status == 'Ready for Pickup';
+
+int _deliveryTrackingIndex(String status) {
+  switch (status) {
+    case 'Completed':
+      return 3;
+    case 'On Delivery':
+      return 2;
+    default:
+      return 1;
+  }
+}
+
+int _pickupTrackingIndex(String status) {
+  switch (status) {
+    case 'Completed':
+      return 3;
+    case 'Ready for Pickup':
+      return 2;
+    default:
+      return 1;
+  }
+}
+
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({
     super.key,
@@ -2767,6 +2982,11 @@ class ProfileScreen extends StatelessWidget {
     required this.onTopUp,
     required this.onEditProfile,
     required this.onOpenSetting,
+    required this.onChangeTab,
+    required this.onOpenPromo,
+    required this.onOpenFaq,
+    required this.onOpenContactSupport,
+    required this.onLogout,
   });
 
   final UserProfile profile;
@@ -2774,6 +2994,11 @@ class ProfileScreen extends StatelessWidget {
   final VoidCallback onTopUp;
   final VoidCallback onEditProfile;
   final ValueChanged<SettingShortcut> onOpenSetting;
+  final ValueChanged<int> onChangeTab;
+  final VoidCallback onOpenPromo;
+  final VoidCallback onOpenFaq;
+  final VoidCallback onOpenContactSupport;
+  final VoidCallback onLogout;
 
   @override
   Widget build(BuildContext context) {
@@ -2784,15 +3009,18 @@ class ProfileScreen extends StatelessWidget {
         SliverAppBar(
           pinned: true,
           leading: IconButton(
-            onPressed: () =>
-                _showFeatureSnack(context, 'Kamu sudah berada di tab Akun.'),
+            onPressed: () => onChangeTab(0),
             icon: const Icon(Icons.arrow_back_rounded),
           ),
           title: const Text('Akun'),
           actions: [
             IconButton(
-              onPressed: () => onOpenSetting(profileSettings.last),
-              icon: const Icon(Icons.settings_outlined),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const NotificationHistoryScreen(),
+                ),
+              ),
+              icon: const Icon(Icons.notifications_none_rounded),
             ),
           ],
         ),
@@ -2809,16 +3037,25 @@ class ProfileScreen extends StatelessWidget {
                         Stack(
                           clipBehavior: Clip.none,
                           children: [
-                            const ProfileAvatar(radius: 74, bordered: false),
+                            ProfileAvatar(
+                              radius: 74,
+                              bordered: false,
+                              imageUrl: profile.avatarUrl,
+                              initials: _initialsFromName(profile.name),
+                            ),
                             Positioned(
                               right: -6,
                               bottom: 6,
-                              child: CircleAvatar(
-                                radius: 28,
-                                backgroundColor: theme.colorScheme.primary,
-                                child: const Icon(
-                                  Icons.photo_camera_outlined,
-                                  color: Colors.white,
+                              child: InkWell(
+                                onTap: onEditProfile,
+                                borderRadius: BorderRadius.circular(999),
+                                child: CircleAvatar(
+                                  radius: 28,
+                                  backgroundColor: theme.colorScheme.primary,
+                                  child: const Icon(
+                                    Icons.photo_camera_outlined,
+                                    color: Colors.white,
+                                  ),
                                 ),
                               ),
                             ),
@@ -2943,10 +3180,7 @@ class ProfileScreen extends StatelessWidget {
                             child: ProfileActionChip(
                               label: 'Promo',
                               icon: Icons.star_rounded,
-                              onTap: () => _showFeatureSnack(
-                                context,
-                                'Promo MepuPoin siap dibuka.',
-                              ),
+                              onTap: onOpenPromo,
                             ),
                           ),
                         ],
@@ -2977,32 +3211,6 @@ class ProfileScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 22),
-                Row(
-                  children: [
-                    Expanded(
-                      child: MiniStatCard(
-                        icon: Icons.receipt_long_outlined,
-                        label: 'History',
-                        onTap: () => _showFeatureSnack(
-                          context,
-                          'Riwayat aktivitas siap dibuka.',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: MiniStatCard(
-                        icon: Icons.remove_red_eye_outlined,
-                        label: 'Viewed',
-                        onTap: () => _showFeatureSnack(
-                          context,
-                          'Produk yang dilihat siap dibuka.',
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 22),
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(20),
@@ -3015,18 +3223,12 @@ class ProfileScreen extends StatelessWidget {
                           icon: Icons.live_help_outlined,
                           title: 'FAQ',
                           subtitle: 'Find quick answers',
-                          onTap: () => _showFeatureSnack(
-                            context,
-                            'FAQ MepuPoin siap dibuka.',
-                          ),
+                          onTap: onOpenFaq,
                         ),
                         const SizedBox(height: 14),
                         SupportButton(
                           label: 'Contact Us',
-                          onTap: () => _showFeatureSnack(
-                            context,
-                            'Tim support MepuPoin siap dihubungi.',
-                          ),
+                          onTap: onOpenContactSupport,
                         ),
                       ],
                     ),
@@ -3034,10 +3236,7 @@ class ProfileScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 22),
                 OutlinedButton.icon(
-                  onPressed: () => _showFeatureSnack(
-                    context,
-                    'Sesi akun MepuPoin tetap aman.',
-                  ),
+                  onPressed: onLogout,
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(double.infinity, 70),
                     side: BorderSide(
@@ -3087,6 +3286,374 @@ class ProductDetailScreen extends StatefulWidget {
 
   @override
   State<ProductDetailScreen> createState() => _ProductDetailScreenState();
+}
+
+class PromoCenterScreen extends StatelessWidget {
+  const PromoCenterScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    const promos = [
+      (
+        'Gratis Ongkir Anggota',
+        'Potongan ongkir sampai Rp 8.000 untuk pembelian kebutuhan harian.',
+        Icons.local_shipping_outlined,
+      ),
+      (
+        'Flash Sale Poin Member',
+        'Tukar poin untuk harga spesial produk koperasi pilihan.',
+        Icons.workspace_premium_outlined,
+      ),
+      (
+        'Hemat Belanja Mingguan',
+        'Diskon bundling untuk sembako dan produk rumah tangga.',
+        Icons.shopping_basket_outlined,
+      ),
+    ];
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Promo MepuPoin')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFFD9001B), Color(0xFF8B0011)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(26),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Promo aktif untuk member',
+                  style: theme.textTheme.headlineMedium?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Pilih promo yang paling cocok untuk belanja kebutuhan kamu minggu ini.',
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: Colors.white.withValues(alpha: 0.9),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          for (final promo in promos)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: const Color(0xFFE8BCB8)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 52,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Icon(promo.$3, color: theme.colorScheme.primary),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(promo.$1, style: theme.textTheme.titleMedium),
+                          const SizedBox(height: 4),
+                          Text(
+                            promo.$2,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: const Color(0xFF64748B),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class FaqScreen extends StatelessWidget {
+  const FaqScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    const faqs = [
+      (
+        'Bagaimana cara checkout pesanan?',
+        'Pilih produk, masukkan ke keranjang, centang item yang dibeli, lalu lanjutkan ke checkout.',
+      ),
+      (
+        'Kenapa metode Bayar di Koperasi tidak selalu tersedia?',
+        'Metode ini hanya tersedia untuk pesanan yang diambil langsung di koperasi.',
+      ),
+      (
+        'Bagaimana melacak pesanan?',
+        'Buka tab Pesanan, lalu pilih pesanan aktif untuk melihat status kurir atau pickup.',
+      ),
+      (
+        'Bagaimana menggunakan voucher?',
+        'Voucher bisa dipilih di halaman checkout selama syarat minimum belanja terpenuhi.',
+      ),
+    ];
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('FAQ')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          for (final faq in faqs)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: ExpansionTile(
+                tilePadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+                collapsedShape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  side: const BorderSide(color: Color(0xFFE8BCB8)),
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  side: const BorderSide(color: Color(0xFFE8BCB8)),
+                ),
+                title: Text(
+                  faq.$1,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+                    child: Text(
+                      faq.$2,
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: const Color(0xFF64748B),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class ContactSupportScreen extends StatelessWidget {
+  const ContactSupportScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Hubungi Bantuan')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF4F5),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: const Color(0xFFF3C7CC)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Icon(Icons.support_agent_rounded, color: theme.colorScheme.primary),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Tim support siap membantu', style: theme.textTheme.titleMedium),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Senin - Sabtu, 08.00 - 20.00 WIB',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: const Color(0xFF64748B),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          _SupportActionCard(
+            icon: Icons.chat_bubble_outline_rounded,
+            title: 'Chat WhatsApp',
+            subtitle: '+62 811-9000-1122',
+          ),
+          const SizedBox(height: 14),
+          _SupportActionCard(
+            icon: Icons.call_outlined,
+            title: 'Telepon Admin',
+            subtitle: '(0260) 123-456',
+          ),
+          const SizedBox(height: 14),
+          _SupportActionCard(
+            icon: Icons.mail_outline_rounded,
+            title: 'Email Support',
+            subtitle: 'support@mepupoin.id',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SupportActionCard extends StatelessWidget {
+  const _SupportActionCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: () {
+        Clipboard.setData(ClipboardData(text: subtitle));
+        _showFeatureSnack(
+          context,
+          '$subtitle berhasil disalin.',
+          title: title,
+          icon: Icons.copy_rounded,
+        );
+      },
+      borderRadius: BorderRadius.circular(22),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: const Color(0xFFE8BCB8)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(icon, color: theme.colorScheme.primary),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.copy_rounded, size: 18, color: Color(0xFF64748B)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AvatarPickerOption extends StatelessWidget {
+  const _AvatarPickerOption({
+    required this.child,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final Widget child;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: selected
+                    ? theme.colorScheme.primary
+                    : const Color(0xFFE2E8F0),
+                width: 3,
+              ),
+            ),
+            child: child,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: selected
+                  ? theme.colorScheme.primary
+                  : const Color(0xFF64748B),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _ProductDetailScreenState extends State<ProductDetailScreen> {
@@ -3456,12 +4023,16 @@ class CheckoutScreen extends StatefulWidget {
     required this.items,
     required this.mepuBalance,
     required this.productStocks,
+    required this.onCompletePayment,
+    required this.onCancelOrder,
     required this.onPlaceOrder,
   });
 
   final List<Product> items;
   final int mepuBalance;
   final Map<String, int> productStocks;
+  final OrderItem? Function(OrderItem order) onCompletePayment;
+  final ValueChanged<OrderItem> onCancelOrder;
   final OrderItem Function(
     List<Product> items,
     String paymentMethod,
@@ -3498,10 +4069,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       deliveryFee,
       serviceFee,
     );
-    final total = (subtotal + deliveryFee + serviceFee - voucherDiscount).clamp(
-      0,
-      subtotal + deliveryFee + serviceFee,
-    ).toInt();
+    final total = (subtotal + deliveryFee + serviceFee - voucherDiscount)
+        .clamp(0, subtotal + deliveryFee + serviceFee)
+        .toInt();
 
     return Scaffold(
       appBar: AppBar(title: const Text('Checkout')),
@@ -3574,15 +4144,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   title: const Text('Kirim ke Rumah'),
                   subtitle: Text(address),
                   selected: deliveryMethod == 'Kirim ke Rumah',
-                  onTap: () =>
-                      setState(() => deliveryMethod = 'Kirim ke Rumah'),
+                  onTap: () => _updateDeliveryMethod(context, 'Kirim ke Rumah'),
                 ),
                 _CheckoutOption(
                   title: const Text('Ambil di Koperasi'),
                   subtitle: const Text('MepuPoin Sukamaju - Pickup Counter'),
                   selected: deliveryMethod == 'Ambil di Koperasi',
                   onTap: () =>
-                      setState(() => deliveryMethod = 'Ambil di Koperasi'),
+                      _updateDeliveryMethod(context, 'Ambil di Koperasi'),
                 ),
               ],
             ),
@@ -3633,8 +4202,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ),
                 _CheckoutOption(
                   title: const Text('Bayar di Koperasi'),
-                  subtitle: const Text('Bayar saat mengambil pesanan'),
+                  subtitle: Text(
+                    deliveryMethod == 'Kirim ke Rumah'
+                        ? 'Tersedia hanya untuk pesanan ambil di koperasi'
+                        : 'Bayar saat mengambil pesanan',
+                  ),
                   selected: paymentMethod == 'Bayar di Koperasi',
+                  enabled: deliveryMethod == 'Ambil di Koperasi',
                   onTap: () =>
                       setState(() => paymentMethod = 'Bayar di Koperasi'),
                 ),
@@ -3735,10 +4309,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       deliveryFee,
       serviceFee,
     );
-    final total = (subtotal + deliveryFee + serviceFee - voucherDiscount).clamp(
-      0,
-      subtotal + deliveryFee + serviceFee,
-    ).toInt();
+    final total = (subtotal + deliveryFee + serviceFee - voucherDiscount)
+        .clamp(0, subtotal + deliveryFee + serviceFee)
+        .toInt();
     if (paymentMethod == 'Saldo MepuPoin' && widget.mepuBalance < total) {
       _showFeatureSnack(
         context,
@@ -3757,13 +4330,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       total,
       selectedVoucher?.code,
     );
-    _showFeatureSnack(
-      context,
-      '${order.id} menunggu pembayaran. Lanjutkan dari tab Transaksi.',
-      title: 'Pesanan Berhasil Dibuat',
-      icon: Icons.check_circle_outline_rounded,
-      actionLabel: 'Lihat Transaksi',
-      onAction: () => Navigator.of(context).popUntil((route) => route.isFirst),
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute<void>(
+        builder: (_) => TransactionCompletionScreen(
+          initialOrder: order,
+          onCompletePayment: widget.onCompletePayment,
+          onCancelOrder: widget.onCancelOrder,
+        ),
+      ),
     );
   }
 
@@ -3780,6 +4354,39 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
     return lines.values.toList();
   }
+
+  void _updateDeliveryMethod(BuildContext context, String method) {
+    if (deliveryMethod == method) return;
+
+    final shouldCancelFreeDeliveryVoucher =
+        method == 'Ambil di Koperasi' &&
+        selectedVoucher != null &&
+        _isFreeDeliveryVoucher(selectedVoucher!);
+
+    setState(() {
+      deliveryMethod = method;
+      if (deliveryMethod == 'Kirim ke Rumah' &&
+          paymentMethod == 'Bayar di Koperasi') {
+        paymentMethod = 'Saldo MepuPoin';
+      }
+      if (shouldCancelFreeDeliveryVoucher) {
+        selectedVoucher = null;
+      }
+    });
+
+    if (shouldCancelFreeDeliveryVoucher) {
+      _showFeatureSnack(
+        context,
+        'Voucher gratis ongkir dibatalkan karena pesanan diambil langsung di koperasi.',
+        title: 'Voucher Dibatalkan',
+        icon: Icons.local_shipping_outlined,
+      );
+    }
+  }
+
+  bool _isFreeDeliveryVoucher(CheckoutVoucher voucher) {
+    return voucher.code == 'ONGKIRHEMAT';
+  }
 }
 
 class _CheckoutLineItem {
@@ -3787,6 +4394,618 @@ class _CheckoutLineItem {
 
   final Product product;
   final int quantity;
+}
+
+class TransactionCompletionScreen extends StatefulWidget {
+  const TransactionCompletionScreen({
+    super.key,
+    required this.initialOrder,
+    required this.onCompletePayment,
+    required this.onCancelOrder,
+  });
+
+  final OrderItem initialOrder;
+  final OrderItem? Function(OrderItem order) onCompletePayment;
+  final ValueChanged<OrderItem> onCancelOrder;
+
+  @override
+  State<TransactionCompletionScreen> createState() =>
+      _TransactionCompletionScreenState();
+}
+
+class _TransactionCompletionScreenState
+    extends State<TransactionCompletionScreen> {
+  late OrderItem currentOrder = widget.initialOrder;
+
+  bool get _isPending => currentOrder.status == 'Payment Pending';
+  bool get _isTransferBank =>
+      currentOrder.progressLabel.contains('Virtual Account');
+  bool get _isPayAtCoop =>
+      currentOrder.progressLabel.contains('kasir koperasi');
+  bool get _isPickupOrder =>
+      currentOrder.address.contains('Pickup Counter') || _isPayAtCoop;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final accentColor = _isPending
+        ? const Color(0xFF9A6700)
+        : theme.colorScheme.primary;
+    final softBackground = _isPending
+        ? const Color(0xFFFFF8E1)
+        : const Color(0xFFFFF4F5);
+    final summaryChips = _buildSummaryChips();
+
+    return Scaffold(
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        title: Text(_isPending ? 'Selesaikan Transaksi' : 'Pesanan Diproses'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: _isPending
+                    ? const [Color(0xFFFFF4CC), Color(0xFFFFE29A)]
+                    : const [Color(0xFFD9001B), Color(0xFF8B0011)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(28),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 52,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: _isPending
+                            ? Colors.white.withValues(alpha: 0.55)
+                            : Colors.white.withValues(alpha: 0.16),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        _isPending
+                            ? Icons.payments_outlined
+                            : Icons.check_circle_rounded,
+                        color: _isPending
+                            ? const Color(0xFF9A6700)
+                            : Colors.white,
+                        size: 30,
+                      ),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _isPending
+                            ? const Color(0x66FFFFFF)
+                            : Colors.white.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        _isPending ? 'Menunggu Pembayaran' : 'Pembayaran Berhasil',
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: _isPending
+                              ? const Color(0xFF6D4C00)
+                              : Colors.white,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  _isPending
+                      ? 'Selesaikan pembayaran agar pesanan diproses'
+                      : 'Pesanan kamu sudah masuk dan sedang diproses',
+                  style: theme.textTheme.headlineMedium?.copyWith(
+                    color: _isPending ? const Color(0xFF5C4100) : Colors.white,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'No. pesanan ${currentOrder.id}',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: _isPending
+                        ? const Color(0xFF7A5A00)
+                        : Colors.white70,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  currentOrder.progressLabel,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: _isPending ? const Color(0xFF5C4100) : Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: summaryChips,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          _CheckoutSection(
+            title: 'Status Pesanan',
+            child: Column(
+              children: [
+                _DetailRow(
+                  icon: Icons.account_balance_wallet_outlined,
+                  label: 'Metode pembayaran',
+                  value: _paymentMethodLabel(),
+                ),
+                const SizedBox(height: 14),
+                _DetailRow(
+                  icon: _isPickupOrder
+                      ? Icons.storefront_outlined
+                      : Icons.local_shipping_outlined,
+                  label: _isPickupOrder ? 'Metode penerimaan' : 'Metode pengiriman',
+                  value: _isPickupOrder ? 'Ambil di koperasi' : 'Diantar ke alamat',
+                ),
+                const SizedBox(height: 14),
+                _DetailRow(
+                  icon: Icons.schedule_outlined,
+                  label: _isPickupOrder ? 'Estimasi siap diambil' : 'Estimasi tiba',
+                  value: _estimatedFulfillmentText(),
+                ),
+                const SizedBox(height: 14),
+                _DetailRow(
+                  icon: Icons.verified_user_outlined,
+                  label: 'Status saat ini',
+                  value: _statusText(),
+                  emphasizeValue: true,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          _CheckoutSection(
+            title: 'Ringkasan Pesanan',
+            child: Column(
+              children: [
+                _PriceRow(
+                  label: 'Total Tagihan',
+                  value: currentOrder.total,
+                  emphasized: true,
+                ),
+                const SizedBox(height: 6),
+                InfoRow(label: 'Alamat / Pickup', value: currentOrder.address),
+                InfoRow(label: 'Waktu pesanan', value: currentOrder.createdAt),
+                InfoRow(label: 'Item', value: currentOrder.items.join(', ')),
+              ],
+            ),
+          ),
+          if (_isTransferBank) ...[
+            const SizedBox(height: 18),
+            _CheckoutSection(
+              title: 'Pembayaran Virtual Account',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Bank tujuan: BNI Virtual Account',
+                    style: theme.textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _extractVirtualAccount(currentOrder),
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: softBackground,
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Nominal yang harus dibayar',
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            color: const Color(0xFF64748B),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          formatRupiah(currentOrder.total),
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            color: accentColor,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Lakukan transfer tepat sesuai nominal agar sistem memverifikasi pembayaran secara otomatis.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (_isPayAtCoop) ...[
+            const SizedBox(height: 18),
+            _CheckoutSection(
+              title: 'Instruksi Ambil di Koperasi',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Tunjukkan nomor pesanan ke petugas koperasi dan lakukan pembayaran di kasir sebelum barang diambil.',
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF4F5),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Kode pengambilan',
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            color: const Color(0xFF64748B),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'PKP-${currentOrder.id.split('-').last}',
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (!_isPending) ...[
+            const SizedBox(height: 18),
+            _CheckoutSection(
+              title: 'Langkah Berikutnya',
+              child: Column(
+                children: [
+                  _NextStepTile(
+                    icon: Icons.inventory_2_outlined,
+                    title: 'Tim koperasi menyiapkan pesanan',
+                    subtitle: _isPickupOrder
+                        ? 'Barang akan disiapkan sebelum siap diambil di koperasi.'
+                        : 'Barang akan dicek dan dikemas sebelum diserahkan ke kurir.',
+                  ),
+                  const SizedBox(height: 12),
+                  _NextStepTile(
+                    icon: _isPickupOrder
+                        ? Icons.notifications_active_outlined
+                        : Icons.local_shipping_outlined,
+                    title: _isPickupOrder
+                        ? 'Kamu akan mendapat notifikasi saat siap diambil'
+                        : 'Status kurir akan muncul di tab Pesanan',
+                    subtitle: _isPickupOrder
+                        ? 'Datang ke koperasi sesuai jam operasional saat notifikasi muncul.'
+                        : 'Pantau pergerakan pesanan dari tab Pesanan Aktif.',
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.support_agent_rounded, color: accentColor),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Butuh bantuan? Hubungi admin koperasi jika ada kendala pembayaran atau pengiriman.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: const Color(0xFF475569),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+          ),
+          child: Row(
+            children: [
+              if (_isPending) ...[
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () {
+                      widget.onCancelOrder(currentOrder);
+                      Navigator.of(context).popUntil((route) => route.isFirst);
+                    },
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(52),
+                    ),
+                    child: const Text('Batalkan'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+              ],
+              Expanded(
+                child: FilledButton(
+                  onPressed: _isPending ? _completeTransaction : _backToHome,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                    backgroundColor: theme.colorScheme.primary,
+                  ),
+                  child: Text(
+                    _isPending
+                        ? (_isTransferBank
+                              ? 'Saya Sudah Bayar'
+                              : 'Selesaikan Transaksi')
+                        : 'Kembali ke Beranda',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _completeTransaction() {
+    final updatedOrder = widget.onCompletePayment(currentOrder);
+    if (updatedOrder == null || !mounted) return;
+    setState(() => currentOrder = updatedOrder);
+  }
+
+  void _backToHome() {
+    Navigator.of(context).popUntil((route) => route.isFirst);
+  }
+
+  List<Widget> _buildSummaryChips() {
+    final textColor = _isPending ? const Color(0xFF6D4C00) : Colors.white;
+    final backgroundColor = _isPending
+        ? Colors.white.withValues(alpha: 0.55)
+        : Colors.white.withValues(alpha: 0.14);
+
+    return [
+      _StatusChip(
+        icon: Icons.receipt_long_outlined,
+        label: formatRupiah(currentOrder.total),
+        backgroundColor: backgroundColor,
+        foregroundColor: textColor,
+      ),
+      _StatusChip(
+        icon: _isPickupOrder
+            ? Icons.storefront_outlined
+            : Icons.local_shipping_outlined,
+        label: _isPickupOrder ? 'Pickup koperasi' : 'Diantar kurir',
+        backgroundColor: backgroundColor,
+        foregroundColor: textColor,
+      ),
+      _StatusChip(
+        icon: Icons.schedule_outlined,
+        label: _estimatedFulfillmentText(),
+        backgroundColor: backgroundColor,
+        foregroundColor: textColor,
+      ),
+    ];
+  }
+
+  String _paymentMethodLabel() {
+    if (_isTransferBank) return 'Transfer Bank BNI Virtual Account';
+    if (_isPayAtCoop) return 'Bayar di Koperasi';
+    return 'Saldo MepuPoin';
+  }
+
+  String _estimatedFulfillmentText() {
+    if (_isPending && _isTransferBank) return 'Bayar dalam 1 x 24 jam';
+    if (_isPending && _isPayAtCoop) return 'Bayar saat pengambilan';
+    if (_isPickupOrder) return 'Siap diambil hari ini, 15.00 - 18.00';
+    return 'Tiba hari ini, 16.00 - 19.00';
+  }
+
+  String _statusText() {
+    if (_isPending) return 'Menunggu pembayaran dari kamu';
+    if (_isPickupOrder) return 'Pesanan sedang disiapkan untuk pickup';
+    return 'Pesanan sedang diproses menuju pengiriman';
+  }
+
+  String _extractVirtualAccount(OrderItem order) {
+    final match = RegExp(r'(\d{8,})').firstMatch(order.progressLabel);
+    return match?.group(1) ?? '880800000000';
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({
+    required this.icon,
+    required this.label,
+    required this.backgroundColor,
+    required this.foregroundColor,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color backgroundColor;
+  final Color foregroundColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: foregroundColor),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: foregroundColor,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.emphasizeValue = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool emphasizeValue;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.primary.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Icon(icon, color: theme.colorScheme.primary, size: 20),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: const Color(0xFF64748B),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: (emphasizeValue
+                        ? theme.textTheme.titleMedium
+                        : theme.textTheme.bodyLarge)
+                    ?.copyWith(
+                      fontWeight: emphasizeValue ? FontWeight.w800 : FontWeight.w600,
+                    ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _NextStepTile extends StatelessWidget {
+  const _NextStepTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.primary.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Icon(icon, color: theme.colorScheme.primary, size: 20),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: const Color(0xFF64748B),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 int _voucherDiscount(
@@ -3859,7 +5078,9 @@ class _VoucherSelector extends StatelessWidget {
                           height: 46,
                           decoration: BoxDecoration(
                             color: eligible
-                                ? theme.colorScheme.primary.withValues(alpha: 0.10)
+                                ? theme.colorScheme.primary.withValues(
+                                    alpha: 0.10,
+                                  )
                                 : const Color(0xFFE2E8F0),
                             borderRadius: BorderRadius.circular(16),
                           ),
@@ -3968,7 +5189,10 @@ class _AppliedVoucherCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.confirmation_number_outlined, color: Color(0xFF15803D)),
+          const Icon(
+            Icons.confirmation_number_outlined,
+            color: Color(0xFF15803D),
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -4019,18 +5243,20 @@ class _CheckoutOption extends StatelessWidget {
     required this.subtitle,
     required this.selected,
     required this.onTap,
+    this.enabled = true,
   });
 
   final Widget title;
   final Widget subtitle;
   final bool selected;
   final VoidCallback onTap;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return InkWell(
-      onTap: onTap,
+      onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(14),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
@@ -4040,7 +5266,9 @@ class _CheckoutOption extends StatelessWidget {
               selected
                   ? Icons.radio_button_checked_rounded
                   : Icons.radio_button_off_rounded,
-              color: selected
+              color: !enabled
+                  ? const Color(0xFFCBD5E1)
+                  : selected
                   ? theme.colorScheme.primary
                   : const Color(0xFF94A3B8),
             ),
@@ -4050,14 +5278,19 @@ class _CheckoutOption extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   DefaultTextStyle(
-                    style: theme.textTheme.titleMedium ?? const TextStyle(),
+                    style: (theme.textTheme.titleMedium ?? const TextStyle())
+                        .copyWith(
+                          color: enabled ? null : const Color(0xFF94A3B8),
+                        ),
                     child: title,
                   ),
                   const SizedBox(height: 3),
                   DefaultTextStyle(
                     style:
                         theme.textTheme.bodyMedium?.copyWith(
-                          color: const Color(0xFF64748B),
+                          color: enabled
+                              ? const Color(0xFF64748B)
+                              : const Color(0xFF94A3B8),
                         ) ??
                         const TextStyle(),
                     child: subtitle,
@@ -4121,9 +5354,11 @@ class OrderDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tracking = _buildTrackingView(order);
+    final isPickupOrder = _isPickupOrder(order);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Order Detail')),
+      appBar: AppBar(title: const Text('Detail Pesanan')),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -4157,21 +5392,24 @@ class OrderDetailScreen extends StatelessWidget {
                 Row(
                   children: [
                     Expanded(
-                      child: _StatusNode(label: 'Order Placed', active: true),
-                    ),
-                    Expanded(
-                      child: _StatusNode(label: 'Prepared', active: true),
+                      child: _StatusNode(label: tracking.steps[0].label, active: true),
                     ),
                     Expanded(
                       child: _StatusNode(
-                        label: 'Delivery',
-                        active: order.status != 'Ready for Pickup',
+                        label: tracking.steps[1].label,
+                        active: tracking.activeStepIndex >= 1,
                       ),
                     ),
                     Expanded(
                       child: _StatusNode(
-                        label: 'Done',
-                        active: order.status == 'Completed',
+                        label: tracking.steps[2].label,
+                        active: tracking.activeStepIndex >= 2,
+                      ),
+                    ),
+                    Expanded(
+                      child: _StatusNode(
+                        label: tracking.steps[3].label,
+                        active: tracking.activeStepIndex >= 3,
                       ),
                     ),
                   ],
@@ -4194,7 +5432,7 @@ class OrderDetailScreen extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           _InfoPanel(
-            title: 'Delivery / Pickup',
+            title: isPickupOrder ? 'Status Pengambilan' : 'Lacak Kurir',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -4235,6 +5473,44 @@ class OrderDetailScreen extends StatelessWidget {
                     ],
                   ),
                 ),
+                const SizedBox(height: 18),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF7F7),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFFF3C7CC)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        tracking.referenceLabel,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      for (var i = 0; i < tracking.steps.length; i++)
+                        Padding(
+                          padding: EdgeInsets.only(
+                            bottom: i == tracking.steps.length - 1 ? 0 : 12,
+                          ),
+                          child: _TrackingTimelineTile(
+                            label: tracking.steps[i].label,
+                            note: _timelineNoteForStep(
+                              order: order,
+                              stepIndex: i,
+                              isPickupOrder: isPickupOrder,
+                            ),
+                            active: i <= tracking.activeStepIndex,
+                            isLast: i == tracking.steps.length - 1,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -4242,7 +5518,9 @@ class OrderDetailScreen extends StatelessWidget {
           FilledButton(
             onPressed: () => _showFeatureSnack(
               context,
-              'Pelacakan pesanan ${order.id} siap dibuka.',
+              isPickupOrder
+                  ? 'Status pengambilan ${order.id} sudah diperbarui.'
+                  : 'Kurir untuk pesanan ${order.id} sedang dipantau.',
             ),
             style: FilledButton.styleFrom(
               minimumSize: const Size.fromHeight(58),
@@ -4251,12 +5529,110 @@ class OrderDetailScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(18),
               ),
             ),
-            child: const Text('Track Order'),
+            child: Text(isPickupOrder ? 'Perbarui Status Pickup' : 'Segarkan Tracking'),
           ),
         ],
       ),
     );
   }
+}
+
+class _TrackingTimelineTile extends StatelessWidget {
+  const _TrackingTimelineTile({
+    required this.label,
+    required this.note,
+    required this.active,
+    required this.isLast,
+  });
+
+  final String label;
+  final String note;
+  final bool active;
+  final bool isLast;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final accent = active ? theme.colorScheme.primary : const Color(0xFFCBD5E1);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 26,
+          child: Column(
+            children: [
+              Icon(
+                active ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+                color: accent,
+                size: 20,
+              ),
+              if (!isLast)
+                Container(
+                  width: 2,
+                  height: 34,
+                  margin: const EdgeInsets.only(top: 4),
+                  color: accent.withValues(alpha: active ? 0.65 : 1),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: active ? const Color(0xFF111827) : const Color(0xFF64748B),
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  note,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+String _timelineNoteForStep({
+  required OrderItem order,
+  required int stepIndex,
+  required bool isPickupOrder,
+}) {
+  if (isPickupOrder) {
+    const pickupNotes = [
+      'Pesanan sudah diterima oleh sistem koperasi.',
+      'Tim toko sedang menyiapkan barang untuk diambil.',
+      'Pesanan siap diambil di counter koperasi.',
+      'Pesanan sudah selesai diambil.',
+    ];
+    return stepIndex == _pickupTrackingIndex(order.status)
+        ? order.progressLabel
+        : pickupNotes[stepIndex];
+  }
+
+  const deliveryNotes = [
+    'Pesanan sudah dikonfirmasi dan menunggu proses gudang.',
+    'Barang sedang dikemas oleh tim koperasi.',
+    'Kurir sedang menuju alamat pengantaran.',
+    'Pesanan sudah diterima di alamat tujuan.',
+  ];
+  return stepIndex == _deliveryTrackingIndex(order.status)
+      ? order.progressLabel
+      : deliveryNotes[stepIndex];
 }
 
 class SettingDetailScreen extends StatelessWidget {
@@ -4325,9 +5701,11 @@ class EditProfileScreen extends StatefulWidget {
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _imagePicker = ImagePicker();
   late final TextEditingController _nameController;
   late final TextEditingController _phoneController;
   late final TextEditingController _emailController;
+  late String _selectedAvatarUrl;
 
   @override
   void initState() {
@@ -4335,6 +5713,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _nameController = TextEditingController(text: widget.profile.name);
     _phoneController = TextEditingController(text: widget.profile.phone);
     _emailController = TextEditingController(text: widget.profile.email);
+    _selectedAvatarUrl = widget.profile.avatarUrl;
   }
 
   @override
@@ -4366,7 +5745,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    const ProfileAvatar(radius: 56, bordered: false),
+                    ProfileAvatar(
+                      radius: 56,
+                      bordered: false,
+                      imageUrl: _selectedAvatarUrl,
+                      initials: _initialsFromName(_nameController.text.trim()),
+                    ),
                     Positioned(
                       right: -4,
                       bottom: 2,
@@ -4375,12 +5759,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         shape: const CircleBorder(),
                         child: InkWell(
                           customBorder: const CircleBorder(),
-                          onTap: () => _showFeatureSnack(
-                            context,
-                            'Fitur ubah foto profil siap dikembangkan.',
-                            title: 'Foto Profil',
-                            icon: Icons.photo_camera_outlined,
-                          ),
+                          onTap: _pickProfilePhoto,
                           child: const Padding(
                             padding: EdgeInsets.all(12),
                             child: Icon(
@@ -4425,6 +5804,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   TextFormField(
                     controller: _nameController,
                     textInputAction: TextInputAction.next,
+                    onChanged: (_) => setState(() {}),
                     decoration: const InputDecoration(
                       labelText: 'Nama Lengkap',
                       prefixIcon: Icon(Icons.person_outline_rounded),
@@ -4508,7 +5888,129 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         name: _nameController.text.trim(),
         phone: _phoneController.text.trim(),
         email: _emailController.text.trim(),
+        avatarUrl: _selectedAvatarUrl,
       ),
+    );
+  }
+
+  Future<void> _pickProfilePhoto() async {
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) {
+        final theme = Theme.of(context);
+        return SafeArea(
+          child: FractionallySizedBox(
+            heightFactor: 0.72,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Pilih Foto Profil',
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Unggah foto dari galeri atau pilih avatar yang ingin digunakan untuk akun kamu.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => Navigator.of(context).pop('__upload__'),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(52),
+                      ),
+                      icon: const Icon(Icons.upload_rounded),
+                      label: const Text('Upload dari Galeri'),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: GridView.count(
+                      crossAxisCount: 3,
+                      mainAxisSpacing: 16,
+                      crossAxisSpacing: 16,
+                      childAspectRatio: 0.88,
+                      children: [
+                        _AvatarPickerOption(
+                          label: 'Inisial',
+                          selected: _selectedAvatarUrl == _initialsAvatarKey,
+                          onTap: () =>
+                              Navigator.of(context).pop(_initialsAvatarKey),
+                          child: ProfileAvatar(
+                            radius: 34,
+                            bordered: false,
+                            imageUrl: _initialsAvatarKey,
+                            initials: _initialsFromName(
+                              _nameController.text.trim(),
+                            ),
+                          ),
+                        ),
+                        for (final avatarUrl in _profileAvatarOptions)
+                          _AvatarPickerOption(
+                            label: 'Avatar',
+                            selected: avatarUrl == _selectedAvatarUrl,
+                            onTap: () => Navigator.of(context).pop(avatarUrl),
+                            child: ProfileAvatar(
+                              radius: 34,
+                              bordered: false,
+                              imageUrl: avatarUrl,
+                              initials: _initialsFromName(
+                                _nameController.text.trim(),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    if (!mounted || selected == null) return;
+    if (selected == '__upload__') {
+      await _uploadProfilePhoto();
+      return;
+    }
+    setState(() => _selectedAvatarUrl = selected);
+    _showFeatureSnack(
+      context,
+      selected == _initialsAvatarKey
+          ? 'Avatar inisial dipilih dan siap disimpan.'
+          : 'Foto profil baru dipilih dan siap disimpan.',
+      title: 'Foto Profil',
+      icon: selected == _initialsAvatarKey
+          ? Icons.text_fields_rounded
+          : Icons.photo_camera_outlined,
+    );
+  }
+
+  Future<void> _uploadProfilePhoto() async {
+    final file = await _imagePicker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1800,
+      imageQuality: 88,
+    );
+    if (!mounted || file == null) return;
+    setState(() => _selectedAvatarUrl = file.path);
+    _showFeatureSnack(
+      context,
+      'Foto dari galeri berhasil dipilih dan siap disimpan.',
+      title: 'Upload Berhasil',
+      icon: Icons.image_outlined,
     );
   }
 }
@@ -4517,14 +6019,12 @@ class CartScreen extends StatefulWidget {
   const CartScreen({
     super.key,
     required this.items,
-    required this.onRemoveItem,
-    required this.onClearCart,
+    required this.onCartChanged,
     required this.onCheckout,
   });
 
   final List<Product> items;
-  final ValueChanged<int> onRemoveItem;
-  final VoidCallback onClearCart;
+  final ValueChanged<List<Product>> onCartChanged;
   final ValueChanged<List<Product>> onCheckout;
 
   @override
@@ -4532,33 +6032,44 @@ class CartScreen extends StatefulWidget {
 }
 
 class _CartScreenState extends State<CartScreen> {
-  late final List<Product> cartProducts = List<Product>.of(widget.items);
-  late bool selectAll = cartProducts.isNotEmpty;
+  late final List<_CartEntry> cartEntries = _groupCartItems(widget.items);
+  late final Set<String> selectedProductIds = {
+    for (final entry in cartEntries) entry.product.id,
+  };
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final totalPrice = selectAll
-        ? cartProducts.fold<int>(0, (total, product) => total + product.price)
-        : 0;
+    final allSelected =
+        cartEntries.isNotEmpty &&
+        selectedProductIds.length == cartEntries.length;
+    final totalPrice = cartEntries.fold<int>(0, (total, entry) {
+      if (!selectedProductIds.contains(entry.product.id)) {
+        return total;
+      }
+      return total + (entry.product.price * entry.quantity);
+    });
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Keranjang'),
         actions: [
           TextButton(
-            onPressed: cartProducts.isEmpty
+            onPressed: cartEntries.isEmpty
                 ? null
                 : () {
-                    widget.onClearCart();
-                    setState(cartProducts.clear);
+                    setState(() {
+                      cartEntries.clear();
+                      selectedProductIds.clear();
+                    });
+                    _notifyCartChanged();
                     _showFeatureSnack(context, 'Keranjang dikosongkan.');
                   },
             child: const Text('Hapus Semua'),
           ),
         ],
       ),
-      body: cartProducts.isEmpty
+      body: cartEntries.isEmpty
           ? Center(
               child: Padding(
                 padding: const EdgeInsets.all(28),
@@ -4589,22 +6100,34 @@ class _CartScreenState extends State<CartScreen> {
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
               children: [
                 CheckboxListTile(
-                  value: selectAll,
-                  onChanged: (value) =>
-                      setState(() => selectAll = value ?? false),
+                  value: allSelected,
+                  onChanged: (value) {
+                    setState(() {
+                      if (value ?? false) {
+                        selectedProductIds
+                          ..clear()
+                          ..addAll(
+                            cartEntries.map((entry) => entry.product.id),
+                          );
+                      } else {
+                        selectedProductIds.clear();
+                      }
+                    });
+                  },
                   title: const Text('Pilih Semua'),
                   controlAffinity: ListTileControlAffinity.leading,
                   contentPadding: EdgeInsets.zero,
                 ),
                 const SizedBox(height: 8),
-                for (var index = 0; index < cartProducts.length; index++)
+                for (var index = 0; index < cartEntries.length; index++)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: Builder(
                       builder: (context) {
-                        final product = cartProducts[index];
+                        final entry = cartEntries[index];
+                        final product = entry.product;
                         return Dismissible(
-                          key: ValueKey('${product.id}-$index'),
+                          key: ValueKey(product.id),
                           direction: DismissDirection.endToStart,
                           background: Container(
                             alignment: Alignment.centerRight,
@@ -4619,8 +6142,7 @@ class _CartScreenState extends State<CartScreen> {
                             ),
                           ),
                           onDismissed: (_) {
-                            widget.onRemoveItem(index);
-                            setState(() => cartProducts.removeAt(index));
+                            _removeEntryAt(index);
                           },
                           child: Container(
                             padding: const EdgeInsets.all(12),
@@ -4634,10 +6156,18 @@ class _CartScreenState extends State<CartScreen> {
                             child: Row(
                               children: [
                                 Checkbox(
-                                  value: selectAll,
-                                  onChanged: (value) => setState(
-                                    () => selectAll = value ?? false,
+                                  value: selectedProductIds.contains(
+                                    product.id,
                                   ),
+                                  onChanged: (value) {
+                                    setState(() {
+                                      if (value ?? false) {
+                                        selectedProductIds.add(product.id);
+                                      } else {
+                                        selectedProductIds.remove(product.id);
+                                      }
+                                    });
+                                  },
                                 ),
                                 SizedBox(
                                   width: 72,
@@ -4675,14 +6205,26 @@ class _CartScreenState extends State<CartScreen> {
                                         children: [
                                           _QuantityMiniButton(
                                             icon: Icons.remove,
+                                            onTap: entry.quantity > 1
+                                                ? () => _changeQuantity(
+                                                    index,
+                                                    entry.quantity - 1,
+                                                  )
+                                                : null,
                                           ),
-                                          const Padding(
+                                          Padding(
                                             padding: EdgeInsets.symmetric(
                                               horizontal: 10,
                                             ),
-                                            child: Text('1'),
+                                            child: Text('${entry.quantity}'),
                                           ),
-                                          _QuantityMiniButton(icon: Icons.add),
+                                          _QuantityMiniButton(
+                                            icon: Icons.add,
+                                            onTap: () => _changeQuantity(
+                                              index,
+                                              entry.quantity + 1,
+                                            ),
+                                          ),
                                         ],
                                       ),
                                     ],
@@ -4690,10 +6232,7 @@ class _CartScreenState extends State<CartScreen> {
                                 ),
                                 IconButton(
                                   onPressed: () {
-                                    widget.onRemoveItem(index);
-                                    setState(
-                                      () => cartProducts.removeAt(index),
-                                    );
+                                    _removeEntryAt(index);
                                     _showFeatureSnack(
                                       context,
                                       '${product.name} dihapus dari keranjang.',
@@ -4740,7 +6279,7 @@ class _CartScreenState extends State<CartScreen> {
               FilledButton(
                 onPressed: totalPrice == 0
                     ? null
-                    : () => widget.onCheckout(List<Product>.of(cartProducts)),
+                    : () => widget.onCheckout(_selectedProducts()),
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(138, 52),
                   backgroundColor: theme.colorScheme.primary,
@@ -4756,25 +6295,91 @@ class _CartScreenState extends State<CartScreen> {
       ),
     );
   }
+
+  List<_CartEntry> _groupCartItems(List<Product> items) {
+    final entries = <String, _CartEntry>{};
+    for (final product in items) {
+      final existing = entries[product.id];
+      entries[product.id] = existing == null
+          ? _CartEntry(product: product, quantity: 1)
+          : _CartEntry(product: product, quantity: existing.quantity + 1);
+    }
+    return entries.values.toList();
+  }
+
+  void _removeEntryAt(int index) {
+    if (index < 0 || index >= cartEntries.length) return;
+    setState(() {
+      selectedProductIds.remove(cartEntries[index].product.id);
+      cartEntries.removeAt(index);
+    });
+    _notifyCartChanged();
+  }
+
+  void _changeQuantity(int index, int newQuantity) {
+    if (index < 0 || index >= cartEntries.length || newQuantity < 1) return;
+    setState(() {
+      cartEntries[index] = _CartEntry(
+        product: cartEntries[index].product,
+        quantity: newQuantity,
+      );
+    });
+    _notifyCartChanged();
+  }
+
+  List<Product> _selectedProducts() {
+    final selected = <Product>[];
+    for (final entry in cartEntries) {
+      if (!selectedProductIds.contains(entry.product.id)) continue;
+      selected.addAll(List<Product>.filled(entry.quantity, entry.product));
+    }
+    return selected;
+  }
+
+  void _notifyCartChanged() {
+    final items = <Product>[];
+    for (final entry in cartEntries) {
+      items.addAll(List<Product>.filled(entry.quantity, entry.product));
+    }
+    widget.onCartChanged(items);
+  }
 }
 
 class _QuantityMiniButton extends StatelessWidget {
-  const _QuantityMiniButton({required this.icon});
+  const _QuantityMiniButton({required this.icon, this.onTap});
 
   final IconData icon;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 28,
-      height: 28,
-      decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
-        borderRadius: BorderRadius.circular(8),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        width: 28,
+        height: 28,
+        decoration: BoxDecoration(
+          color: onTap == null
+              ? const Color(0xFFE2E8F0)
+              : const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(
+          icon,
+          size: 16,
+          color: onTap == null ? const Color(0xFF94A3B8) : null,
+        ),
       ),
-      child: Icon(icon, size: 16),
     );
   }
+}
+
+class _CartEntry {
+  const _CartEntry({required this.product, required this.quantity});
+
+  final Product product;
+  final int quantity;
 }
 
 class BalanceCard extends StatelessWidget {
@@ -4917,8 +6522,8 @@ class BalanceCard extends StatelessWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: QuickActionButton(
-                      label: 'History',
-                      icon: Icons.history_rounded,
+                      label: 'Pesanan',
+                      icon: Icons.local_shipping_outlined,
                       onTap: () => onChangeTab(2),
                     ),
                   ),
@@ -5128,42 +6733,11 @@ class ProductCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: ProductMedia(
-                      product: product,
-                      borderRadius: BorderRadius.circular(18),
-                      fit: isCompact ? BoxFit.cover : BoxFit.contain,
-                      padding: EdgeInsets.all(isCompact ? 8 : 14),
-                    ),
-                  ),
-                  Positioned(
-                    top: 10,
-                    left: 10,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFD9001B),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        isCatalog
-                            ? product.badge
-                            : '${discountPercent(product)}% OFF',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.labelMedium?.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+              child: ProductMedia(
+                product: product,
+                borderRadius: BorderRadius.circular(18),
+                fit: isCompact ? BoxFit.cover : BoxFit.contain,
+                padding: EdgeInsets.all(isCompact ? 8 : 14),
               ),
             ),
             SizedBox(height: isCompact ? 10 : 12),
@@ -5501,14 +7075,25 @@ class SearchField extends StatelessWidget {
 }
 
 class ProfileAvatar extends StatelessWidget {
-  const ProfileAvatar({super.key, required this.radius, this.bordered = true});
+  const ProfileAvatar({
+    super.key,
+    required this.radius,
+    this.bordered = true,
+    this.imageUrl = _profileImageUrl,
+    this.initials = 'BS',
+  });
 
   final double radius;
   final bool bordered;
+  final String imageUrl;
+  final String initials;
 
   @override
   Widget build(BuildContext context) {
     final imageRadius = bordered ? radius - 2 : radius - 6;
+    final isInitialsOnly = imageUrl == _initialsAvatarKey;
+    final isNetworkImage =
+        imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
     return CircleAvatar(
       radius: radius,
       backgroundColor: bordered ? const Color(0xFFD9001B) : Colors.white,
@@ -5517,28 +7102,75 @@ class ProfileAvatar extends StatelessWidget {
         backgroundColor: const Color(0xFFE8ECEF),
         child: ClipOval(
           child: SizedBox.expand(
-            child: NetworkImageBox(
-              imageUrl: _profileImageUrl,
-              fit: BoxFit.cover,
-              fallback: ColoredBox(
-                color: const Color(0xFF25313B),
-                child: Center(
-                  child: Text(
-                    'BS',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                      fontSize: radius * 0.36,
+            child: isInitialsOnly
+                ? ColoredBox(
+                    color: const Color(0xFF25313B),
+                    child: Center(
+                      child: Text(
+                        initials,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: radius * 0.36,
+                        ),
+                      ),
                     ),
+                  )
+                : isNetworkImage
+                ? NetworkImageBox(
+                    imageUrl: imageUrl,
+                    fit: BoxFit.cover,
+                    fallback: ColoredBox(
+                      color: const Color(0xFF25313B),
+                      child: Center(
+                        child: Text(
+                          initials,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: radius * 0.36,
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                : Image.file(
+                    File(imageUrl),
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return ColoredBox(
+                        color: const Color(0xFF25313B),
+                        child: Center(
+                          child: Text(
+                            initials,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              fontSize: radius * 0.36,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
-                ),
-              ),
-            ),
           ),
         ),
       ),
     );
   }
+}
+
+String _initialsFromName(String name) {
+  final parts = name
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((part) => part.isNotEmpty)
+      .toList();
+  if (parts.isEmpty) return 'MP';
+  if (parts.length == 1) {
+    return parts.first.substring(0, parts.first.length.clamp(0, 2)).toUpperCase();
+  }
+  return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
 }
 
 class _HeaderActionButton extends StatelessWidget {
@@ -5643,8 +7275,7 @@ class KdmpBottomNavigationBar extends StatelessWidget {
     const items = [
       (Icons.home_filled, 'Home'),
       (Icons.storefront_rounded, 'Shop'),
-      (Icons.history_rounded, 'History'),
-      (Icons.receipt_long_outlined, 'Transaksi'),
+      (Icons.local_shipping_outlined, 'Pesanan'),
       (Icons.person_outline_rounded, 'Akun'),
     ];
 

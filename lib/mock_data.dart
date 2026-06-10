@@ -6,7 +6,6 @@ const categories = <CategoryItem>[
   CategoryItem(label: 'Grocery', icon: Icons.local_grocery_store_rounded),
   CategoryItem(label: 'Fresh', icon: Icons.eco_outlined),
   CategoryItem(label: 'Pharmacy', icon: Icons.medical_services_outlined),
-  CategoryItem(label: 'Electronics', icon: Icons.devices_outlined),
   CategoryItem(label: 'Services', icon: Icons.support_agent_outlined),
 ];
 
@@ -206,11 +205,6 @@ const activities = <ActivityEntry>[
 ];
 
 const profileSettings = <SettingShortcut>[
-  SettingShortcut(
-    title: 'Personal Info',
-    subtitle: 'Kelola nama, nomor telepon, dan email.',
-    icon: Icons.person_outline_rounded,
-  ),
   SettingShortcut(
     title: 'Saved Addresses',
     subtitle: 'Simpan alamat rumah, toko, dan pickup point.',
