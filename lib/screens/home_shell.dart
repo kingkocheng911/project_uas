@@ -35,6 +35,17 @@ const _initialProductStocks = <String, int>{
   'powerbank': 10,
 };
 
+const productCategories = <String>[
+  'Semua',
+  'Makanan',
+  'Minuman',
+  'Sembako',
+  'Alat-alat',
+  'Olahraga',
+  'Elektronik',
+  'Fashion',
+];
+
 class UserProfile {
   const UserProfile({
     required this.name,
@@ -126,6 +137,7 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _currentIndex = 0;
   int _mepuBalance = 150000;
+  String _shopSelectedCategory = 'Semua';
   late UserProfile _profile;
   final Map<String, int> _productStocks = Map<String, int>.of(
     _initialProductStocks,
@@ -152,10 +164,12 @@ class _HomeShellState extends State<HomeShell> {
         onOpenCart: _openCart,
         onAddToCart: _addToCart,
         onTopUp: _openTopUpDialog,
+        onSelectCategory: _openShopCategory,
       ),
       ShopScreen(
         cartItemCount: _cartItems.length,
         productStocks: _productStocks,
+        selectedCategory: _shopSelectedCategory,
         onOpenProduct: _openProduct,
         onOpenCart: _openCart,
         onAddToCart: _addToCart,
@@ -194,6 +208,13 @@ class _HomeShellState extends State<HomeShell> {
 
   void _changeTab(int index) {
     setState(() => _currentIndex = index);
+  }
+
+  void _openShopCategory(String category) {
+    setState(() {
+      _shopSelectedCategory = category;
+      _currentIndex = 1;
+    });
   }
 
   void _openOrder(OrderItem order) {
@@ -1307,6 +1328,7 @@ class DashboardScreen extends StatelessWidget {
     required this.onOpenCart,
     required this.onAddToCart,
     required this.onTopUp,
+    required this.onSelectCategory,
   });
 
   final int cartItemCount;
@@ -1317,6 +1339,7 @@ class DashboardScreen extends StatelessWidget {
   final VoidCallback onOpenCart;
   final ValueChanged<Product> onAddToCart;
   final VoidCallback onTopUp;
+  final ValueChanged<String> onSelectCategory;
 
   @override
   Widget build(BuildContext context) {
@@ -1363,6 +1386,16 @@ class DashboardScreen extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
               child: _MepuPoinBannerCarousel(onTap: () => onChangeTab(1)),
             ),
+          ),
+          SliverToBoxAdapter(
+            child: _MepuPoinSectionHeader(
+              title: 'Kategori Cepat',
+              actionLabel: 'Lihat Semua',
+              onActionTap: () => onSelectCategory('Semua'),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: _CategoryShortcutList(onSelectCategory: onSelectCategory),
           ),
           SliverToBoxAdapter(
             child: _MepuPoinSectionHeader(
@@ -1888,6 +1921,60 @@ class _MepuPoinBannerCarouselState extends State<_MepuPoinBannerCarousel> {
   }
 }
 
+class _CategoryShortcutList extends StatelessWidget {
+  const _CategoryShortcutList({required this.onSelectCategory});
+
+  final ValueChanged<String> onSelectCategory;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return SizedBox(
+      height: 94,
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        scrollDirection: Axis.horizontal,
+        itemCount: productCategories.length - 1,
+        separatorBuilder: (_, _) => const SizedBox(width: 12),
+        itemBuilder: (context, index) {
+          final category = productCategories[index + 1];
+          final icon = categoryIcon(category);
+          return InkWell(
+            onTap: () => onSelectCategory(category),
+            borderRadius: BorderRadius.circular(18),
+            child: Container(
+              width: 82,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, color: theme.colorScheme.primary, size: 24),
+                  const SizedBox(height: 8),
+                  Text(
+                    category,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
 class _BannerSlide {
   const _BannerSlide({
     required this.eyebrow,
@@ -2172,6 +2259,7 @@ class ShopScreen extends StatefulWidget {
     super.key,
     required this.cartItemCount,
     required this.productStocks,
+    required this.selectedCategory,
     required this.onOpenProduct,
     required this.onOpenCart,
     required this.onAddToCart,
@@ -2179,6 +2267,7 @@ class ShopScreen extends StatefulWidget {
 
   final int cartItemCount;
   final Map<String, int> productStocks;
+  final String selectedCategory;
   final ValueChanged<Product> onOpenProduct;
   final VoidCallback onOpenCart;
   final ValueChanged<Product> onAddToCart;
@@ -2188,13 +2277,21 @@ class ShopScreen extends StatefulWidget {
 }
 
 class _ShopScreenState extends State<ShopScreen> {
-  String selectedCategory = 'Semua';
+  late String selectedCategory = widget.selectedCategory;
   String sortOption = 'Terpopuler';
+
+  @override
+  void didUpdateWidget(covariant ShopScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedCategory != widget.selectedCategory) {
+      selectedCategory = widget.selectedCategory;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final categories = ['Semua', 'Makanan', 'Olahraga', 'Rumah'];
+    const categories = productCategories;
     final displayedProducts = _buildSortedProducts();
 
     return CustomScrollView(
@@ -2243,9 +2340,7 @@ class _ShopScreenState extends State<ShopScreen> {
                       final category = categories[index];
                       return _FilterChip(
                         label: category,
-                        icon: index == 0
-                            ? Icons.apps_rounded
-                            : Icons.category_outlined,
+                        icon: categoryIcon(category),
                         selected: selectedCategory == category,
                         onTap: () =>
                             setState(() => selectedCategory = category),
@@ -2287,24 +2382,31 @@ class _ShopScreenState extends State<ShopScreen> {
         ),
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-          sliver: SliverGrid(
-            delegate: SliverChildBuilderDelegate((context, index) {
-              final product = displayedProducts[index];
-              return ProductCard(
-                product: product,
-                stock: widget.productStocks[product.id] ?? 0,
-                variant: ProductCardVariant.catalog,
-                onTap: () => widget.onOpenProduct(product),
-                onAddToCart: () => widget.onAddToCart(product),
-              );
-            }, childCount: displayedProducts.length),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              mainAxisSpacing: 16,
-              crossAxisSpacing: 16,
-              childAspectRatio: 0.72,
-            ),
-          ),
+          sliver: displayedProducts.isEmpty
+              ? SliverToBoxAdapter(
+                  child: _EmptyProductState(
+                    category: selectedCategory,
+                    onReset: () => setState(() => selectedCategory = 'Semua'),
+                  ),
+                )
+              : SliverGrid(
+                  delegate: SliverChildBuilderDelegate((context, index) {
+                    final product = displayedProducts[index];
+                    return ProductCard(
+                      product: product,
+                      stock: widget.productStocks[product.id] ?? 0,
+                      variant: ProductCardVariant.catalog,
+                      onTap: () => widget.onOpenProduct(product),
+                      onAddToCart: () => widget.onAddToCart(product),
+                    );
+                  }, childCount: displayedProducts.length),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 16,
+                    crossAxisSpacing: 16,
+                    childAspectRatio: 0.72,
+                  ),
+                ),
         ),
       ],
     );
@@ -2366,7 +2468,12 @@ class _ShopScreenState extends State<ShopScreen> {
   }
 
   List<Product> _buildSortedProducts() {
-    final sortedProducts = List<Product>.of(products);
+    final filteredProducts = selectedCategory == 'Semua'
+        ? products
+        : products
+              .where((product) => productMatchesCategory(product, selectedCategory))
+              .toList();
+    final sortedProducts = List<Product>.of(filteredProducts);
 
     switch (sortOption) {
       case 'Harga Terendah':
@@ -2393,6 +2500,53 @@ class _ShopScreenState extends State<ShopScreen> {
       default:
         return Icons.swap_vert_rounded;
     }
+  }
+}
+
+class _EmptyProductState extends StatelessWidget {
+  const _EmptyProductState({required this.category, required this.onReset});
+
+  final String category;
+  final VoidCallback onReset;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            Icons.inventory_2_outlined,
+            size: 64,
+            color: theme.colorScheme.primary,
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'Produk tidak ditemukan',
+            style: theme.textTheme.headlineMedium,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Belum ada produk untuk kategori $category.',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 18),
+          OutlinedButton(
+            onPressed: onReset,
+            child: const Text('Tampilkan Semua'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -7893,6 +8047,53 @@ String formatRupiah(int value) {
   }
 
   return 'Rp ${buffer.toString()}';
+}
+
+String productCategory(Product product) {
+  return productCategoriesFor(product).first;
+}
+
+bool productMatchesCategory(Product product, String category) {
+  return category == 'Semua' || productCategoriesFor(product).contains(category);
+}
+
+List<String> productCategoriesFor(Product product) {
+  switch (product.id) {
+    case 'rice':
+    case 'oil':
+      return const ['Sembako', 'Makanan'];
+    case 'coffee':
+      return const ['Minuman', 'Makanan'];
+    case 'honey':
+      return const ['Makanan', 'Sembako'];
+    case 'smartband':
+      return const ['Elektronik', 'Olahraga', 'Fashion'];
+    case 'powerbank':
+      return const ['Elektronik', 'Alat-alat', 'Olahraga'];
+    default:
+      return const ['Alat-alat'];
+  }
+}
+
+IconData categoryIcon(String category) {
+  switch (category) {
+    case 'Makanan':
+      return Icons.restaurant_outlined;
+    case 'Minuman':
+      return Icons.local_cafe_outlined;
+    case 'Sembako':
+      return Icons.shopping_basket_outlined;
+    case 'Alat-alat':
+      return Icons.handyman_outlined;
+    case 'Olahraga':
+      return Icons.sports_soccer_outlined;
+    case 'Elektronik':
+      return Icons.devices_outlined;
+    case 'Fashion':
+      return Icons.checkroom_outlined;
+    default:
+      return Icons.apps_rounded;
+  }
 }
 
 int discountPercent(Product product) {
