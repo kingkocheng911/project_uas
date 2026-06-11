@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'screens/home_shell.dart';
 import 'theme.dart';
@@ -6,17 +9,34 @@ import 'theme.dart';
 const _defaultAvatarUrl =
     'https://lh3.googleusercontent.com/aida-public/AB6AXuBK38PfAiyHOiE6kMysiQgsdlCCaiTZUI4b6gmDIwhe7ReUvEF9AOZtc7zqWWpVxTvrZR01xBh3zwriMDBPGCAo8CThIn0t0ntISl8DH-ep3Z-QGr7OWGhZ3xzhTCYILlx9u9FIcdh72iy8WgdEZ-5Ow0Z7K3GctB5GWYGI-vV-GtzOo52Gm493KbofV8djVAmlUkGGmTVDG9cAGxX5fu1r6zYUEtMTvVVdJdvfWy0C3YN2beA5eJaitKgtJFVoqPaqkjSAbfMpshmD';
 
+const supabaseUrl = String.fromEnvironment(
+  'SUPABASE_URL',
+  defaultValue: '',
+);
+const supabasePublishableKey = String.fromEnvironment(
+  'SUPABASE_PUBLISHABLE_KEY',
+  defaultValue: '',
+);
+
+bool get isSupabaseConfigured =>
+    supabaseUrl.isNotEmpty && supabasePublishableKey.isNotEmpty;
+
 class KdmpApp extends StatefulWidget {
-  const KdmpApp({super.key, this.startAuthenticated = false});
+  const KdmpApp({
+    super.key,
+    this.startAuthenticated = false,
+    this.forceMockAuth = false,
+  });
 
   final bool startAuthenticated;
+  final bool forceMockAuth;
 
   @override
   State<KdmpApp> createState() => _KdmpAppState();
 }
 
 class _KdmpAppState extends State<KdmpApp> {
-  late _AuthUser _registeredUser = const _AuthUser(
+  late _MockAuthUser _mockRegisteredUser = const _MockAuthUser(
     profile: UserProfile(
       name: 'Budi Speed',
       phone: '+62 812-3456-7890',
@@ -25,14 +45,35 @@ class _KdmpAppState extends State<KdmpApp> {
     ),
     password: 'mepupoin123',
   );
-  _AuthUser? _currentUser;
+  UserProfile? _activeProfile;
+  StreamSubscription<AuthState>? _authSubscription;
+
+  bool get _useSupabase => isSupabaseConfigured && !widget.forceMockAuth;
 
   @override
   void initState() {
     super.initState();
-    if (widget.startAuthenticated) {
-      _currentUser = _registeredUser;
+    if (_useSupabase) {
+      _activeProfile = _profileFromSupabaseUser(
+        Supabase.instance.client.auth.currentUser,
+      );
+      _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((
+        data,
+      ) {
+        if (!mounted) return;
+        setState(() {
+          _activeProfile = _profileFromSupabaseUser(data.session?.user);
+        });
+      });
+    } else if (widget.startAuthenticated) {
+      _activeProfile = _mockRegisteredUser.profile;
     }
+  }
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    super.dispose();
   }
 
   @override
@@ -42,42 +83,96 @@ class _KdmpAppState extends State<KdmpApp> {
       debugShowCheckedModeBanner: false,
       theme: buildKdmpTheme(),
       scrollBehavior: const _KdmpScrollBehavior(),
-      home: _currentUser == null
+      home: _activeProfile == null
           ? AuthScreen(
-              initialEmail: _registeredUser.profile.email,
-              initialPassword: _registeredUser.password,
+              initialEmail: _useSupabase
+                  ? ''
+                  : _mockRegisteredUser.profile.email,
+              initialPassword: _useSupabase ? '' : _mockRegisteredUser.password,
               onLogin: _handleLogin,
               onSignUp: _handleSignUp,
+              usingSupabase: _useSupabase,
             )
           : HomeShell(
-              initialProfile: _currentUser!.profile,
-              onLogout: _handleLogout,
-              onProfileChanged: _handleProfileChanged,
+              initialProfile: _activeProfile!,
+              onLogout: () => unawaited(_handleLogout()),
+              onProfileChanged: (profile) =>
+                  unawaited(_handleProfileChanged(profile)),
             ),
     );
   }
 
-  String? _handleLogin({required String email, required String password}) {
+  Future<String?> _handleLogin({
+    required String email,
+    required String password,
+  }) async {
+    if (_useSupabase) {
+      try {
+        await Supabase.instance.client.auth.signInWithPassword(
+          email: email,
+          password: password,
+        );
+        final user = Supabase.instance.client.auth.currentUser;
+        if (user == null) {
+          return 'Login gagal. Coba lagi beberapa saat.';
+        }
+        setState(() => _activeProfile = _profileFromSupabaseUser(user));
+        return null;
+      } on AuthException catch (error) {
+        return error.message;
+      } catch (_) {
+        return 'Tidak dapat login ke Supabase saat ini.';
+      }
+    }
+
     final matchesEmail =
-        _registeredUser.profile.email.toLowerCase() == email.toLowerCase();
-    final matchesPassword = _registeredUser.password == password;
+        _mockRegisteredUser.profile.email.toLowerCase() == email.toLowerCase();
+    final matchesPassword = _mockRegisteredUser.password == password;
     if (!matchesEmail || !matchesPassword) {
       return 'Email atau kata sandi tidak sesuai.';
     }
-    setState(() => _currentUser = _registeredUser);
+    setState(() => _activeProfile = _mockRegisteredUser.profile);
     return null;
   }
 
-  String? _handleSignUp({
+  Future<String?> _handleSignUp({
     required String name,
     required String phone,
     required String email,
     required String password,
-  }) {
-    if (_registeredUser.profile.email.toLowerCase() == email.toLowerCase()) {
+  }) async {
+    if (_useSupabase) {
+      try {
+        await Supabase.instance.client.auth.signUp(
+          email: email,
+          password: password,
+          data: {
+            'full_name': name,
+            'phone': phone,
+            'avatar_url': '__initials__',
+          },
+        );
+        await Supabase.instance.client.auth.signInWithPassword(
+          email: email,
+          password: password,
+        );
+        final user = Supabase.instance.client.auth.currentUser;
+        if (user == null) {
+          return 'Akun dibuat, tapi sesi belum aktif. Coba login kembali.';
+        }
+        setState(() => _activeProfile = _profileFromSupabaseUser(user));
+        return null;
+      } on AuthException catch (error) {
+        return error.message;
+      } catch (_) {
+        return 'Tidak dapat membuat akun di Supabase saat ini.';
+      }
+    }
+
+    if (_mockRegisteredUser.profile.email.toLowerCase() == email.toLowerCase()) {
       return 'Email ini sudah terdaftar. Silakan login.';
     }
-    final newUser = _AuthUser(
+    final newUser = _MockAuthUser(
       profile: UserProfile(
         name: name,
         phone: phone,
@@ -87,33 +182,80 @@ class _KdmpAppState extends State<KdmpApp> {
       password: password,
     );
     setState(() {
-      _registeredUser = newUser;
-      _currentUser = newUser;
+      _mockRegisteredUser = newUser;
+      _activeProfile = newUser.profile;
     });
     return null;
   }
 
-  void _handleLogout() {
-    setState(() => _currentUser = null);
+  Future<void> _handleLogout() async {
+    if (_useSupabase) {
+      await Supabase.instance.client.auth.signOut();
+    }
+    if (!mounted) return;
+    setState(() => _activeProfile = null);
   }
 
-  void _handleProfileChanged(UserProfile updatedProfile) {
-    setState(() {
-      if (_currentUser == null) return;
-      _currentUser = _currentUser!.copyWith(profile: updatedProfile);
-      _registeredUser = _registeredUser.copyWith(profile: updatedProfile);
-    });
+  Future<void> _handleProfileChanged(UserProfile updatedProfile) async {
+    if (_useSupabase) {
+      try {
+        await Supabase.instance.client.auth.updateUser(
+          UserAttributes(
+            email: updatedProfile.email,
+            data: {
+              'full_name': updatedProfile.name,
+              'phone': updatedProfile.phone,
+              'avatar_url': updatedProfile.avatarUrl,
+            },
+          ),
+        );
+      } catch (_) {
+        // Keep local UI responsive even if remote sync fails.
+      }
+    } else {
+      _mockRegisteredUser = _mockRegisteredUser.copyWith(profile: updatedProfile);
+    }
+
+    if (!mounted) return;
+    setState(() => _activeProfile = updatedProfile);
+  }
+
+  UserProfile? _profileFromSupabaseUser(User? user) {
+    if (user == null) return null;
+    final metadata = user.userMetadata ?? <String, dynamic>{};
+    final name =
+        (metadata['full_name'] ?? metadata['name'] ?? '').toString().trim();
+    final phone = (metadata['phone'] ?? '').toString().trim();
+    final avatarUrl = (metadata['avatar_url'] ?? '__initials__').toString();
+    return UserProfile(
+      name: name.isEmpty ? _nameFromEmail(user.email ?? 'Member') : name,
+      phone: phone.isEmpty ? '-' : phone,
+      email: user.email ?? '',
+      avatarUrl: avatarUrl.isEmpty ? '__initials__' : avatarUrl,
+    );
+  }
+
+  String _nameFromEmail(String email) {
+    final handle = email.split('@').first.replaceAll('.', ' ').trim();
+    if (handle.isEmpty) return 'Member Baru';
+    return handle
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .map(
+          (part) => '${part[0].toUpperCase()}${part.substring(1).toLowerCase()}',
+        )
+        .join(' ');
   }
 }
 
-class _AuthUser {
-  const _AuthUser({required this.profile, required this.password});
+class _MockAuthUser {
+  const _MockAuthUser({required this.profile, required this.password});
 
   final UserProfile profile;
   final String password;
 
-  _AuthUser copyWith({UserProfile? profile, String? password}) {
-    return _AuthUser(
+  _MockAuthUser copyWith({UserProfile? profile, String? password}) {
+    return _MockAuthUser(
       profile: profile ?? this.profile,
       password: password ?? this.password,
     );
@@ -125,19 +267,24 @@ class AuthScreen extends StatefulWidget {
     super.key,
     required this.onLogin,
     required this.onSignUp,
+    required this.usingSupabase,
     this.initialEmail = '',
     this.initialPassword = '',
   });
 
-  final String? Function({required String email, required String password})
+  final Future<String?> Function({
+    required String email,
+    required String password,
+  })
   onLogin;
-  final String? Function({
+  final Future<String?> Function({
     required String name,
     required String phone,
     required String email,
     required String password,
   })
   onSignUp;
+  final bool usingSupabase;
   final String initialEmail;
   final String initialPassword;
 
@@ -158,6 +305,8 @@ class _AuthScreenState extends State<AuthScreen> {
   int _selectedTab = 0;
   String? _loginError;
   String? _signUpError;
+  bool _submittingLogin = false;
+  bool _submittingSignUp = false;
 
   @override
   void initState() {
@@ -217,7 +366,9 @@ class _AuthScreenState extends State<AuthScreen> {
                   ),
                   const SizedBox(height: 20),
                   Text(
-                    'Masuk ke akun MepuPoin',
+                    widget.usingSupabase
+                        ? 'Masuk dengan Supabase Auth'
+                        : 'Masuk ke akun MepuPoin',
                     style: theme.textTheme.headlineMedium?.copyWith(
                       color: Colors.white,
                       fontWeight: FontWeight.w900,
@@ -225,7 +376,9 @@ class _AuthScreenState extends State<AuthScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Belanja kebutuhan koperasi, kelola pesanan, dan pantau transaksi dalam satu aplikasi.',
+                    widget.usingSupabase
+                        ? 'Akun, sesi login, dan perubahan profil akan disimpan melalui Supabase.'
+                        : 'Belanja kebutuhan koperasi, kelola pesanan, dan pantau transaksi dalam satu aplikasi.',
                     style: theme.textTheme.bodyLarge?.copyWith(
                       color: Colors.white.withValues(alpha: 0.92),
                     ),
@@ -233,6 +386,14 @@ class _AuthScreenState extends State<AuthScreen> {
                 ],
               ),
             ),
+            if (!widget.usingSupabase) ...[
+              const SizedBox(height: 16),
+              const _SetupHintCard(
+                title: 'Mode Demo Aktif',
+                message:
+                    'Supabase belum dikonfigurasi. Aplikasi masih memakai akun lokal demo sampai SUPABASE_URL dan SUPABASE_PUBLISHABLE_KEY dikirim lewat dart-define.',
+              ),
+            ],
             const SizedBox(height: 20),
             _AuthSegmentedTabs(
               selectedIndex: _selectedTab,
@@ -291,20 +452,22 @@ class _AuthScreenState extends State<AuthScreen> {
             SizedBox(
               width: double.infinity,
               child: FilledButton(
-                onPressed: _submitLogin,
+                onPressed: _submittingLogin ? null : _submitLogin,
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(56),
                 ),
-                child: const Text('Login'),
+                child: Text(_submittingLogin ? 'Memproses...' : 'Login'),
               ),
             ),
-            const SizedBox(height: 12),
-            Text(
-              'Akun demo: budi.santoso@email.com / mepupoin123',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF64748B),
+            if (!widget.usingSupabase) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Akun demo: budi.santoso@email.com / mepupoin123',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: const Color(0xFF64748B),
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),
@@ -391,11 +554,11 @@ class _AuthScreenState extends State<AuthScreen> {
             SizedBox(
               width: double.infinity,
               child: FilledButton(
-                onPressed: _submitSignUp,
+                onPressed: _submittingSignUp ? null : _submitSignUp,
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(56),
                 ),
-                child: const Text('Sign Up'),
+                child: Text(_submittingSignUp ? 'Memproses...' : 'Sign Up'),
               ),
             ),
           ],
@@ -404,28 +567,40 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
-  void _submitLogin() {
+  Future<void> _submitLogin() async {
     if (!_loginFormKey.currentState!.validate()) return;
-    final error = widget.onLogin(
+    setState(() {
+      _submittingLogin = true;
+      _loginError = null;
+    });
+    final error = await widget.onLogin(
       email: _loginEmailController.text.trim(),
       password: _loginPasswordController.text.trim(),
     );
-    if (error != null) {
-      setState(() => _loginError = error);
-    }
+    if (!mounted) return;
+    setState(() {
+      _submittingLogin = false;
+      _loginError = error;
+    });
   }
 
-  void _submitSignUp() {
+  Future<void> _submitSignUp() async {
     if (!_signUpFormKey.currentState!.validate()) return;
-    final error = widget.onSignUp(
+    setState(() {
+      _submittingSignUp = true;
+      _signUpError = null;
+    });
+    final error = await widget.onSignUp(
       name: _signUpNameController.text.trim(),
       phone: _signUpPhoneController.text.trim(),
       email: _signUpEmailController.text.trim(),
       password: _signUpPasswordController.text.trim(),
     );
-    if (error != null) {
-      setState(() => _signUpError = error);
-    }
+    if (!mounted) return;
+    setState(() {
+      _submittingSignUp = false;
+      _signUpError = error;
+    });
   }
 
   String? _validateEmail(String? value) {
@@ -562,6 +737,44 @@ class _AuthErrorText extends StatelessWidget {
           color: const Color(0xFFB42318),
           fontWeight: FontWeight.w700,
         ),
+      ),
+    );
+  }
+}
+
+class _SetupHintCard extends StatelessWidget {
+  const _SetupHintCard({required this.title, required this.message});
+
+  final String title;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF8E1),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFF2D07A)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              color: const Color(0xFF7A5A00),
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            message,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: const Color(0xFF7A5A00),
+            ),
+          ),
+        ],
       ),
     );
   }
