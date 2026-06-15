@@ -79,6 +79,22 @@ class CheckoutVoucher {
   calculateDiscount;
 }
 
+class CheckoutAddress {
+  const CheckoutAddress({
+    required this.label,
+    required this.name,
+    required this.phone,
+    required this.address,
+    required this.icon,
+  });
+
+  final String label;
+  final String name;
+  final String phone;
+  final String address;
+  final IconData icon;
+}
+
 const _checkoutVouchers = <CheckoutVoucher>[
   CheckoutVoucher(
     code: 'ONGKIRHEMAT',
@@ -578,15 +594,15 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   void _openPromoCenter() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const PromoCenterScreen()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const PromoCenterScreen()));
   }
 
   void _openFaq() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const FaqScreen()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const FaqScreen()));
   }
 
   void _openContactSupport() {
@@ -2471,7 +2487,9 @@ class _ShopScreenState extends State<ShopScreen> {
     final filteredProducts = selectedCategory == 'Semua'
         ? products
         : products
-              .where((product) => productMatchesCategory(product, selectedCategory))
+              .where(
+                (product) => productMatchesCategory(product, selectedCategory),
+              )
               .toList();
     final sortedProducts = List<Product>.of(filteredProducts);
 
@@ -2529,10 +2547,7 @@ class _EmptyProductState extends StatelessWidget {
             color: theme.colorScheme.primary,
           ),
           const SizedBox(height: 14),
-          Text(
-            'Produk tidak ditemukan',
-            style: theme.textTheme.headlineMedium,
-          ),
+          Text('Produk tidak ditemukan', style: theme.textTheme.headlineMedium),
           const SizedBox(height: 8),
           Text(
             'Belum ada produk untuk kategori $category.',
@@ -3582,7 +3597,10 @@ class FaqScreen extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(bottom: 14),
               child: ExpansionTile(
-                tilePadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+                tilePadding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 6,
+                ),
                 collapsedShape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20),
                   side: const BorderSide(color: Color(0xFFE8BCB8)),
@@ -3644,14 +3662,20 @@ class ContactSupportScreen extends StatelessWidget {
                     color: theme.colorScheme.primary.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(18),
                   ),
-                  child: Icon(Icons.support_agent_rounded, color: theme.colorScheme.primary),
+                  child: Icon(
+                    Icons.support_agent_rounded,
+                    color: theme.colorScheme.primary,
+                  ),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Tim support siap membantu', style: theme.textTheme.titleMedium),
+                      Text(
+                        'Tim support siap membantu',
+                        style: theme.textTheme.titleMedium,
+                      ),
                       const SizedBox(height: 4),
                       Text(
                         'Senin - Sabtu, 08.00 - 20.00 WIB',
@@ -3737,7 +3761,12 @@ class _SupportActionCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                  Text(
+                    title,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                   const SizedBox(height: 4),
                   Text(
                     subtitle,
@@ -4205,7 +4234,26 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   String deliveryMethod = 'Kirim ke Rumah';
   String paymentMethod = 'Saldo MepuPoin';
   CheckoutVoucher? selectedVoucher;
-  final address = 'Jl. Merdeka No. 42, Sukamaju Village';
+  int selectedAddressIndex = 0;
+  final List<CheckoutAddress> deliveryAddresses = [
+    const CheckoutAddress(
+      label: 'Rumah',
+      name: 'Budi Santoso',
+      phone: '+62 812-3456-7890',
+      address: 'Jl. Merdeka No. 42, RT 03/RW 04, Sukamaju Village',
+      icon: Icons.home_outlined,
+    ),
+    const CheckoutAddress(
+      label: 'Kantor',
+      name: 'Budi Santoso',
+      phone: '+62 812-3456-7890',
+      address: 'Jl. Pahlawan No. 10, Kec. Kalijati, Subang',
+      icon: Icons.business_outlined,
+    ),
+  ];
+
+  CheckoutAddress get selectedAddress =>
+      deliveryAddresses[selectedAddressIndex];
 
   @override
   Widget build(BuildContext context) {
@@ -4296,10 +4344,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               children: [
                 _CheckoutOption(
                   title: const Text('Kirim ke Rumah'),
-                  subtitle: Text(address),
+                  subtitle: Text(selectedAddress.address),
                   selected: deliveryMethod == 'Kirim ke Rumah',
                   onTap: () => _updateDeliveryMethod(context, 'Kirim ke Rumah'),
                 ),
+                if (deliveryMethod == 'Kirim ke Rumah') ...[
+                  const SizedBox(height: 8),
+                  _DeliveryAddressBook(
+                    addresses: deliveryAddresses,
+                    selectedIndex: selectedAddressIndex,
+                    onSelect: (index) =>
+                        setState(() => selectedAddressIndex = index),
+                    onEdit: _editDeliveryAddress,
+                    onAdd: _addDeliveryAddress,
+                  ),
+                ],
                 _CheckoutOption(
                   title: const Text('Ambil di Koperasi'),
                   subtitle: const Text('MepuPoin Sukamaju - Pickup Counter'),
@@ -4480,7 +4539,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       widget.items,
       paymentMethod,
       deliveryMethod,
-      address,
+      selectedAddress.address,
       total,
       selectedVoucher?.code,
     );
@@ -4540,6 +4599,45 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   bool _isFreeDeliveryVoucher(CheckoutVoucher voucher) {
     return voucher.code == 'ONGKIRHEMAT';
+  }
+
+  Future<void> _editDeliveryAddress() async {
+    final updatedAddress = await showDialog<CheckoutAddress>(
+      context: context,
+      builder: (_) => _EditDeliveryAddressDialog(
+        initialAddress: selectedAddress,
+        title: 'Ubah Alamat Pengiriman',
+      ),
+    );
+    if (!mounted || updatedAddress == null) return;
+
+    setState(() => deliveryAddresses[selectedAddressIndex] = updatedAddress);
+    _showFeatureSnack(
+      context,
+      'Alamat pengiriman berhasil diperbarui.',
+      title: 'Alamat Tersimpan',
+      icon: Icons.location_on_outlined,
+    );
+  }
+
+  Future<void> _addDeliveryAddress() async {
+    final newAddress = await showDialog<CheckoutAddress>(
+      context: context,
+      builder: (_) =>
+          const _EditDeliveryAddressDialog(title: 'Tambah Alamat Baru'),
+    );
+    if (!mounted || newAddress == null) return;
+
+    setState(() {
+      deliveryAddresses.add(newAddress);
+      selectedAddressIndex = deliveryAddresses.length - 1;
+    });
+    _showFeatureSnack(
+      context,
+      'Alamat baru berhasil ditambahkan dan dipilih untuk pengiriman.',
+      title: 'Alamat Ditambahkan',
+      icon: Icons.add_location_alt_outlined,
+    );
   }
 }
 
@@ -4647,7 +4745,9 @@ class _TransactionCompletionScreenState
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
-                        _isPending ? 'Menunggu Pembayaran' : 'Pembayaran Berhasil',
+                        _isPending
+                            ? 'Menunggu Pembayaran'
+                            : 'Pembayaran Berhasil',
                         style: theme.textTheme.labelLarge?.copyWith(
                           color: _isPending
                               ? const Color(0xFF6D4C00)
@@ -4685,11 +4785,7 @@ class _TransactionCompletionScreenState
                   ),
                 ),
                 const SizedBox(height: 18),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: summaryChips,
-                ),
+                Wrap(spacing: 10, runSpacing: 10, children: summaryChips),
               ],
             ),
           ),
@@ -4708,13 +4804,19 @@ class _TransactionCompletionScreenState
                   icon: _isPickupOrder
                       ? Icons.storefront_outlined
                       : Icons.local_shipping_outlined,
-                  label: _isPickupOrder ? 'Metode penerimaan' : 'Metode pengiriman',
-                  value: _isPickupOrder ? 'Ambil di koperasi' : 'Diantar ke alamat',
+                  label: _isPickupOrder
+                      ? 'Metode penerimaan'
+                      : 'Metode pengiriman',
+                  value: _isPickupOrder
+                      ? 'Ambil di koperasi'
+                      : 'Diantar ke alamat',
                 ),
                 const SizedBox(height: 14),
                 _DetailRow(
                   icon: Icons.schedule_outlined,
-                  label: _isPickupOrder ? 'Estimasi siap diambil' : 'Estimasi tiba',
+                  label: _isPickupOrder
+                      ? 'Estimasi siap diambil'
+                      : 'Estimasi tiba',
                   value: _estimatedFulfillmentText(),
                 ),
                 const SizedBox(height: 14),
@@ -5095,12 +5197,15 @@ class _DetailRow extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 value,
-                style: (emphasizeValue
-                        ? theme.textTheme.titleMedium
-                        : theme.textTheme.bodyLarge)
-                    ?.copyWith(
-                      fontWeight: emphasizeValue ? FontWeight.w800 : FontWeight.w600,
-                    ),
+                style:
+                    (emphasizeValue
+                            ? theme.textTheme.titleMedium
+                            : theme.textTheme.bodyLarge)
+                        ?.copyWith(
+                          fontWeight: emphasizeValue
+                              ? FontWeight.w800
+                              : FontWeight.w600,
+                        ),
               ),
             ],
           ),
@@ -5158,6 +5263,507 @@ class _NextStepTile extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _DeliveryAddressBook extends StatelessWidget {
+  const _DeliveryAddressBook({
+    required this.addresses,
+    required this.selectedIndex,
+    required this.onSelect,
+    required this.onEdit,
+    required this.onAdd,
+  });
+
+  final List<CheckoutAddress> addresses;
+  final int selectedIndex;
+  final ValueChanged<int> onSelect;
+  final VoidCallback onEdit;
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Buku Alamat',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: onAdd,
+                      icon: const Icon(
+                        Icons.add_location_alt_outlined,
+                        size: 18,
+                      ),
+                      label: const Text('Tambah'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: theme.colorScheme.primary,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                for (var index = 0; index < addresses.length; index++)
+                  Padding(
+                    padding: EdgeInsets.only(
+                      bottom: index == addresses.length - 1 ? 0 : 10,
+                    ),
+                    child: _DeliveryAddressTile(
+                      address: addresses[index],
+                      selected: selectedIndex == index,
+                      onSelect: () => onSelect(index),
+                      onEdit: selectedIndex == index ? onEdit : null,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DeliveryAddressTile extends StatelessWidget {
+  const _DeliveryAddressTile({
+    required this.address,
+    required this.selected,
+    required this.onSelect,
+    required this.onEdit,
+  });
+
+  final CheckoutAddress address;
+  final bool selected;
+  final VoidCallback onSelect;
+  final VoidCallback? onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: onSelect,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: selected ? Colors.white : const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected
+                ? theme.colorScheme.primary.withValues(alpha: 0.45)
+                : const Color(0xFFE2E8F0),
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(address.icon, color: theme.colorScheme.primary),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          address.label,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      Icon(
+                        selected
+                            ? Icons.check_circle_rounded
+                            : Icons.radio_button_unchecked_rounded,
+                        color: selected
+                            ? theme.colorScheme.primary
+                            : const Color(0xFFCBD5E1),
+                        size: 20,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${address.name} - ${address.phone}',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: const Color(0xFF475569),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    address.address,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                  if (onEdit != null) ...[
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: OutlinedButton.icon(
+                        onPressed: onEdit,
+                        icon: const Icon(
+                          Icons.edit_location_alt_outlined,
+                          size: 16,
+                        ),
+                        label: const Text('Edit Alamat Ini'),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: Size.zero,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EditDeliveryAddressDialog extends StatefulWidget {
+  const _EditDeliveryAddressDialog({required this.title, this.initialAddress});
+
+  final String title;
+  final CheckoutAddress? initialAddress;
+
+  @override
+  State<_EditDeliveryAddressDialog> createState() =>
+      _EditDeliveryAddressDialogState();
+}
+
+class _EditDeliveryAddressDialogState
+    extends State<_EditDeliveryAddressDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _labelController;
+  late final TextEditingController _nameController;
+  late final TextEditingController _phoneController;
+  late final TextEditingController _addressController;
+  late IconData _selectedIcon;
+
+  @override
+  void initState() {
+    super.initState();
+    final initialAddress = widget.initialAddress;
+    _labelController = TextEditingController(text: initialAddress?.label ?? '');
+    _nameController = TextEditingController(text: initialAddress?.name ?? '');
+    _phoneController = TextEditingController(text: initialAddress?.phone ?? '');
+    _addressController = TextEditingController(
+      text: initialAddress?.address ?? '',
+    );
+    _selectedIcon = initialAddress?.icon ?? Icons.location_on_outlined;
+  }
+
+  @override
+  void dispose() {
+    _labelController.dispose();
+    _nameController.dispose();
+    _phoneController.dispose();
+    _addressController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 430),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+          child: SingleChildScrollView(
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 52,
+                        height: 52,
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary.withValues(
+                            alpha: 0.10,
+                          ),
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: Icon(
+                          Icons.edit_location_alt_outlined,
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.title,
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Masukkan alamat tujuan yang jelas agar pesanan mudah dikirim.',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: const Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  TextFormField(
+                    controller: _labelController,
+                    textInputAction: TextInputAction.next,
+                    decoration: const InputDecoration(
+                      labelText: 'Label Alamat',
+                      hintText: 'Contoh: Rumah, Kantor, Kos',
+                      prefixIcon: Icon(Icons.bookmark_border_rounded),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Label alamat wajib diisi';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _nameController,
+                    textInputAction: TextInputAction.next,
+                    decoration: const InputDecoration(
+                      labelText: 'Nama Penerima',
+                      prefixIcon: Icon(Icons.person_outline_rounded),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.trim().length < 3) {
+                        return 'Nama penerima belum valid';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _phoneController,
+                    keyboardType: TextInputType.phone,
+                    textInputAction: TextInputAction.next,
+                    decoration: const InputDecoration(
+                      labelText: 'Nomor Telepon',
+                      prefixIcon: Icon(Icons.phone_outlined),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.trim().length < 10) {
+                        return 'Nomor telepon belum valid';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _addressController,
+                    minLines: 3,
+                    maxLines: 5,
+                    textInputAction: TextInputAction.newline,
+                    decoration: const InputDecoration(
+                      labelText: 'Alamat Lengkap',
+                      hintText:
+                          'Nama jalan, nomor rumah, desa/kecamatan, patokan',
+                      prefixIcon: Icon(Icons.location_on_outlined),
+                      alignLabelWithHint: true,
+                    ),
+                    validator: (value) {
+                      final address = value?.trim() ?? '';
+                      if (address.length < 12) {
+                        return 'Alamat terlalu singkat';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'Ikon alamat',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      _CheckoutAddressIconOption(
+                        icon: Icons.home_outlined,
+                        selected: _selectedIcon == Icons.home_outlined,
+                        onTap: () =>
+                            setState(() => _selectedIcon = Icons.home_outlined),
+                      ),
+                      _CheckoutAddressIconOption(
+                        icon: Icons.business_outlined,
+                        selected: _selectedIcon == Icons.business_outlined,
+                        onTap: () => setState(
+                          () => _selectedIcon = Icons.business_outlined,
+                        ),
+                      ),
+                      _CheckoutAddressIconOption(
+                        icon: Icons.people_outline_rounded,
+                        selected: _selectedIcon == Icons.people_outline_rounded,
+                        onTap: () => setState(
+                          () => _selectedIcon = Icons.people_outline_rounded,
+                        ),
+                      ),
+                      _CheckoutAddressIconOption(
+                        icon: Icons.location_on_outlined,
+                        selected: _selectedIcon == Icons.location_on_outlined,
+                        onTap: () => setState(
+                          () => _selectedIcon = Icons.location_on_outlined,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(50),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                          child: const Text('Batal'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: _saveAddress,
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size.fromHeight(50),
+                            backgroundColor: theme.colorScheme.primary,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                          icon: const Icon(Icons.check_rounded),
+                          label: const Text('Simpan'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _saveAddress() {
+    if (!_formKey.currentState!.validate()) return;
+    Navigator.of(context).pop(
+      CheckoutAddress(
+        label: _labelController.text.trim(),
+        name: _nameController.text.trim(),
+        phone: _phoneController.text.trim(),
+        address: _addressController.text.trim(),
+        icon: _selectedIcon,
+      ),
+    );
+  }
+}
+
+class _CheckoutAddressIconOption extends StatelessWidget {
+  const _CheckoutAddressIconOption({
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: selected
+              ? theme.colorScheme.primary.withValues(alpha: 0.12)
+              : const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: selected
+                ? theme.colorScheme.primary
+                : const Color(0xFFE2E8F0),
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Icon(
+          icon,
+          color: selected ? theme.colorScheme.primary : const Color(0xFF64748B),
+        ),
+      ),
     );
   }
 }
@@ -5546,7 +6152,10 @@ class OrderDetailScreen extends StatelessWidget {
                 Row(
                   children: [
                     Expanded(
-                      child: _StatusNode(label: tracking.steps[0].label, active: true),
+                      child: _StatusNode(
+                        label: tracking.steps[0].label,
+                        active: true,
+                      ),
                     ),
                     Expanded(
                       child: _StatusNode(
@@ -5683,7 +6292,9 @@ class OrderDetailScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(18),
               ),
             ),
-            child: Text(isPickupOrder ? 'Perbarui Status Pickup' : 'Segarkan Tracking'),
+            child: Text(
+              isPickupOrder ? 'Perbarui Status Pickup' : 'Segarkan Tracking',
+            ),
           ),
         ],
       ),
@@ -5717,7 +6328,9 @@ class _TrackingTimelineTile extends StatelessWidget {
           child: Column(
             children: [
               Icon(
-                active ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+                active
+                    ? Icons.check_circle_rounded
+                    : Icons.radio_button_unchecked,
                 color: accent,
                 size: 20,
               ),
@@ -5741,7 +6354,9 @@ class _TrackingTimelineTile extends StatelessWidget {
                 Text(
                   label,
                   style: theme.textTheme.titleSmall?.copyWith(
-                    color: active ? const Color(0xFF111827) : const Color(0xFF64748B),
+                    color: active
+                        ? const Color(0xFF111827)
+                        : const Color(0xFF64748B),
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -7322,7 +7937,9 @@ String _initialsFromName(String name) {
       .toList();
   if (parts.isEmpty) return 'MP';
   if (parts.length == 1) {
-    return parts.first.substring(0, parts.first.length.clamp(0, 2)).toUpperCase();
+    return parts.first
+        .substring(0, parts.first.length.clamp(0, 2))
+        .toUpperCase();
   }
   return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
 }
@@ -8054,7 +8671,8 @@ String productCategory(Product product) {
 }
 
 bool productMatchesCategory(Product product, String category) {
-  return category == 'Semua' || productCategoriesFor(product).contains(category);
+  return category == 'Semua' ||
+      productCategoriesFor(product).contains(category);
 }
 
 List<String> productCategoriesFor(Product product) {
