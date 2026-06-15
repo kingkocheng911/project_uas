@@ -52,12 +52,14 @@ class UserProfile {
     required this.phone,
     required this.email,
     required this.avatarUrl,
+    this.role = 'user',
   });
 
   final String name;
   final String phone;
   final String email;
   final String avatarUrl;
+  final String role;
 }
 
 class CheckoutVoucher {

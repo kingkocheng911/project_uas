@@ -4,7 +4,9 @@ import 'package:project_uas/app.dart';
 
 void main() {
   testWidgets('MepuPoin home shell renders main navigation', (tester) async {
-    await tester.pumpWidget(const KdmpApp(startAuthenticated: true));
+    await tester.pumpWidget(
+      const KdmpApp(startAuthenticated: true, forceMockAuth: true),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('MepuPoin'), findsOneWidget);
