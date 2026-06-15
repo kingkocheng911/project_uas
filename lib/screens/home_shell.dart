@@ -52,12 +52,14 @@ class UserProfile {
     required this.phone,
     required this.email,
     required this.avatarUrl,
+    this.role = 'user',
   });
 
   final String name;
   final String phone;
   final String email;
   final String avatarUrl;
+  final String role;
 }
 
 class CheckoutVoucher {
@@ -578,15 +580,15 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   void _openPromoCenter() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const PromoCenterScreen()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const PromoCenterScreen()));
   }
 
   void _openFaq() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const FaqScreen()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const FaqScreen()));
   }
 
   void _openContactSupport() {
@@ -2471,7 +2473,9 @@ class _ShopScreenState extends State<ShopScreen> {
     final filteredProducts = selectedCategory == 'Semua'
         ? products
         : products
-              .where((product) => productMatchesCategory(product, selectedCategory))
+              .where(
+                (product) => productMatchesCategory(product, selectedCategory),
+              )
               .toList();
     final sortedProducts = List<Product>.of(filteredProducts);
 
@@ -2529,10 +2533,7 @@ class _EmptyProductState extends StatelessWidget {
             color: theme.colorScheme.primary,
           ),
           const SizedBox(height: 14),
-          Text(
-            'Produk tidak ditemukan',
-            style: theme.textTheme.headlineMedium,
-          ),
+          Text('Produk tidak ditemukan', style: theme.textTheme.headlineMedium),
           const SizedBox(height: 8),
           Text(
             'Belum ada produk untuk kategori $category.',
@@ -3582,7 +3583,10 @@ class FaqScreen extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(bottom: 14),
               child: ExpansionTile(
-                tilePadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+                tilePadding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 6,
+                ),
                 collapsedShape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20),
                   side: const BorderSide(color: Color(0xFFE8BCB8)),
@@ -3644,14 +3648,20 @@ class ContactSupportScreen extends StatelessWidget {
                     color: theme.colorScheme.primary.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(18),
                   ),
-                  child: Icon(Icons.support_agent_rounded, color: theme.colorScheme.primary),
+                  child: Icon(
+                    Icons.support_agent_rounded,
+                    color: theme.colorScheme.primary,
+                  ),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Tim support siap membantu', style: theme.textTheme.titleMedium),
+                      Text(
+                        'Tim support siap membantu',
+                        style: theme.textTheme.titleMedium,
+                      ),
                       const SizedBox(height: 4),
                       Text(
                         'Senin - Sabtu, 08.00 - 20.00 WIB',
@@ -3737,7 +3747,12 @@ class _SupportActionCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                  Text(
+                    title,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                   const SizedBox(height: 4),
                   Text(
                     subtitle,
@@ -4647,7 +4662,9 @@ class _TransactionCompletionScreenState
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
-                        _isPending ? 'Menunggu Pembayaran' : 'Pembayaran Berhasil',
+                        _isPending
+                            ? 'Menunggu Pembayaran'
+                            : 'Pembayaran Berhasil',
                         style: theme.textTheme.labelLarge?.copyWith(
                           color: _isPending
                               ? const Color(0xFF6D4C00)
@@ -4685,11 +4702,7 @@ class _TransactionCompletionScreenState
                   ),
                 ),
                 const SizedBox(height: 18),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: summaryChips,
-                ),
+                Wrap(spacing: 10, runSpacing: 10, children: summaryChips),
               ],
             ),
           ),
@@ -4708,13 +4721,19 @@ class _TransactionCompletionScreenState
                   icon: _isPickupOrder
                       ? Icons.storefront_outlined
                       : Icons.local_shipping_outlined,
-                  label: _isPickupOrder ? 'Metode penerimaan' : 'Metode pengiriman',
-                  value: _isPickupOrder ? 'Ambil di koperasi' : 'Diantar ke alamat',
+                  label: _isPickupOrder
+                      ? 'Metode penerimaan'
+                      : 'Metode pengiriman',
+                  value: _isPickupOrder
+                      ? 'Ambil di koperasi'
+                      : 'Diantar ke alamat',
                 ),
                 const SizedBox(height: 14),
                 _DetailRow(
                   icon: Icons.schedule_outlined,
-                  label: _isPickupOrder ? 'Estimasi siap diambil' : 'Estimasi tiba',
+                  label: _isPickupOrder
+                      ? 'Estimasi siap diambil'
+                      : 'Estimasi tiba',
                   value: _estimatedFulfillmentText(),
                 ),
                 const SizedBox(height: 14),
@@ -5095,12 +5114,15 @@ class _DetailRow extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 value,
-                style: (emphasizeValue
-                        ? theme.textTheme.titleMedium
-                        : theme.textTheme.bodyLarge)
-                    ?.copyWith(
-                      fontWeight: emphasizeValue ? FontWeight.w800 : FontWeight.w600,
-                    ),
+                style:
+                    (emphasizeValue
+                            ? theme.textTheme.titleMedium
+                            : theme.textTheme.bodyLarge)
+                        ?.copyWith(
+                          fontWeight: emphasizeValue
+                              ? FontWeight.w800
+                              : FontWeight.w600,
+                        ),
               ),
             ],
           ),
@@ -5546,7 +5568,10 @@ class OrderDetailScreen extends StatelessWidget {
                 Row(
                   children: [
                     Expanded(
-                      child: _StatusNode(label: tracking.steps[0].label, active: true),
+                      child: _StatusNode(
+                        label: tracking.steps[0].label,
+                        active: true,
+                      ),
                     ),
                     Expanded(
                       child: _StatusNode(
@@ -5683,7 +5708,9 @@ class OrderDetailScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(18),
               ),
             ),
-            child: Text(isPickupOrder ? 'Perbarui Status Pickup' : 'Segarkan Tracking'),
+            child: Text(
+              isPickupOrder ? 'Perbarui Status Pickup' : 'Segarkan Tracking',
+            ),
           ),
         ],
       ),
@@ -5717,7 +5744,9 @@ class _TrackingTimelineTile extends StatelessWidget {
           child: Column(
             children: [
               Icon(
-                active ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+                active
+                    ? Icons.check_circle_rounded
+                    : Icons.radio_button_unchecked,
                 color: accent,
                 size: 20,
               ),
@@ -5741,7 +5770,9 @@ class _TrackingTimelineTile extends StatelessWidget {
                 Text(
                   label,
                   style: theme.textTheme.titleSmall?.copyWith(
-                    color: active ? const Color(0xFF111827) : const Color(0xFF64748B),
+                    color: active
+                        ? const Color(0xFF111827)
+                        : const Color(0xFF64748B),
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -7322,7 +7353,9 @@ String _initialsFromName(String name) {
       .toList();
   if (parts.isEmpty) return 'MP';
   if (parts.length == 1) {
-    return parts.first.substring(0, parts.first.length.clamp(0, 2)).toUpperCase();
+    return parts.first
+        .substring(0, parts.first.length.clamp(0, 2))
+        .toUpperCase();
   }
   return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
 }
@@ -8054,7 +8087,8 @@ String productCategory(Product product) {
 }
 
 bool productMatchesCategory(Product product, String category) {
-  return category == 'Semua' || productCategoriesFor(product).contains(category);
+  return category == 'Semua' ||
+      productCategoriesFor(product).contains(category);
 }
 
 List<String> productCategoriesFor(Product product) {

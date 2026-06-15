@@ -1,18 +1,18 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart'; // 1. Tambahkan untuk mendeteksi kIsWeb
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+// Import UI Dashboard Web yang sudah kita buat sebelumnya
+import 'screens/superadmin/dashboard_overview.dart';
 import 'screens/home_shell.dart';
 import 'theme.dart';
 
 const _defaultAvatarUrl =
     'https://lh3.googleusercontent.com/aida-public/AB6AXuBK38PfAiyHOiE6kMysiQgsdlCCaiTZUI4b6gmDIwhe7ReUvEF9AOZtc7zqWWpVxTvrZR01xBh3zwriMDBPGCAo8CThIn0t0ntISl8DH-ep3Z-QGr7OWGhZ3xzhTCYILlx9u9FIcdh72iy8WgdEZ-5Ow0Z7K3GctB5GWYGI-vV-GtzOo52Gm493KbofV8djVAmlUkGGmTVDG9cAGxX5fu1r6zYUEtMTvVVdJdvfWy0C3YN2beA5eJaitKgtJFVoqPaqkjSAbfMpshmD';
 
-const supabaseUrl = String.fromEnvironment(
-  'SUPABASE_URL',
-  defaultValue: '',
-);
+const supabaseUrl = String.fromEnvironment('SUPABASE_URL', defaultValue: '');
 const supabasePublishableKey = String.fromEnvironment(
   'SUPABASE_PUBLISHABLE_KEY',
   defaultValue: '',
@@ -42,9 +42,23 @@ class _KdmpAppState extends State<KdmpApp> {
       phone: '+62 812-3456-7890',
       email: 'budi.santoso@email.com',
       avatarUrl: _defaultAvatarUrl,
+      role: 'user',
     ),
     password: 'mepupoin123',
   );
+
+  // Buat akun demo khusus superadmin untuk keperluan testing local web dashboard tanpa Supabase
+  final _MockAuthUser _mockSuperAdmin = const _MockAuthUser(
+    profile: UserProfile(
+      name: 'Safitri Novitasari',
+      phone: '+62 811-2233-4455',
+      email: 'admin@mepupoin.com',
+      avatarUrl: _defaultAvatarUrl,
+      role: 'superadmin',
+    ),
+    password: 'superadmin123',
+  );
+
   UserProfile? _activeProfile;
   StreamSubscription<AuthState>? _authSubscription;
 
@@ -57,16 +71,18 @@ class _KdmpAppState extends State<KdmpApp> {
       _activeProfile = _profileFromSupabaseUser(
         Supabase.instance.client.auth.currentUser,
       );
-      _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((
-        data,
-      ) {
-        if (!mounted) return;
-        setState(() {
-          _activeProfile = _profileFromSupabaseUser(data.session?.user);
-        });
-      });
+      _authSubscription = Supabase.instance.client.auth.onAuthStateChange
+          .listen((data) {
+            if (!mounted) return;
+            setState(() {
+              _activeProfile = _profileFromSupabaseUser(data.session?.user);
+            });
+          });
     } else if (widget.startAuthenticated) {
-      _activeProfile = _mockRegisteredUser.profile;
+      // Jika di web, default langsung gunakan profil superadmin mock
+      _activeProfile = kIsWeb
+          ? _mockSuperAdmin.profile
+          : _mockRegisteredUser.profile;
     }
   }
 
@@ -83,22 +99,32 @@ class _KdmpAppState extends State<KdmpApp> {
       debugShowCheckedModeBanner: false,
       theme: buildKdmpTheme(),
       scrollBehavior: const _KdmpScrollBehavior(),
+      // 2. Lakukan percabangan Home berdasarkan platform (Web vs Mobile)
       home: _activeProfile == null
           ? AuthScreen(
               initialEmail: _useSupabase
                   ? ''
-                  : _mockRegisteredUser.profile.email,
-              initialPassword: _useSupabase ? '' : _mockRegisteredUser.password,
+                  : (kIsWeb
+                        ? _mockSuperAdmin.profile.email
+                        : _mockRegisteredUser.profile.email),
+              initialPassword: _useSupabase
+                  ? ''
+                  : (kIsWeb
+                        ? _mockSuperAdmin.password
+                        : _mockRegisteredUser.password),
               onLogin: _handleLogin,
               onSignUp: _handleSignUp,
               usingSupabase: _useSupabase,
             )
-          : HomeShell(
-              initialProfile: _activeProfile!,
-              onLogout: () => unawaited(_handleLogout()),
-              onProfileChanged: (profile) =>
-                  unawaited(_handleProfileChanged(profile)),
-            ),
+          : (kIsWeb
+                ? const SuperAdminDashboardOverview() // Tampilan utama jika login via Web Browser
+                : HomeShell(
+                    // Tampilan utama jika login via Mobile
+                    initialProfile: _activeProfile!,
+                    onLogout: () => unawaited(_handleLogout()),
+                    onProfileChanged: (profile) =>
+                        unawaited(_handleProfileChanged(profile)),
+                  )),
     );
   }
 
@@ -116,7 +142,18 @@ class _KdmpAppState extends State<KdmpApp> {
         if (user == null) {
           return 'Login gagal. Coba lagi beberapa saat.';
         }
-        setState(() => _activeProfile = _profileFromSupabaseUser(user));
+
+        final profile = _profileFromSupabaseUser(user);
+
+        // 3. Proteksi Web Dashboard: Validasi role saat masuk via Web
+        if (kIsWeb && profile != null) {
+          if (profile.role != 'superadmin' && profile.role != 'admin') {
+            await Supabase.instance.client.auth.signOut(); // Log out otomatis
+            return 'Akses ditolak. Halaman ini khusus untuk manajemen Admin MepuPoin.';
+          }
+        }
+
+        setState(() => _activeProfile = profile);
         return null;
       } on AuthException catch (error) {
         return error.message;
@@ -125,13 +162,27 @@ class _KdmpAppState extends State<KdmpApp> {
       }
     }
 
-    final matchesEmail =
-        _mockRegisteredUser.profile.email.toLowerCase() == email.toLowerCase();
-    final matchesPassword = _mockRegisteredUser.password == password;
-    if (!matchesEmail || !matchesPassword) {
-      return 'Email atau kata sandi tidak sesuai.';
+    // Alur otentikasi lokal untuk mode Demo/Mock
+    if (kIsWeb) {
+      // Validasi mock superadmin untuk web
+      final matchesEmail =
+          _mockSuperAdmin.profile.email.toLowerCase() == email.toLowerCase();
+      final matchesPassword = _mockSuperAdmin.password == password;
+      if (!matchesEmail || !matchesPassword) {
+        return 'Email atau kata sandi Superadmin salah.';
+      }
+      setState(() => _activeProfile = _mockSuperAdmin.profile);
+    } else {
+      // Validasi mock user biasa untuk mobile
+      final matchesEmail =
+          _mockRegisteredUser.profile.email.toLowerCase() ==
+          email.toLowerCase();
+      final matchesPassword = _mockRegisteredUser.password == password;
+      if (!matchesEmail || !matchesPassword) {
+        return 'Email atau kata sandi tidak sesuai.';
+      }
+      setState(() => _activeProfile = _mockRegisteredUser.profile);
     }
-    setState(() => _activeProfile = _mockRegisteredUser.profile);
     return null;
   }
 
@@ -141,6 +192,11 @@ class _KdmpAppState extends State<KdmpApp> {
     required String email,
     required String password,
   }) async {
+    // Blokir pendaftaran mandiri (Sign Up) dari panel web superadmin
+    if (kIsWeb) {
+      return 'Pendaftaran akun admin baru hanya bisa dilakukan oleh Superadmin di dalam sistem.';
+    }
+
     if (_useSupabase) {
       try {
         await Supabase.instance.client.auth.signUp(
@@ -150,6 +206,7 @@ class _KdmpAppState extends State<KdmpApp> {
             'full_name': name,
             'phone': phone,
             'avatar_url': '__initials__',
+            'role': 'user', // Set default registrasi luar sebagai user biasa
           },
         );
         await Supabase.instance.client.auth.signInWithPassword(
@@ -169,7 +226,8 @@ class _KdmpAppState extends State<KdmpApp> {
       }
     }
 
-    if (_mockRegisteredUser.profile.email.toLowerCase() == email.toLowerCase()) {
+    if (_mockRegisteredUser.profile.email.toLowerCase() ==
+        email.toLowerCase()) {
       return 'Email ini sudah terdaftar. Silakan login.';
     }
     final newUser = _MockAuthUser(
@@ -178,6 +236,7 @@ class _KdmpAppState extends State<KdmpApp> {
         phone: phone,
         email: email,
         avatarUrl: '__initials__',
+        role: 'user',
       ),
       password: password,
     );
@@ -206,6 +265,7 @@ class _KdmpAppState extends State<KdmpApp> {
               'full_name': updatedProfile.name,
               'phone': updatedProfile.phone,
               'avatar_url': updatedProfile.avatarUrl,
+              'role': updatedProfile.role,
             },
           ),
         );
@@ -213,7 +273,9 @@ class _KdmpAppState extends State<KdmpApp> {
         // Keep local UI responsive even if remote sync fails.
       }
     } else {
-      _mockRegisteredUser = _mockRegisteredUser.copyWith(profile: updatedProfile);
+      _mockRegisteredUser = _mockRegisteredUser.copyWith(
+        profile: updatedProfile,
+      );
     }
 
     if (!mounted) return;
@@ -223,15 +285,21 @@ class _KdmpAppState extends State<KdmpApp> {
   UserProfile? _profileFromSupabaseUser(User? user) {
     if (user == null) return null;
     final metadata = user.userMetadata ?? <String, dynamic>{};
-    final name =
-        (metadata['full_name'] ?? metadata['name'] ?? '').toString().trim();
+    final name = (metadata['full_name'] ?? metadata['name'] ?? '')
+        .toString()
+        .trim();
     final phone = (metadata['phone'] ?? '').toString().trim();
     final avatarUrl = (metadata['avatar_url'] ?? '__initials__').toString();
+
+    // Ambil data 'role' dari metadata user di Supabase (default: user)
+    final role = (metadata['role'] ?? 'user').toString();
+
     return UserProfile(
       name: name.isEmpty ? _nameFromEmail(user.email ?? 'Member') : name,
       phone: phone.isEmpty ? '-' : phone,
       email: user.email ?? '',
       avatarUrl: avatarUrl.isEmpty ? '__initials__' : avatarUrl,
+      role: role,
     );
   }
 
@@ -242,15 +310,16 @@ class _KdmpAppState extends State<KdmpApp> {
         .split(RegExp(r'\s+'))
         .where((part) => part.isNotEmpty)
         .map(
-          (part) => '${part[0].toUpperCase()}${part.substring(1).toLowerCase()}',
+          (part) =>
+              '${part[0].toUpperCase()}${part.substring(1).toLowerCase()}',
         )
         .join(' ');
   }
 }
 
+// Komponen kelas internal pembantu bawaan dari file aslimu tetap dipertahankan di bawah...
 class _MockAuthUser {
   const _MockAuthUser({required this.profile, required this.password});
-
   final UserProfile profile;
   final String password;
 
@@ -261,6 +330,8 @@ class _MockAuthUser {
     );
   }
 }
+
+// Sisa komponen UI seperti AuthScreen, _AuthCard, dll tetap biarkan seperti aslinya.
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({
@@ -463,9 +534,9 @@ class _AuthScreenState extends State<AuthScreen> {
               const SizedBox(height: 12),
               Text(
                 'Akun demo: budi.santoso@email.com / mepupoin123',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: const Color(0xFF64748B),
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
               ),
             ],
           ],
@@ -770,9 +841,9 @@ class _SetupHintCard extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             message,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: const Color(0xFF7A5A00),
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF7A5A00)),
           ),
         ],
       ),

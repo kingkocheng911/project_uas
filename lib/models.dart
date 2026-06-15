@@ -7,6 +7,22 @@ class CategoryItem {
   final IconData icon;
 }
 
+class ActiveProfile {
+  final String name;
+  final String phone;
+  final String email;
+  final String avatarUrl;
+  final String role; // <-- Pastikan ada baris ini
+
+  const ActiveProfile({
+    required this.name,
+    required this.phone,
+    required this.email,
+    required this.avatarUrl,
+    this.role = 'user', // Default 'user'
+  });
+}
+
 class PromoBanner {
   const PromoBanner({
     required this.title,
