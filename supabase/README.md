@@ -65,14 +65,18 @@ Jika credential belum diisi, aplikasi tetap bisa berjalan dalam mode demo lokal.
 ## File SQL yang tersedia
 
 - `schema.sql`
-  Dipakai untuk setup database aplikasi secara umum: profile, addresses, products, orders, dan order_items.
+  Dipakai untuk setup schema inti aplikasi:
+  - `profiles`
+  - `addresses`
+  - `user_settings`
+  - `categories`
+  - `products`
 
 - `account_schema.sql`
   Dipakai jika Anda ingin fokus setup database akun saja terlebih dahulu:
   - `profiles`
   - `addresses`
-  - `notification_settings`
-  - `payment_methods`
+  - `user_settings`
 
 ## Workflow Supabase CLI
 

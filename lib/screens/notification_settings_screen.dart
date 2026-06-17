@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class NotificationSettingsScreen extends StatefulWidget {
   const NotificationSettingsScreen({super.key});
@@ -8,6 +9,8 @@ class NotificationSettingsScreen extends StatefulWidget {
 }
 
 class _NotificationSettingsScreenState extends State<NotificationSettingsScreen> {
+  final SupabaseClient _client = Supabase.instance.client;
+
   bool _orders = true;
   bool _promotions = true;
   bool _payments = true;
@@ -17,6 +20,17 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
   bool _email = true;
   bool _sms = false;
   bool _push = true;
+  bool _isLoading = true;
+  bool _isSaving = false;
+
+  User? get _currentUser => _client.auth.currentUser;
+  bool get _canUseSupabase => _currentUser != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,129 +45,230 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
         ),
         title: Text('Notifications', style: TextStyle(color: primary, fontWeight: FontWeight.w700)),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          Text('Notification Settings', style: theme.textTheme.headlineLarge?.copyWith(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 6),
-          Text(
-            'Manage how and when you receive notifications.',
-            style: theme.textTheme.bodyLarge?.copyWith(color: const Color(0xFF6D5A58)),
-          ),
-          const SizedBox(height: 24),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                Text('Notification Settings', style: theme.textTheme.headlineLarge?.copyWith(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 6),
+                Text(
+                  _canUseSupabase
+                      ? 'Manage how and when you receive notifications.'
+                      : 'Pengaturan notifikasi belum tersimpan ke akun karena kamu belum login ke Supabase.',
+                  style: theme.textTheme.bodyLarge?.copyWith(color: const Color(0xFF6D5A58)),
+                ),
+                const SizedBox(height: 24),
 
-          // Notification types
-          _SectionCard(
-            title: 'Notification Types',
-            children: [
-              _ToggleTile(
-                icon: Icons.receipt_long_outlined,
-                iconColor: const Color(0xFF1565C0),
-                iconBg: const Color(0xFFE3F2FD),
-                title: 'Orders & Delivery',
-                subtitle: 'Status updates for your orders',
-                value: _orders,
-                onChanged: (v) => setState(() => _orders = v),
-              ),
-              _ToggleTile(
-                icon: Icons.local_offer_outlined,
-                iconColor: const Color(0xFFD9001B),
-                iconBg: const Color(0xFFFCE1E4),
-                title: 'Promotions & Flash Sales',
-                subtitle: 'Exclusive deals and discounts',
-                value: _promotions,
-                onChanged: (v) => setState(() => _promotions = v),
-              ),
-              _ToggleTile(
-                icon: Icons.account_balance_wallet_outlined,
-                iconColor: const Color(0xFF1A7F42),
-                iconBg: const Color(0xFFDFF5E8),
-                title: 'Payments & Balance',
-                subtitle: 'Top ups, transactions, dividends',
-                value: _payments,
-                onChanged: (v) => setState(() => _payments = v),
-              ),
-              _ToggleTile(
-                icon: Icons.workspace_premium_outlined,
-                iconColor: const Color(0xFFC9A900),
-                iconBg: const Color(0xFFFFF3CD),
-                title: 'Membership & Points',
-                subtitle: 'Reward points and tier updates',
-                value: _membership,
-                onChanged: (v) => setState(() => _membership = v),
-              ),
-              _ToggleTile(
-                icon: Icons.security_outlined,
-                iconColor: const Color(0xFF1565C0),
-                iconBg: const Color(0xFFE3F2FD),
-                title: 'Security Alerts',
-                subtitle: 'Login, PIN change, suspicious activity',
-                value: _security,
-                onChanged: (v) => setState(() => _security = v),
-                isLast: true,
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
+                // Notification types
+                _SectionCard(
+                  title: 'Notification Types',
+                  children: [
+                    _ToggleTile(
+                      icon: Icons.receipt_long_outlined,
+                      iconColor: const Color(0xFF1565C0),
+                      iconBg: const Color(0xFFE3F2FD),
+                      title: 'Orders & Delivery',
+                      subtitle: 'Status updates for your orders',
+                      value: _orders,
+                      onChanged: _isSaving ? null : (v) => setState(() => _orders = v),
+                    ),
+                    _ToggleTile(
+                      icon: Icons.local_offer_outlined,
+                      iconColor: const Color(0xFFD9001B),
+                      iconBg: const Color(0xFFFCE1E4),
+                      title: 'Promotions & Flash Sales',
+                      subtitle: 'Exclusive deals and discounts',
+                      value: _promotions,
+                      onChanged: _isSaving ? null : (v) => setState(() => _promotions = v),
+                    ),
+                    _ToggleTile(
+                      icon: Icons.account_balance_wallet_outlined,
+                      iconColor: const Color(0xFF1A7F42),
+                      iconBg: const Color(0xFFDFF5E8),
+                      title: 'Payments & Balance',
+                      subtitle: 'Top ups, transactions, dividends',
+                      value: _payments,
+                      onChanged: _isSaving ? null : (v) => setState(() => _payments = v),
+                    ),
+                    _ToggleTile(
+                      icon: Icons.workspace_premium_outlined,
+                      iconColor: const Color(0xFFC9A900),
+                      iconBg: const Color(0xFFFFF3CD),
+                      title: 'Membership & Points',
+                      subtitle: 'Reward points and tier updates',
+                      value: _membership,
+                      onChanged: _isSaving ? null : (v) => setState(() => _membership = v),
+                    ),
+                    _ToggleTile(
+                      icon: Icons.security_outlined,
+                      iconColor: const Color(0xFF1565C0),
+                      iconBg: const Color(0xFFE3F2FD),
+                      title: 'Security Alerts',
+                      subtitle: 'Login, PIN change, suspicious activity',
+                      value: _security,
+                      onChanged: _isSaving ? null : (v) => setState(() => _security = v),
+                      isLast: true,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
 
-          // Delivery channels
-          _SectionCard(
-            title: 'Delivery Channels',
-            children: [
-              _ToggleTile(
-                icon: Icons.notifications_outlined,
-                iconColor: primary,
-                iconBg: const Color(0xFFFFE9E6),
-                title: 'Push Notifications',
-                subtitle: 'Receive alerts on your device',
-                value: _push,
-                onChanged: (v) => setState(() => _push = v),
-              ),
-              _ToggleTile(
-                icon: Icons.email_outlined,
-                iconColor: const Color(0xFF5D5F5F),
-                iconBg: const Color(0xFFDFE0E0),
-                title: 'Email Notifications',
-                subtitle: 'Sent to budi.santoso@email.com',
-                value: _email,
-                onChanged: (v) => setState(() => _email = v),
-              ),
-              _ToggleTile(
-                icon: Icons.sms_outlined,
-                iconColor: const Color(0xFF1A7F42),
-                iconBg: const Color(0xFFDFF5E8),
-                title: 'SMS Notifications',
-                subtitle: 'Sent to +62 812-3456-7890',
-                value: _sms,
-                onChanged: (v) => setState(() => _sms = v),
-              ),
-              _ToggleTile(
-                icon: Icons.mark_email_unread_outlined,
-                iconColor: const Color(0xFF6D5A58),
-                iconBg: const Color(0xFFF1F3F5),
-                title: 'Newsletter',
-                subtitle: 'Monthly cooperative updates',
-                value: _newsletter,
-                onChanged: (v) => setState(() => _newsletter = v),
-                isLast: true,
-              ),
-            ],
-          ),
-          const SizedBox(height: 28),
+                // Delivery channels
+                _SectionCard(
+                  title: 'Delivery Channels',
+                  children: [
+                    _ToggleTile(
+                      icon: Icons.notifications_outlined,
+                      iconColor: primary,
+                      iconBg: const Color(0xFFFFE9E6),
+                      title: 'Push Notifications',
+                      subtitle: 'Receive alerts on your device',
+                      value: _push,
+                      onChanged: _isSaving ? null : (v) => setState(() => _push = v),
+                    ),
+                    _ToggleTile(
+                      icon: Icons.email_outlined,
+                      iconColor: const Color(0xFF5D5F5F),
+                      iconBg: const Color(0xFFDFE0E0),
+                      title: 'Email Notifications',
+                      subtitle: 'Sent to your registered email address',
+                      value: _email,
+                      onChanged: _isSaving ? null : (v) => setState(() => _email = v),
+                    ),
+                    _ToggleTile(
+                      icon: Icons.sms_outlined,
+                      iconColor: const Color(0xFF1A7F42),
+                      iconBg: const Color(0xFFDFF5E8),
+                      title: 'SMS Notifications',
+                      subtitle: 'Sent to your registered phone number',
+                      value: _sms,
+                      onChanged: _isSaving ? null : (v) => setState(() => _sms = v),
+                    ),
+                    _ToggleTile(
+                      icon: Icons.mark_email_unread_outlined,
+                      iconColor: const Color(0xFF6D5A58),
+                      iconBg: const Color(0xFFF1F3F5),
+                      title: 'Newsletter',
+                      subtitle: 'Monthly cooperative updates',
+                      value: _newsletter,
+                      onChanged: _isSaving ? null : (v) => setState(() => _newsletter = v),
+                      isLast: true,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 28),
 
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(),
-            style: FilledButton.styleFrom(
-              backgroundColor: primary,
-              minimumSize: const Size.fromHeight(62),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                FilledButton(
+                  onPressed: _isSaving ? null : _saveSettings,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: primary,
+                    minimumSize: const Size.fromHeight(62),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                  ),
+                  child: Text(
+                    _isSaving ? 'Saving...' : 'Save Preferences',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                const SizedBox(height: 32),
+              ],
             ),
-            child: const Text('Save Preferences', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-          ),
-          const SizedBox(height: 32),
-        ],
-      ),
     );
+  }
+
+  Future<void> _loadSettings() async {
+    if (!_canUseSupabase) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    try {
+      final row = await _client
+          .from('user_settings')
+          .select('notifications')
+          .eq('user_id', _currentUser!.id)
+          .maybeSingle();
+
+      if (!mounted) return;
+      if (row != null) {
+        setState(() {
+          _applySettingsRow(row);
+          _isLoading = false;
+        });
+      } else {
+        setState(() => _isLoading = false);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      _showNotice('Gagal memuat pengaturan notifikasi. Menampilkan data default.');
+    }
+  }
+
+  Future<void> _saveSettings() async {
+    if (!_canUseSupabase) {
+      _showNotice('Login ke Supabase diperlukan untuk menyimpan pengaturan notifikasi.');
+      return;
+    }
+
+    setState(() => _isSaving = true);
+    try {
+      await _client.from('user_settings').upsert({
+        'user_id': _currentUser!.id,
+        'notifications': {
+          'orders': _orders,
+          'promotions': _promotions,
+          'payments': _payments,
+          'membership': _membership,
+          'security': _security,
+          'newsletter': _newsletter,
+          'email': _email,
+          'sms': _sms,
+          'push': _push,
+        },
+      });
+
+      if (!mounted) return;
+      _showNotice('Pengaturan notifikasi berhasil disimpan.');
+      Navigator.of(context).pop();
+    } catch (_) {
+      if (!mounted) return;
+      _showNotice('Pengaturan notifikasi belum berhasil disimpan. Coba lagi.');
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
+  }
+
+  void _applySettingsRow(Map<String, dynamic> row) {
+    final notifications =
+        row['notifications'] is Map<String, dynamic>
+            ? row['notifications'] as Map<String, dynamic>
+            : <String, dynamic>{};
+    _orders = notifications['orders'] != false;
+    _promotions = notifications['promotions'] != false;
+    _payments = notifications['payments'] != false;
+    _membership = notifications['membership'] == true;
+    _security = notifications['security'] != false;
+    _newsletter = notifications['newsletter'] == true;
+    _email = notifications['email'] != false;
+    _sms = notifications['sms'] == true;
+    _push = notifications['push'] != false;
+  }
+
+  void _showNotice(String message) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
   }
 }
 
@@ -198,7 +313,7 @@ class _ToggleTile extends StatelessWidget {
   final Color iconColor, iconBg;
   final String title, subtitle;
   final bool value;
-  final ValueChanged<bool> onChanged;
+  final ValueChanged<bool>? onChanged;
   final bool isLast;
 
   @override

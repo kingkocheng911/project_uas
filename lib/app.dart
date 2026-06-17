@@ -68,15 +68,17 @@ class _KdmpAppState extends State<KdmpApp> {
   void initState() {
     super.initState();
     if (_useSupabase) {
-      _activeProfile = _profileFromSupabaseUser(
-        Supabase.instance.client.auth.currentUser,
-      );
+      final currentUser = Supabase.instance.client.auth.currentUser;
+      _activeProfile = _profileFallbackFromSupabaseUser(currentUser);
+      unawaited(_syncActiveProfile(currentUser));
       _authSubscription = Supabase.instance.client.auth.onAuthStateChange
-          .listen((data) {
+          .listen((data) async {
+            final user = data.session?.user;
             if (!mounted) return;
             setState(() {
-              _activeProfile = _profileFromSupabaseUser(data.session?.user);
+              _activeProfile = _profileFallbackFromSupabaseUser(user);
             });
+            await _syncActiveProfile(user);
           });
     } else if (widget.startAuthenticated) {
       // Jika di web, default langsung gunakan profil superadmin mock
@@ -143,7 +145,7 @@ class _KdmpAppState extends State<KdmpApp> {
           return 'Login gagal. Coba lagi beberapa saat.';
         }
 
-        final profile = _profileFromSupabaseUser(user);
+        final profile = await _profileFromSupabaseUser(user);
 
         // 3. Proteksi Web Dashboard: Validasi role saat masuk via Web
         if (kIsWeb && profile != null) {
@@ -217,7 +219,8 @@ class _KdmpAppState extends State<KdmpApp> {
         if (user == null) {
           return 'Akun dibuat, tapi sesi belum aktif. Coba login kembali.';
         }
-        setState(() => _activeProfile = _profileFromSupabaseUser(user));
+        final profile = await _profileFromSupabaseUser(user);
+        setState(() => _activeProfile = profile);
         return null;
       } on AuthException catch (error) {
         return error.message;
@@ -258,15 +261,19 @@ class _KdmpAppState extends State<KdmpApp> {
   Future<void> _handleProfileChanged(UserProfile updatedProfile) async {
     if (_useSupabase) {
       try {
+        final client = Supabase.instance.client;
+        final user = client.auth.currentUser;
+        if (user != null) {
+          await client.from('profiles').upsert({
+            'id': user.id,
+            'full_name': updatedProfile.name,
+            'phone': updatedProfile.phone == '-' ? null : updatedProfile.phone,
+            'avatar_url': updatedProfile.avatarUrl,
+          });
+        }
         await Supabase.instance.client.auth.updateUser(
           UserAttributes(
             email: updatedProfile.email,
-            data: {
-              'full_name': updatedProfile.name,
-              'phone': updatedProfile.phone,
-              'avatar_url': updatedProfile.avatarUrl,
-              'role': updatedProfile.role,
-            },
           ),
         );
       } catch (_) {
@@ -282,7 +289,46 @@ class _KdmpAppState extends State<KdmpApp> {
     setState(() => _activeProfile = updatedProfile);
   }
 
-  UserProfile? _profileFromSupabaseUser(User? user) {
+  Future<void> _syncActiveProfile(User? user) async {
+    final profile = await _profileFromSupabaseUser(user);
+    if (!mounted) return;
+    setState(() => _activeProfile = profile);
+  }
+
+  Future<UserProfile?> _profileFromSupabaseUser(User? user) async {
+    if (user == null) return null;
+    final fallbackProfile = _profileFallbackFromSupabaseUser(user)!;
+    final client = Supabase.instance.client;
+
+    try {
+      final row = await client
+          .from('profiles')
+          .select('full_name, phone, avatar_url, role')
+          .eq('id', user.id)
+          .maybeSingle();
+
+      if (row == null) {
+        return fallbackProfile;
+      }
+
+      final name = (row['full_name'] ?? '').toString().trim();
+      final phone = (row['phone'] ?? '').toString().trim();
+      final avatarUrl = (row['avatar_url'] ?? '').toString().trim();
+      final role = _roleFromProfileRow(row, fallbackRole: fallbackProfile.role);
+
+      return UserProfile(
+        name: name.isEmpty ? fallbackProfile.name : name,
+        phone: phone.isEmpty ? fallbackProfile.phone : phone,
+        email: user.email ?? '',
+        avatarUrl: avatarUrl.isEmpty ? fallbackProfile.avatarUrl : avatarUrl,
+        role: role,
+      );
+    } catch (_) {
+      return fallbackProfile;
+    }
+  }
+
+  UserProfile? _profileFallbackFromSupabaseUser(User? user) {
     if (user == null) return null;
     final metadata = user.userMetadata ?? <String, dynamic>{};
     final name = (metadata['full_name'] ?? metadata['name'] ?? '')
@@ -301,6 +347,23 @@ class _KdmpAppState extends State<KdmpApp> {
       avatarUrl: avatarUrl.isEmpty ? '__initials__' : avatarUrl,
       role: role,
     );
+  }
+
+  String _roleFromProfileRow(
+    Map<String, dynamic> row, {
+    required String fallbackRole,
+  }) {
+    final role = (row['role'] ?? '').toString().trim().toLowerCase();
+    switch (role) {
+      case 'superadmin':
+        return 'superadmin';
+      case 'admin':
+        return 'admin';
+      case 'user':
+        return 'user';
+      default:
+        return fallbackRole;
+    }
   }
 
   String _nameFromEmail(String email) {

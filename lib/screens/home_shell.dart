@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
-
+import '../catalog_repository.dart';
 import '../mock_data.dart';
 import '../models.dart';
 import 'manage_addresses_screen.dart';
@@ -26,24 +26,9 @@ const _profileAvatarOptions = <String>[
 ];
 const _initialsAvatarKey = '__initials__';
 
-const _initialProductStocks = <String, int>{
-  'rice': 24,
-  'oil': 36,
-  'smartband': 12,
-  'honey': 18,
-  'coffee': 28,
-  'powerbank': 10,
-};
-
-const productCategories = <String>[
+List<String> get productCategories => [
   'Semua',
-  'Makanan',
-  'Minuman',
-  'Sembako',
-  'Alat-alat',
-  'Olahraga',
-  'Elektronik',
-  'Fashion',
+  ...categories.map((category) => category.label),
 ];
 
 class UserProfile {
@@ -153,13 +138,12 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> {
+  static const _catalogRepository = CatalogRepository();
   int _currentIndex = 0;
   int _mepuBalance = 150000;
   String _shopSelectedCategory = 'Semua';
   late UserProfile _profile;
-  final Map<String, int> _productStocks = Map<String, int>.of(
-    _initialProductStocks,
-  );
+  late final Map<String, int> _productStocks = _createStocks(products);
   final List<Product> _cartItems = [];
   final List<OrderItem> _orderItems = List<OrderItem>.of(orders);
   final Map<String, List<Product>> _orderProducts = {};
@@ -168,6 +152,7 @@ class _HomeShellState extends State<HomeShell> {
   void initState() {
     super.initState();
     _profile = widget.initialProfile;
+    unawaited(_loadCatalog());
   }
 
   @override
@@ -177,6 +162,8 @@ class _HomeShellState extends State<HomeShell> {
         cartItemCount: _cartItems.length,
         mepuBalance: _mepuBalance,
         productStocks: _productStocks,
+        products: products,
+        categories: productCategories,
         onOpenProduct: _openProduct,
         onChangeTab: _changeTab,
         onOpenCart: _openCart,
@@ -187,6 +174,8 @@ class _HomeShellState extends State<HomeShell> {
       ShopScreen(
         cartItemCount: _cartItems.length,
         productStocks: _productStocks,
+        products: products,
+        categories: productCategories,
         selectedCategory: _shopSelectedCategory,
         onOpenProduct: _openProduct,
         onOpenCart: _openCart,
@@ -226,6 +215,31 @@ class _HomeShellState extends State<HomeShell> {
 
   void _changeTab(int index) {
     setState(() => _currentIndex = index);
+  }
+
+  Future<void> _loadCatalog() async {
+    try {
+      final snapshot = await _catalogRepository.load();
+      final loadedCategories = List<CategoryItem>.of(snapshot.categories);
+      final loadedProducts = List<Product>.of(snapshot.products);
+      if (!mounted) return;
+      setState(() {
+        categories
+          ..clear()
+          ..addAll(loadedCategories);
+        products
+          ..clear()
+          ..addAll(loadedProducts);
+        _productStocks
+          ..clear()
+          ..addAll(_createStocks(loadedProducts));
+        if (!productCategories.contains(_shopSelectedCategory)) {
+          _shopSelectedCategory = 'Semua';
+        }
+      });
+    } catch (_) {
+      // Keep fallback catalog if remote load fails.
+    }
   }
 
   void _openShopCategory(String category) {
@@ -634,6 +648,12 @@ class _HomeShellState extends State<HomeShell> {
       icon: Icons.verified_user_outlined,
     );
   }
+}
+
+Map<String, int> _createStocks(List<Product> items) {
+  return {
+    for (final product in items) product.id: product.stock,
+  };
 }
 
 Future<void> _showFeatureSnack(
@@ -1341,6 +1361,8 @@ class DashboardScreen extends StatelessWidget {
     required this.cartItemCount,
     required this.mepuBalance,
     required this.productStocks,
+    required this.products,
+    required this.categories,
     required this.onOpenProduct,
     required this.onChangeTab,
     required this.onOpenCart,
@@ -1352,6 +1374,8 @@ class DashboardScreen extends StatelessWidget {
   final int cartItemCount;
   final int mepuBalance;
   final Map<String, int> productStocks;
+  final List<Product> products;
+  final List<String> categories;
   final ValueChanged<Product> onOpenProduct;
   final ValueChanged<int> onChangeTab;
   final VoidCallback onOpenCart;
@@ -1413,7 +1437,10 @@ class DashboardScreen extends StatelessWidget {
             ),
           ),
           SliverToBoxAdapter(
-            child: _CategoryShortcutList(onSelectCategory: onSelectCategory),
+            child: _CategoryShortcutList(
+              categories: categories,
+              onSelectCategory: onSelectCategory,
+            ),
           ),
           SliverToBoxAdapter(
             child: _MepuPoinSectionHeader(
@@ -1425,7 +1452,7 @@ class DashboardScreen extends StatelessWidget {
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             sliver: SliverGrid.builder(
-              itemCount: 4,
+              itemCount: products.isEmpty ? 0 : products.length.clamp(0, 4),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
                 crossAxisSpacing: 12,
@@ -1940,8 +1967,12 @@ class _MepuPoinBannerCarouselState extends State<_MepuPoinBannerCarousel> {
 }
 
 class _CategoryShortcutList extends StatelessWidget {
-  const _CategoryShortcutList({required this.onSelectCategory});
+  const _CategoryShortcutList({
+    required this.categories,
+    required this.onSelectCategory,
+  });
 
+  final List<String> categories;
   final ValueChanged<String> onSelectCategory;
 
   @override
@@ -1953,10 +1984,10 @@ class _CategoryShortcutList extends StatelessWidget {
       child: ListView.separated(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         scrollDirection: Axis.horizontal,
-        itemCount: productCategories.length - 1,
+        itemCount: categories.length <= 1 ? 0 : categories.length - 1,
         separatorBuilder: (_, _) => const SizedBox(width: 12),
         itemBuilder: (context, index) {
-          final category = productCategories[index + 1];
+          final category = categories[index + 1];
           final icon = categoryIcon(category);
           return InkWell(
             onTap: () => onSelectCategory(category),
@@ -2277,6 +2308,8 @@ class ShopScreen extends StatefulWidget {
     super.key,
     required this.cartItemCount,
     required this.productStocks,
+    required this.products,
+    required this.categories,
     required this.selectedCategory,
     required this.onOpenProduct,
     required this.onOpenCart,
@@ -2285,6 +2318,8 @@ class ShopScreen extends StatefulWidget {
 
   final int cartItemCount;
   final Map<String, int> productStocks;
+  final List<Product> products;
+  final List<String> categories;
   final String selectedCategory;
   final ValueChanged<Product> onOpenProduct;
   final VoidCallback onOpenCart;
@@ -2309,7 +2344,7 @@ class _ShopScreenState extends State<ShopScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    const categories = productCategories;
+    final categories = widget.categories;
     final displayedProducts = _buildSortedProducts();
 
     return CustomScrollView(
@@ -2487,8 +2522,8 @@ class _ShopScreenState extends State<ShopScreen> {
 
   List<Product> _buildSortedProducts() {
     final filteredProducts = selectedCategory == 'Semua'
-        ? products
-        : products
+        ? widget.products
+        : widget.products
               .where(
                 (product) => productMatchesCategory(product, selectedCategory),
               )
@@ -8678,21 +8713,7 @@ bool productMatchesCategory(Product product, String category) {
 }
 
 List<String> productCategoriesFor(Product product) {
-  switch (product.id) {
-    case 'rice':
-    case 'oil':
-      return const ['Sembako', 'Makanan'];
-    case 'coffee':
-      return const ['Minuman', 'Makanan'];
-    case 'honey':
-      return const ['Makanan', 'Sembako'];
-    case 'smartband':
-      return const ['Elektronik', 'Olahraga', 'Fashion'];
-    case 'powerbank':
-      return const ['Elektronik', 'Alat-alat', 'Olahraga'];
-    default:
-      return const ['Alat-alat'];
-  }
+  return product.categories.isEmpty ? const ['Lainnya'] : product.categories;
 }
 
 IconData categoryIcon(String category) {

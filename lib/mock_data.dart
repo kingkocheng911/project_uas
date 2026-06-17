@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 
 import 'models.dart';
 
-const categories = <CategoryItem>[
-  CategoryItem(label: 'Grocery', icon: Icons.local_grocery_store_rounded),
-  CategoryItem(label: 'Fresh', icon: Icons.eco_outlined),
-  CategoryItem(label: 'Pharmacy', icon: Icons.medical_services_outlined),
-  CategoryItem(label: 'Services', icon: Icons.support_agent_outlined),
+final categories = <CategoryItem>[
+  const CategoryItem(label: 'Makanan', icon: Icons.restaurant_outlined),
+  const CategoryItem(label: 'Minuman', icon: Icons.local_cafe_outlined),
+  const CategoryItem(label: 'Sembako', icon: Icons.shopping_basket_outlined),
+  const CategoryItem(label: 'Elektronik', icon: Icons.devices_outlined),
 ];
 
 const promos = <PromoBanner>[
@@ -28,12 +28,13 @@ const promos = <PromoBanner>[
   ),
 ];
 
-const products = <Product>[
-  Product(
+final products = <Product>[
+  const Product(
     id: 'rice',
     name: 'Beras Premium 5kg',
     price: 65000,
     originalPrice: 82000,
+    stock: 24,
     claimedPercent: 70,
     rewardPoints: 75,
     badge: 'Cooperatively Sourced',
@@ -41,6 +42,7 @@ const products = <Product>[
         'Beras pilihan dari mitra koperasi desa dengan bulir utuh, tekstur pulen, dan kualitas yang dikurasi untuk kebutuhan keluarga. Dikemas higienis agar tetap segar sampai ke rumah anggota.',
     icon: Icons.rice_bowl_rounded,
     tone: Color(0xFFB88A44),
+    categories: ['Sembako', 'Makanan'],
     imageUrl:
         'https://lh3.googleusercontent.com/aida-public/AB6AXuCYGUUcwqUMgufcQqiugoWXViQWvRED6Ju6tw8B3P6vtnWsHvR0OoH1OzL_lyhRjSmQpf7spTfKDdzYlxy-tdnV25rlnYLJ1y_Na4ZUIs7NeuphU7Y-cvmf7qzMcEfOH1jVS3L7cWYhQ46193Gi6fru9GkiO2F1S4dcBsE-K7kfgnJnvTOAc5fMhtKVPFk92C_GZUsLxn4HI2APT6vghq021oVS03pLwR0rQYmSvtCfZgM0_WTgKCmCLCONxnwzGFOiOCKueChS1Kjx',
     highlights: [
@@ -51,11 +53,12 @@ const products = <Product>[
     ],
     relatedIds: ['oil', 'honey'],
   ),
-  Product(
+  const Product(
     id: 'oil',
     name: 'Minyak Goreng 2L',
     price: 32000,
     originalPrice: 38000,
+    stock: 36,
     claimedPercent: 35,
     rewardPoints: 28,
     badge: 'Daily Essential',
@@ -63,16 +66,18 @@ const products = <Product>[
         'Minyak goreng jernih untuk kebutuhan dapur harian dengan harga anggota yang stabil. Cocok untuk memasak rumah tangga, usaha kecil, maupun paket sembako bulanan koperasi.',
     icon: Icons.water_drop_outlined,
     tone: Color(0xFFC89D28),
+    categories: ['Sembako', 'Makanan'],
     imageUrl:
         'https://lh3.googleusercontent.com/aida-public/AB6AXuDj7aNubhXpJ3yDOVlWGzFwo_1B8ih4-JT0z-3kbKJW2A1-t03GitLX6-4JcPTYZezlXa5QhVzAnHoM8cA5gxKaH7g6h6RJLJWeRslG9rV-O8Zt6jlG7rTuDMlkQw3hXduQYKiBMXFr_pLbw1RLqG5bd93S-dey2tE7UbmP1Yo4j6QWjzHNEQeWETOEeK8bOw6O7giju0IAx4KFh2hRQidG5lJuNnMCr5clrZTkBcSdbNNBjZdGN5F9ZffpJcQ92diS-8JH_yEwIfZc',
     highlights: ['Trusted Brand', 'Ready Pickup', 'Bulk Order', 'Price Stable'],
     relatedIds: ['rice', 'coffee'],
   ),
-  Product(
+  const Product(
     id: 'smartband',
     name: 'MepuPoin Smart Band',
     price: 199000,
     originalPrice: 249000,
+    stock: 12,
     claimedPercent: 90,
     rewardPoints: 120,
     badge: 'Member Favorite',
@@ -80,6 +85,7 @@ const products = <Product>[
         'Smart band modern untuk anggota aktif MepuPoin dengan pemantauan aktivitas, notifikasi transaksi, dan dukungan pembayaran cepat. Ringan dipakai harian dan mudah dipasangkan dengan ponsel.',
     icon: Icons.watch_outlined,
     tone: Color(0xFF616A72),
+    categories: ['Elektronik', 'Olahraga', 'Fashion'],
     imageUrl:
         'https://lh3.googleusercontent.com/aida-public/AB6AXuC07iseQS0S0Rfhmc607HIkovcmPRprKhd0hMLfSbq2wCS7ABJQu5EI4bQ2DZo2QsRzo8KscF86Po-DW3lScOwUxep74FuKg_6Bam56l3-m_HbdOYclkx-cD5nuGOJRrZuO637e4KOM-90w3soZ-Qf8Fo4QDSsNj-cpi_EHXUEv2lihUAQ2gkL2eMPQB6T534cuNVR7HAScJgeGE0PzvkDdS-paU2rH_phcFVtcqilA0Eie92a0nVMdGLkGofaev9em_uRIMe9zGMGg',
     highlights: [
@@ -90,11 +96,12 @@ const products = <Product>[
     ],
     relatedIds: ['powerbank', 'coffee'],
   ),
-  Product(
+  const Product(
     id: 'honey',
     name: 'Forest Honey 250ml',
     price: 45000,
     originalPrice: 52000,
+    stock: 18,
     claimedPercent: 48,
     rewardPoints: 32,
     badge: 'Natural Product',
@@ -102,6 +109,7 @@ const products = <Product>[
         'Madu hutan dari UMKM anggota koperasi dengan rasa alami dan aroma khas. Diproses secara hati-hati untuk menjaga kualitas, cocok untuk konsumsi keluarga, hampers, atau kebutuhan usaha minuman.',
     icon: Icons.emoji_food_beverage_outlined,
     tone: Color(0xFF924B2E),
+    categories: ['Makanan', 'Sembako'],
     highlights: [
       'No Preservatives',
       'Local UMKM',
@@ -110,11 +118,12 @@ const products = <Product>[
     ],
     relatedIds: ['rice', 'coffee'],
   ),
-  Product(
+  const Product(
     id: 'coffee',
     name: 'Arabica Village Blend',
     price: 32000,
     originalPrice: 39000,
+    stock: 28,
     claimedPercent: 55,
     rewardPoints: 24,
     badge: 'Freshly Roasted',
@@ -122,6 +131,7 @@ const products = <Product>[
         'Kopi arabika blend dari petani desa binaan dengan profil rasa seimbang, aroma hangat, dan tingkat sangrai yang nyaman untuk diminum setiap hari. Digiling sesuai kebutuhan agar tetap segar.',
     icon: Icons.coffee_outlined,
     tone: Color(0xFF5A3727),
+    categories: ['Minuman', 'Makanan'],
     highlights: [
       'Fresh Roast',
       'Village Farmers',
@@ -130,11 +140,12 @@ const products = <Product>[
     ],
     relatedIds: ['honey', 'rice'],
   ),
-  Product(
+  const Product(
     id: 'powerbank',
     name: 'Power Bank 10.000mAh',
     price: 145000,
     originalPrice: 175000,
+    stock: 10,
     claimedPercent: 41,
     rewardPoints: 64,
     badge: 'Tech Essentials',
@@ -142,6 +153,7 @@ const products = <Product>[
         'Power bank berkapasitas besar untuk mendukung aktivitas lapangan, perjalanan, dan operasional toko digital. Dilengkapi proteksi pengisian agar perangkat tetap aman dan siap digunakan.',
     icon: Icons.battery_charging_full_rounded,
     tone: Color(0xFF325B83),
+    categories: ['Elektronik', 'Alat-alat', 'Olahraga'],
     highlights: ['Fast Charge', 'Safe Battery', 'Portable', 'Business Ready'],
     relatedIds: ['smartband', 'oil'],
   ),

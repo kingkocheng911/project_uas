@@ -45,12 +45,14 @@ class Product {
     required this.name,
     required this.price,
     required this.originalPrice,
+    required this.stock,
     required this.claimedPercent,
     required this.rewardPoints,
     required this.badge,
     required this.description,
     required this.icon,
     required this.tone,
+    required this.categories,
     this.imageUrl,
     required this.highlights,
     required this.relatedIds,
@@ -60,12 +62,14 @@ class Product {
   final String name;
   final int price;
   final int originalPrice;
+  final int stock;
   final int claimedPercent;
   final int rewardPoints;
   final String badge;
   final String description;
   final IconData icon;
   final Color tone;
+  final List<String> categories;
   final String? imageUrl;
   final List<String> highlights;
   final List<String> relatedIds;

@@ -1,3 +1,58 @@
+create extension if not exists "pgcrypto";
+
+create table if not exists public.categories (
+  id uuid primary key default gen_random_uuid(),
+  label text not null unique,
+  icon_name text not null,
+  sort_order integer not null default 0,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.products (
+  id text primary key,
+  name text not null,
+  price integer not null,
+  original_price integer not null,
+  stock integer not null default 0,
+  claimed_percent integer not null default 0,
+  reward_points integer not null default 0,
+  badge text not null default '',
+  description text not null,
+  icon_name text not null,
+  tone_hex text not null,
+  image_url text,
+  category_labels text[] not null default '{}',
+  highlights text[] not null default '{}',
+  related_ids text[] not null default '{}',
+  sort_order integer not null default 0,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+drop trigger if exists set_products_updated_at on public.products;
+create trigger set_products_updated_at
+before update on public.products
+for each row execute procedure public.set_updated_at();
+
+alter table public.categories enable row level security;
+alter table public.products enable row level security;
+
+drop policy if exists "anyone can read categories" on public.categories;
+create policy "anyone can read categories"
+on public.categories
+for select
+to authenticated, anon
+using (true);
+
+drop policy if exists "anyone can read products" on public.products;
+create policy "anyone can read products"
+on public.products
+for select
+to authenticated, anon
+using (true);
+
 insert into public.categories (label, icon_name, sort_order)
 values
   ('Makanan', 'restaurant_outlined', 1),
