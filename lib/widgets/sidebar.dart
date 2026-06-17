@@ -16,23 +16,10 @@ const superAdminMenus = <SidebarMenuItem>[
     name: 'Admin Management',
     icon: Icons.admin_panel_settings_rounded,
   ),
-  SidebarMenuItem(
-    name: 'Courier Management',
-    icon: Icons.delivery_dining_rounded,
-  ),
   SidebarMenuItem(name: 'User Management', icon: Icons.people_alt_rounded),
-  SidebarMenuItem(name: 'Product Categories', icon: Icons.category_rounded),
-  SidebarMenuItem(name: 'Product Monitoring', icon: Icons.inventory_2_rounded),
-  SidebarMenuItem(name: 'Orders Monitoring', icon: Icons.receipt_long_rounded),
   SidebarMenuItem(name: 'Loyalty Points Management', icon: Icons.stars_rounded),
   SidebarMenuItem(name: 'Promotions & Banners', icon: Icons.campaign_rounded),
-  SidebarMenuItem(name: 'Reports & Analytics', icon: Icons.query_stats_rounded),
-  SidebarMenuItem(
-    name: 'Financial Reports',
-    icon: Icons.account_balance_wallet_rounded,
-  ),
   SidebarMenuItem(name: 'System Settings', icon: Icons.settings_rounded),
-  SidebarMenuItem(name: 'Activity Logs', icon: Icons.manage_history_rounded),
 ];
 
 class SidebarWidget extends StatelessWidget {

@@ -65,7 +65,7 @@ class TopNav extends StatelessWidget {
               child: TextField(
                 onSubmitted: onSearch,
                 decoration: InputDecoration(
-                  hintText: 'Cari cabang, admin, order...',
+                  hintText: 'Cari cabang, admin, user...',
                   prefixIcon: const Icon(Icons.search_rounded, size: 20),
                   filled: true,
                   fillColor: AppColors.secondary,

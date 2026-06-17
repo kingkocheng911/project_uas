@@ -24,11 +24,7 @@ class _SuperAdminDashboardOverviewState
 
   final branches = List<_BranchData>.of(_branchSeed);
   final admins = List<_AdminData>.of(_adminSeed);
-  final couriers = List<_CourierData>.of(_courierSeed);
   final users = List<_UserData>.of(_userSeed);
-  final categories = List<_CategoryData>.of(_categorySeed);
-  final products = List<_ProductMonitorData>.of(_productSeed);
-  final orders = List<_OrderMonitorData>.of(_orderSeed);
   final banners = List<_PromotionData>.of(_promotionSeed);
 
   @override
@@ -108,28 +104,14 @@ class _SuperAdminDashboardOverviewState
         return _buildBranchManagement();
       case 'Admin Management':
         return _buildAdminManagement();
-      case 'Courier Management':
-        return _buildCourierManagement();
       case 'User Management':
         return _buildUserManagement();
-      case 'Product Categories':
-        return _buildCategoryManagement();
-      case 'Product Monitoring':
-        return _buildProductMonitoring();
-      case 'Orders Monitoring':
-        return _buildOrdersMonitoring();
       case 'Loyalty Points Management':
         return _buildLoyaltyManagement();
       case 'Promotions & Banners':
         return _buildPromotions();
-      case 'Reports & Analytics':
-        return _buildReportsAnalytics();
-      case 'Financial Reports':
-        return _buildFinancialReports();
       case 'System Settings':
         return _buildSystemSettings();
-      case 'Activity Logs':
-        return _buildActivityLogs();
       default:
         return _buildDashboard();
     }
@@ -171,57 +153,32 @@ class _SuperAdminDashboardOverviewState
               accentColor: Color(0xFF7C3AED),
             ),
             StatCard(
-              title: 'Total Couriers',
-              value: '642',
-              icon: Icons.delivery_dining_rounded,
-              trend: '91% online',
+              title: 'Active Branches',
+              value: '116',
+              icon: Icons.verified_rounded,
+              trend: '91% aktif',
               accentColor: Color(0xFF16A34A),
             ),
             StatCard(
-              title: 'Total Products',
-              value: '12.485',
-              icon: Icons.inventory_2_rounded,
-              trend: '+830 produk',
+              title: 'Admin Coverage',
+              value: '98%',
+              icon: Icons.assignment_ind_rounded,
+              trend: '+4 cabang lengkap',
               accentColor: Color(0xFFF59E0B),
-            ),
-            StatCard(
-              title: 'Total Orders',
-              value: '36.904',
-              icon: Icons.receipt_long_rounded,
-              trend: '+9.8% mingguan',
-              accentColor: Color(0xFF06B6D4),
-            ),
-            StatCard(
-              title: 'Monthly Revenue',
-              value: 'Rp 4.8M',
-              icon: Icons.payments_rounded,
-              trend: '+22.1% MoM',
-              accentColor: Color(0xFF10B981),
-            ),
-            StatCard(
-              title: 'Monthly Transactions',
-              value: '18.720',
-              icon: Icons.swap_horiz_rounded,
-              trend: '+2.340 trx',
-              accentColor: Color(0xFFEF4444),
             ),
           ],
         ),
         const SizedBox(height: 24),
         _ResponsiveTwoColumn(
           leftFlex: 2,
-          left: _PanelCard(
-            title: 'Revenue & Orders Chart',
-            subtitle: 'Data performa 7 bulan terakhir',
-            trailing: _SmallActionButton(
-              label: 'Detail',
-              onTap: () => _selectMenu('Reports & Analytics'),
-            ),
-            child: const _BarChartMock(),
+          left: const _PanelCard(
+            title: 'Branch Performance Chart',
+            subtitle: 'Indeks operasional 7 bulan terakhir',
+            child: _BarChartMock(),
           ),
           right: _PanelCard(
             title: 'Top Branches Ranking',
-            subtitle: 'Cabang dengan transaksi tertinggi',
+            subtitle: 'Cabang dengan indeks operasional tertinggi',
             child: Column(
               children: branches
                   .take(5)
@@ -229,7 +186,7 @@ class _SuperAdminDashboardOverviewState
                     (branch) => _RankingTile(
                       title: branch.name,
                       subtitle: branch.region,
-                      value: '${branch.orders} orders',
+                      value: '${branch.performance}%',
                       score: branch.performance,
                     ),
                   )
@@ -240,13 +197,13 @@ class _SuperAdminDashboardOverviewState
         const SizedBox(height: 24),
         _ResponsiveTwoColumn(
           left: _PanelCard(
-            title: 'Most Active Branches',
-            subtitle: 'Aktivitas operasional real-time',
+            title: 'Branch Status',
+            subtitle: 'Ringkasan status cabang nasional',
             child: Column(
               children: branches
                   .take(4)
                   .map(
-                    (branch) => _ActivityBranchTile(
+                    (branch) => _BranchStatusTile(
                       branch: branch,
                       onTap: () => _openBranchDetail(branch),
                     ),
@@ -309,8 +266,7 @@ class _SuperAdminDashboardOverviewState
             'Branch',
             'Region',
             'Admin',
-            'Orders',
-            'Revenue',
+            'Performance',
             'Status',
             'Action',
           ],
@@ -320,8 +276,7 @@ class _SuperAdminDashboardOverviewState
                   _TableTitle(title: branch.name, subtitle: branch.code),
                   Text(branch.region),
                   Text(branch.admin),
-                  Text('${branch.orders}'),
-                  Text(branch.revenue),
+                  Text('${branch.performance}%'),
                   _StatusPill(label: branch.status),
                   _TableActions(
                     onView: () => _openBranchDetail(branch),
@@ -368,149 +323,24 @@ class _SuperAdminDashboardOverviewState
     );
   }
 
-  Widget _buildCourierManagement() {
-    return _buildSimpleManagementPage(
-      title: 'Courier Management',
-      subtitle: 'Monitor status online, performa delivery, dan rating kurir.',
-      primaryAction: 'Add Courier',
-      onPrimaryAction: () => _showSnack('Form tambah kurir dibuka.'),
-      columns: const [
-        'Courier',
-        'Area',
-        'Status',
-        'Completed',
-        'Rating',
-        'Action',
-      ],
-      rows: couriers
-          .map(
-            (courier) => [
-              _TableTitle(title: courier.name, subtitle: courier.phone),
-              Text(courier.area),
-              _StatusPill(label: courier.online ? 'Online' : 'Offline'),
-              Text('${courier.completed}'),
-              Row(
-                children: [
-                  const Icon(
-                    Icons.star_rounded,
-                    color: Color(0xFFF59E0B),
-                    size: 18,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(courier.rating.toStringAsFixed(1)),
-                ],
-              ),
-              _TableActions(
-                onView: () => _showInfoDialog('Courier Detail', courier.name),
-                onEdit: () => _showSnack('Edit data ${courier.name}.'),
-              ),
-            ],
-          )
-          .toList(),
-    );
-  }
-
   Widget _buildUserManagement() {
     return _buildSimpleManagementPage(
       title: 'User Management',
       subtitle: 'Kelola akun user mobile, status, dan segmentasi pelanggan.',
       primaryAction: 'Export Users',
-      onPrimaryAction: () => _showSnack('User report diexport.'),
-      columns: const ['User', 'Phone', 'Orders', 'Points', 'Status', 'Action'],
+      onPrimaryAction: () => _showSnack('Data user diexport.'),
+      columns: const ['User', 'Phone', 'Points', 'Status', 'Action'],
       rows: users
           .map(
             (user) => [
               _TableTitle(title: user.name, subtitle: user.email),
               Text(user.phone),
-              Text('${user.orders}'),
               Text('${user.points} pts'),
               _StatusPill(label: user.status),
               _TableActions(
                 onView: () => _showInfoDialog('User Detail', user.name),
                 onEdit: () => _showSnack('Edit user ${user.name}.'),
               ),
-            ],
-          )
-          .toList(),
-    );
-  }
-
-  Widget _buildCategoryManagement() {
-    return _buildSimpleManagementPage(
-      title: 'Product Categories',
-      subtitle: 'Kelola kategori produk untuk marketplace semua cabang.',
-      primaryAction: 'Add Category',
-      onPrimaryAction: () => _openTextForm('Tambah Kategori', 'Nama kategori'),
-      columns: const ['Category', 'Products', 'Commission', 'Status', 'Action'],
-      rows: categories
-          .map(
-            (category) => [
-              _TableTitle(title: category.name, subtitle: category.description),
-              Text('${category.products}'),
-              Text('${category.commission}%'),
-              _StatusPill(label: category.active ? 'Active' : 'Inactive'),
-              _TableActions(
-                onView: () => _showInfoDialog('Kategori', category.name),
-                onEdit: () => _openTextForm('Edit Kategori', category.name),
-              ),
-            ],
-          )
-          .toList(),
-    );
-  }
-
-  Widget _buildProductMonitoring() {
-    return _buildSimpleManagementPage(
-      title: 'Product Monitoring',
-      subtitle: 'Pantau stok, status produk, dan performa penjualan.',
-      primaryAction: 'Review Flagged',
-      onPrimaryAction: () => _showSnack('Produk flagged dibuka.'),
-      columns: const [
-        'Product',
-        'Category',
-        'Branch',
-        'Stock',
-        'Sales',
-        'Status',
-      ],
-      rows: products
-          .map(
-            (product) => [
-              _TableTitle(title: product.name, subtitle: product.sku),
-              Text(product.category),
-              Text(product.branch),
-              Text('${product.stock}'),
-              Text('${product.sales}'),
-              _StatusPill(label: product.status),
-            ],
-          )
-          .toList(),
-    );
-  }
-
-  Widget _buildOrdersMonitoring() {
-    return _buildSimpleManagementPage(
-      title: 'Orders Monitoring',
-      subtitle: 'Pantau order masuk, pengiriman, dan status pembayaran.',
-      primaryAction: 'Export Orders',
-      onPrimaryAction: () => _showSnack('Order monitoring diexport.'),
-      columns: const [
-        'Order ID',
-        'Customer',
-        'Branch',
-        'Courier',
-        'Total',
-        'Status',
-      ],
-      rows: orders
-          .map(
-            (order) => [
-              Text(order.id),
-              Text(order.customer),
-              Text(order.branch),
-              Text(order.courier),
-              Text(order.total),
-              _StatusPill(label: order.status),
             ],
           )
           .toList(),
@@ -585,84 +415,6 @@ class _SuperAdminDashboardOverviewState
     );
   }
 
-  Widget _buildReportsAnalytics() {
-    return Column(
-      children: [
-        _PageHeader(
-          title: 'Reports & Analytics',
-          subtitle:
-              'Sales report, branch report, product report, revenue report.',
-          actionLabel: 'Download PDF',
-          onAction: () => _showSnack('PDF report diunduh.'),
-          secondaryActionLabel: 'Download Excel',
-          onSecondaryAction: () => _showSnack('Excel report diunduh.'),
-        ),
-        const SizedBox(height: 18),
-        _ResponsiveTwoColumn(
-          leftFlex: 2,
-          left: const _PanelCard(
-            title: 'Sales Analytics',
-            subtitle: 'Order dan revenue lintas cabang',
-            child: _BarChartMock(),
-          ),
-          right: const _PanelCard(
-            title: 'User Growth',
-            subtitle: 'Akuisisi dan retensi pelanggan',
-            child: _LineChartMock(),
-          ),
-        ),
-        const SizedBox(height: 18),
-        _buildOrdersMonitoring(),
-      ],
-    );
-  }
-
-  Widget _buildFinancialReports() {
-    return Column(
-      children: [
-        _PageHeader(
-          title: 'Financial Reports',
-          subtitle: 'Laporan pendapatan, settlement, fee, dan payout cabang.',
-          actionLabel: 'Download Excel',
-          onAction: () => _showSnack('Financial report diunduh.'),
-        ),
-        const SizedBox(height: 18),
-        _ResponsiveStatGrid(
-          children: const [
-            StatCard(
-              title: 'Gross Revenue',
-              value: 'Rp 4.8M',
-              icon: Icons.trending_up_rounded,
-              trend: '+22.1%',
-              accentColor: Color(0xFF16A34A),
-            ),
-            StatCard(
-              title: 'Platform Fee',
-              value: 'Rp 284Jt',
-              icon: Icons.percent_rounded,
-              trend: '+8.4%',
-              accentColor: AppColors.accent,
-            ),
-            StatCard(
-              title: 'Pending Payout',
-              value: 'Rp 512Jt',
-              icon: Icons.pending_actions_rounded,
-              trend: '-4.2%',
-              accentColor: Color(0xFFF59E0B),
-            ),
-            StatCard(
-              title: 'Net Settlement',
-              value: 'Rp 3.9M',
-              icon: Icons.account_balance_rounded,
-              trend: '+18.7%',
-              accentColor: AppColors.primary,
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
   Widget _buildSystemSettings() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -679,50 +431,24 @@ class _SuperAdminDashboardOverviewState
           left: _SettingsPanel(
             title: 'Operational Settings',
             children: [
-              _SettingsTile('Delivery Radius', '15 km dari cabang'),
-              _SettingsTile('Default Delivery Fee', 'Rp 8.000'),
-              _SettingsTile(
-                'COD Availability',
-                'Aktif untuk cabang terverifikasi',
-              ),
+              _SettingsTile('Branch Verification', 'Wajib review kantor pusat'),
+              _SettingsTile('Admin Approval', 'Aktif untuk admin cabang baru'),
+              _SettingsTile('Notification Policy', 'Email dan in-app'),
             ],
           ),
           right: _SettingsPanel(
-            title: 'Roles & Notifications',
+            title: 'Role Access',
             children: [
-              _SettingsTile('Superadmin', 'Full access'),
+              _SettingsTile(
+                'Superadmin',
+                'Branch, admin, user, loyalty, promotion, and system access',
+              ),
               _SettingsTile('Admin Cabang', 'Branch scoped access'),
-              _SettingsTile('Courier', 'Delivery mobile app only'),
-              _SettingsTile('Real-time Notifications', 'Email, in-app, push'),
+              _SettingsTile('Real-time Notifications', 'Email dan in-app'),
             ],
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildActivityLogs() {
-    return _PanelCard(
-      title: 'Activity Logs',
-      subtitle: 'Audit trail aktivitas superadmin dan admin cabang',
-      child: Column(
-        children: _activityLogs
-            .map(
-              (log) => ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: AppColors.primary.withValues(alpha: 0.10),
-                  child: Icon(log.icon, color: AppColors.primary),
-                ),
-                title: Text(log.title),
-                subtitle: Text(log.subtitle),
-                trailing: Text(
-                  log.time,
-                  style: const TextStyle(color: AppColors.textMuted),
-                ),
-              ),
-            )
-            .toList(),
-      ),
     );
   }
 
@@ -779,15 +505,27 @@ class _SuperAdminDashboardOverviewState
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: 12),
-              ..._activityLogs
-                  .take(5)
-                  .map(
-                    (log) => ListTile(
-                      leading: Icon(log.icon, color: AppColors.primary),
-                      title: Text(log.title),
-                      subtitle: Text(log.subtitle),
-                    ),
-                  ),
+              const ListTile(
+                leading: Icon(
+                  Icons.storefront_rounded,
+                  color: AppColors.primary,
+                ),
+                title: Text('Branch review completed'),
+                subtitle: Text('KDMP Harapan Desa selesai diverifikasi'),
+              ),
+              const ListTile(
+                leading: Icon(
+                  Icons.admin_panel_settings_rounded,
+                  color: AppColors.primary,
+                ),
+                title: Text('New admin assigned'),
+                subtitle: Text('Rani assigned to KDMP Sukamaju'),
+              ),
+              const ListTile(
+                leading: Icon(Icons.campaign_rounded, color: AppColors.primary),
+                title: Text('Promotion published'),
+                subtitle: Text('PUPUK50 banner is now live'),
+              ),
             ],
           ),
         ),
@@ -834,11 +572,6 @@ class _SuperAdminDashboardOverviewState
                 'Create Promo',
                 Icons.campaign_rounded,
                 () => _openTextForm('Buat Promo', 'Judul promo'),
-              ),
-              _QuickActionChip(
-                'Download Report',
-                Icons.download_rounded,
-                () => _showSnack('Report diunduh.'),
               ),
             ],
           ),
@@ -903,8 +636,6 @@ class _SuperAdminDashboardOverviewState
               _InfoRow(label: 'Kode', value: branch.code),
               _InfoRow(label: 'Region', value: branch.region),
               _InfoRow(label: 'Admin', value: branch.admin),
-              _InfoRow(label: 'Orders', value: '${branch.orders}'),
-              _InfoRow(label: 'Revenue', value: branch.revenue),
               _InfoRow(label: 'Performance', value: '${branch.performance}%'),
             ],
           ),
@@ -955,16 +686,12 @@ class _PageHeader extends StatelessWidget {
     required this.subtitle,
     this.actionLabel,
     this.onAction,
-    this.secondaryActionLabel,
-    this.onSecondaryAction,
   });
 
   final String title;
   final String subtitle;
   final String? actionLabel;
   final VoidCallback? onAction;
-  final String? secondaryActionLabel;
-  final VoidCallback? onSecondaryAction;
 
   @override
   Widget build(BuildContext context) {
@@ -973,12 +700,6 @@ class _PageHeader extends StatelessWidget {
       spacing: 10,
       runSpacing: 10,
       children: [
-        if (secondaryActionLabel != null)
-          OutlinedButton.icon(
-            onPressed: onSecondaryAction,
-            icon: const Icon(Icons.table_chart_rounded),
-            label: Text(secondaryActionLabel!),
-          ),
         if (actionLabel != null)
           FilledButton.icon(
             onPressed: onAction,
@@ -1333,8 +1054,8 @@ class _RankingTile extends StatelessWidget {
   }
 }
 
-class _ActivityBranchTile extends StatelessWidget {
-  const _ActivityBranchTile({required this.branch, required this.onTap});
+class _BranchStatusTile extends StatelessWidget {
+  const _BranchStatusTile({required this.branch, required this.onTap});
 
   final _BranchData branch;
   final VoidCallback onTap;
@@ -1572,18 +1293,6 @@ class _StatusPill extends StatelessWidget {
   }
 }
 
-class _SmallActionButton extends StatelessWidget {
-  const _SmallActionButton({required this.label, required this.onTap});
-
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextButton(onPressed: onTap, child: Text(label));
-  }
-}
-
 class _SettingsPanel extends StatelessWidget {
   const _SettingsPanel({required this.title, required this.children});
 
@@ -1724,8 +1433,6 @@ class _BranchData {
     required this.name,
     required this.region,
     required this.admin,
-    required this.orders,
-    required this.revenue,
     required this.performance,
     required this.status,
   });
@@ -1734,8 +1441,6 @@ class _BranchData {
   final String name;
   final String region;
   final String admin;
-  final int orders;
-  final String revenue;
   final int performance;
   final String status;
 }
@@ -1758,30 +1463,11 @@ class _AdminData {
   final bool active;
 }
 
-class _CourierData {
-  const _CourierData({
-    required this.name,
-    required this.phone,
-    required this.area,
-    required this.online,
-    required this.completed,
-    required this.rating,
-  });
-
-  final String name;
-  final String phone;
-  final String area;
-  final bool online;
-  final int completed;
-  final double rating;
-}
-
 class _UserData {
   const _UserData({
     required this.name,
     required this.email,
     required this.phone,
-    required this.orders,
     required this.points,
     required this.status,
   });
@@ -1789,62 +1475,7 @@ class _UserData {
   final String name;
   final String email;
   final String phone;
-  final int orders;
   final int points;
-  final String status;
-}
-
-class _CategoryData {
-  const _CategoryData({
-    required this.name,
-    required this.description,
-    required this.products,
-    required this.commission,
-    required this.active,
-  });
-
-  final String name;
-  final String description;
-  final int products;
-  final int commission;
-  final bool active;
-}
-
-class _ProductMonitorData {
-  const _ProductMonitorData({
-    required this.name,
-    required this.sku,
-    required this.category,
-    required this.branch,
-    required this.stock,
-    required this.sales,
-    required this.status,
-  });
-
-  final String name;
-  final String sku;
-  final String category;
-  final String branch;
-  final int stock;
-  final int sales;
-  final String status;
-}
-
-class _OrderMonitorData {
-  const _OrderMonitorData({
-    required this.id,
-    required this.customer,
-    required this.branch,
-    required this.courier,
-    required this.total,
-    required this.status,
-  });
-
-  final String id;
-  final String customer;
-  final String branch;
-  final String courier;
-  final String total;
   final String status;
 }
 
@@ -1866,28 +1497,12 @@ class _PromotionData {
   final String status;
 }
 
-class _ActivityLogData {
-  const _ActivityLogData({
-    required this.title,
-    required this.subtitle,
-    required this.time,
-    required this.icon,
-  });
-
-  final String title;
-  final String subtitle;
-  final String time;
-  final IconData icon;
-}
-
 const _branchSeed = <_BranchData>[
   _BranchData(
     code: 'BR-001',
     name: 'KDMP Sukamaju',
     region: 'Jawa Barat',
     admin: 'Rani Maharani',
-    orders: 1280,
-    revenue: 'Rp 482Jt',
     performance: 94,
     status: 'Active',
   ),
@@ -1896,8 +1511,6 @@ const _branchSeed = <_BranchData>[
     name: 'KDMP Sumber Rejeki',
     region: 'Jawa Tengah',
     admin: 'Agus Santoso',
-    orders: 1118,
-    revenue: 'Rp 397Jt',
     performance: 89,
     status: 'Active',
   ),
@@ -1906,8 +1519,6 @@ const _branchSeed = <_BranchData>[
     name: 'KDMP Maju Bersama',
     region: 'Jawa Timur',
     admin: 'Dewi Lestari',
-    orders: 980,
-    revenue: 'Rp 345Jt',
     performance: 82,
     status: 'Review',
   ),
@@ -1916,8 +1527,6 @@ const _branchSeed = <_BranchData>[
     name: 'KDMP Harapan Desa',
     region: 'Sumatera',
     admin: 'Fajar Hidayat',
-    orders: 744,
-    revenue: 'Rp 224Jt',
     performance: 76,
     status: 'Suspended',
   ),
@@ -1926,8 +1535,6 @@ const _branchSeed = <_BranchData>[
     name: 'KDMP Tani Makmur',
     region: 'Jawa Barat',
     admin: 'Nadia Putri',
-    orders: 1322,
-    revenue: 'Rp 501Jt',
     performance: 96,
     status: 'Active',
   ),
@@ -1947,15 +1554,15 @@ const _adminSeed = <_AdminData>[
     email: 'agus@mepupoin.com',
     branch: 'KDMP Sumber Rejeki',
     role: 'Branch Admin',
-    permission: 'Orders + Products',
+    permission: 'Branch Operations',
     active: true,
   ),
   _AdminData(
     name: 'Dewi Lestari',
     email: 'dewi@mepupoin.com',
     branch: 'KDMP Maju Bersama',
-    role: 'Finance Admin',
-    permission: 'Finance Only',
+    role: 'Branch Admin',
+    permission: 'Branch Review',
     active: true,
   ),
   _AdminData(
@@ -1968,39 +1575,11 @@ const _adminSeed = <_AdminData>[
   ),
 ];
 
-const _courierSeed = <_CourierData>[
-  _CourierData(
-    name: 'Joko Prasetyo',
-    phone: '+62 812 1111 2222',
-    area: 'Sukamaju',
-    online: true,
-    completed: 482,
-    rating: 4.8,
-  ),
-  _CourierData(
-    name: 'Yudi Saputra',
-    phone: '+62 813 2222 3333',
-    area: 'Sumber Rejeki',
-    online: true,
-    completed: 390,
-    rating: 4.6,
-  ),
-  _CourierData(
-    name: 'Rizal Ahmad',
-    phone: '+62 857 4444 5555',
-    area: 'Maju Bersama',
-    online: false,
-    completed: 244,
-    rating: 4.4,
-  ),
-];
-
 const _userSeed = <_UserData>[
   _UserData(
     name: 'Budi Santoso',
     email: 'budi@email.com',
     phone: '+62 812 3456 7890',
-    orders: 18,
     points: 1250,
     status: 'Active',
   ),
@@ -2008,7 +1587,6 @@ const _userSeed = <_UserData>[
     name: 'Siti Aminah',
     email: 'siti@email.com',
     phone: '+62 811 9988 7766',
-    orders: 11,
     points: 840,
     status: 'Active',
   ),
@@ -2016,106 +1594,8 @@ const _userSeed = <_UserData>[
     name: 'Hendra Wijaya',
     email: 'hendra@email.com',
     phone: '+62 856 3322 1100',
-    orders: 4,
     points: 120,
     status: 'Review',
-  ),
-];
-
-const _categorySeed = <_CategoryData>[
-  _CategoryData(
-    name: 'Sembako',
-    description: 'Kebutuhan pokok harian',
-    products: 3420,
-    commission: 2,
-    active: true,
-  ),
-  _CategoryData(
-    name: 'Alat Pertanian',
-    description: 'Produk tani dan pupuk',
-    products: 980,
-    commission: 3,
-    active: true,
-  ),
-  _CategoryData(
-    name: 'Elektronik',
-    description: 'Perangkat pendukung UMKM',
-    products: 740,
-    commission: 5,
-    active: true,
-  ),
-  _CategoryData(
-    name: 'Rumah Tangga',
-    description: 'Peralatan rumah desa',
-    products: 1180,
-    commission: 4,
-    active: false,
-  ),
-];
-
-const _productSeed = <_ProductMonitorData>[
-  _ProductMonitorData(
-    name: 'Beras Premium 5kg',
-    sku: 'SKU-RICE-5KG',
-    category: 'Sembako',
-    branch: 'KDMP Sukamaju',
-    stock: 240,
-    sales: 1820,
-    status: 'Active',
-  ),
-  _ProductMonitorData(
-    name: 'Pupuk Organik 10kg',
-    sku: 'SKU-FERT-10',
-    category: 'Alat Pertanian',
-    branch: 'KDMP Tani Makmur',
-    stock: 84,
-    sales: 642,
-    status: 'Active',
-  ),
-  _ProductMonitorData(
-    name: 'Minyak Goreng 2L',
-    sku: 'SKU-OIL-2L',
-    category: 'Sembako',
-    branch: 'KDMP Sumber Rejeki',
-    stock: 42,
-    sales: 1320,
-    status: 'Review',
-  ),
-  _ProductMonitorData(
-    name: 'Power Bank 10.000mAh',
-    sku: 'SKU-PWR-10K',
-    category: 'Elektronik',
-    branch: 'KDMP Maju Bersama',
-    stock: 8,
-    sales: 214,
-    status: 'Flagged',
-  ),
-];
-
-const _orderSeed = <_OrderMonitorData>[
-  _OrderMonitorData(
-    id: '#ORD-20260614-001',
-    customer: 'Budi Santoso',
-    branch: 'KDMP Sukamaju',
-    courier: 'Joko Prasetyo',
-    total: 'Rp 156.000',
-    status: 'Processing',
-  ),
-  _OrderMonitorData(
-    id: '#ORD-20260614-002',
-    customer: 'Siti Aminah',
-    branch: 'KDMP Tani Makmur',
-    courier: 'Yudi Saputra',
-    total: 'Rp 284.000',
-    status: 'Shipped',
-  ),
-  _OrderMonitorData(
-    id: '#ORD-20260613-119',
-    customer: 'Hendra Wijaya',
-    branch: 'KDMP Maju Bersama',
-    courier: 'Rizal Ahmad',
-    total: 'Rp 74.000',
-    status: 'Delivered',
   ),
 ];
 
@@ -2143,32 +1623,5 @@ const _promotionSeed = <_PromotionData>[
     period: 'Draft',
     ctr: 0,
     status: 'Draft',
-  ),
-];
-
-const _activityLogs = <_ActivityLogData>[
-  _ActivityLogData(
-    title: 'Branch status updated',
-    subtitle: 'KDMP Harapan Desa marked as suspended',
-    time: '5m ago',
-    icon: Icons.storefront_rounded,
-  ),
-  _ActivityLogData(
-    title: 'New admin assigned',
-    subtitle: 'Rani assigned to KDMP Sukamaju',
-    time: '18m ago',
-    icon: Icons.admin_panel_settings_rounded,
-  ),
-  _ActivityLogData(
-    title: 'Payment settlement completed',
-    subtitle: 'Rp 512Jt payout queued',
-    time: '1h ago',
-    icon: Icons.payments_rounded,
-  ),
-  _ActivityLogData(
-    title: 'Promotion published',
-    subtitle: 'PUPUK50 banner is now live',
-    time: '2h ago',
-    icon: Icons.campaign_rounded,
   ),
 ];
