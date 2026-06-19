@@ -1,6 +1,39 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+class SavedAddressResult {
+  const SavedAddressResult({
+    required this.id,
+    required this.label,
+    required this.name,
+    required this.phone,
+    required this.address,
+    required this.isPrimary,
+  });
+
+  final String id;
+  final String label;
+  final String name;
+  final String phone;
+  final String address;
+  final bool isPrimary;
+
+  factory SavedAddressResult.fromMap(
+    Map<String, dynamic> map, {
+    required String fallbackUserId,
+  }) {
+    return SavedAddressResult(
+      id: (map['id'] ?? '${fallbackUserId}_${DateTime.now().millisecondsSinceEpoch}')
+          .toString(),
+      label: (map['label'] ?? 'Alamat').toString(),
+      name: (map['recipient_name'] ?? '').toString(),
+      phone: (map['phone'] ?? '').toString(),
+      address: (map['address'] ?? '').toString(),
+      isPrimary: map['is_primary'] == true,
+    );
+  }
+}
+
 class ManageAddressesScreen extends StatefulWidget {
   const ManageAddressesScreen({super.key});
 
@@ -114,7 +147,18 @@ class _ManageAddressesScreenState extends State<ManageAddressesScreen> {
                   FilledButton(
                     onPressed: _addresses.isEmpty
                         ? null
-                        : () => Navigator.of(context).pop(_selectedAddress),
+                        : () => Navigator.of(context).pop(
+                              _selectedAddress == null
+                                  ? null
+                                  : SavedAddressResult(
+                                      id: _selectedAddress!.id,
+                                      label: _selectedAddress!.label,
+                                      name: _selectedAddress!.name,
+                                      phone: _selectedAddress!.phone,
+                                      address: _selectedAddress!.address,
+                                      isPrimary: _selectedAddress!.isPrimary,
+                                    ),
+                            ),
                     style: FilledButton.styleFrom(
                       backgroundColor: primary,
                       minimumSize: const Size.fromHeight(62),
@@ -251,7 +295,6 @@ class _ManageAddressesScreenState extends State<ManageAddressesScreen> {
     await _runSaving(() async {
       final updatedAddress = address.copyWith(
         label: draft.label,
-        icon: draft.icon,
         name: draft.name,
         phone: draft.phone,
         address: draft.address,
@@ -335,7 +378,6 @@ class _AddressData {
   const _AddressData({
     required this.id,
     required this.label,
-    required this.icon,
     required this.name,
     required this.phone,
     required this.address,
@@ -347,7 +389,6 @@ class _AddressData {
   final String name;
   final String phone;
   final String address;
-  final IconData icon;
   final bool isPrimary;
 
   factory _AddressData.fromMap(
@@ -358,9 +399,6 @@ class _AddressData {
       id: (map['id'] ?? '${fallbackUserId}_${DateTime.now().millisecondsSinceEpoch}')
           .toString(),
       label: (map['label'] ?? 'Alamat').toString(),
-      icon: _AddressIconMapper.fromStorageName(
-        (map['icon'] ?? 'location_on_outlined').toString(),
-      ),
       name: (map['recipient_name'] ?? '').toString(),
       phone: (map['phone'] ?? '').toString(),
       address: (map['address'] ?? '').toString(),
@@ -370,7 +408,6 @@ class _AddressData {
 
   _AddressData copyWith({
     String? label,
-    IconData? icon,
     String? name,
     String? phone,
     String? address,
@@ -379,7 +416,6 @@ class _AddressData {
     return _AddressData(
       id: id,
       label: label ?? this.label,
-      icon: icon ?? this.icon,
       name: name ?? this.name,
       phone: phone ?? this.phone,
       address: address ?? this.address,
@@ -391,14 +427,12 @@ class _AddressData {
 class _AddressDraft {
   const _AddressDraft({
     required this.label,
-    required this.icon,
     required this.name,
     required this.phone,
     required this.address,
   });
 
   final String label;
-  final IconData icon;
   final String name;
   final String phone;
   final String address;
@@ -410,7 +444,6 @@ class _AddressDraft {
       'recipient_name': name,
       'phone': phone,
       'address': address,
-      'icon': _AddressIconMapper.toStorageName(icon),
       'is_primary': false,
     };
   }
@@ -421,7 +454,6 @@ class _AddressDraft {
       'recipient_name': name,
       'phone': phone,
       'address': address,
-      'icon': _AddressIconMapper.toStorageName(icon),
     };
   }
 
@@ -429,7 +461,6 @@ class _AddressDraft {
     return _AddressData(
       id: 'local_${DateTime.now().microsecondsSinceEpoch}',
       label: label,
-      icon: icon,
       name: name,
       phone: phone,
       address: address,
@@ -485,7 +516,7 @@ class _AddressCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Icon(
-                address.icon,
+                Icons.location_on_outlined,
                 color: isSelected ? primary : const Color(0xFF6D5A58),
               ),
             ),
@@ -643,7 +674,6 @@ class _AddAddressSheetState extends State<_AddAddressSheet> {
   late final TextEditingController _nameController;
   late final TextEditingController _phoneController;
   late final TextEditingController _addressController;
-  late IconData _selectedIcon;
 
   bool get _isEditing => widget.initialAddress != null;
 
@@ -655,7 +685,6 @@ class _AddAddressSheetState extends State<_AddAddressSheet> {
     _nameController = TextEditingController(text: address?.name ?? '');
     _phoneController = TextEditingController(text: address?.phone ?? '');
     _addressController = TextEditingController(text: address?.address ?? '');
-    _selectedIcon = address?.icon ?? Icons.location_on_outlined;
   }
 
   @override
@@ -748,46 +777,6 @@ class _AddAddressSheetState extends State<_AddAddressSheet> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  'Pilih ikon alamat',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    _AddressIconOption(
-                      icon: Icons.home_outlined,
-                      selected: _selectedIcon == Icons.home_outlined,
-                      onTap: () =>
-                          setState(() => _selectedIcon = Icons.home_outlined),
-                    ),
-                    _AddressIconOption(
-                      icon: Icons.business_outlined,
-                      selected: _selectedIcon == Icons.business_outlined,
-                      onTap: () =>
-                          setState(() => _selectedIcon = Icons.business_outlined),
-                    ),
-                    _AddressIconOption(
-                      icon: Icons.people_outline_rounded,
-                      selected: _selectedIcon == Icons.people_outline_rounded,
-                      onTap: () => setState(
-                        () => _selectedIcon = Icons.people_outline_rounded,
-                      ),
-                    ),
-                    _AddressIconOption(
-                      icon: Icons.location_on_outlined,
-                      selected: _selectedIcon == Icons.location_on_outlined,
-                      onTap: () => setState(
-                        () => _selectedIcon = Icons.location_on_outlined,
-                      ),
-                    ),
-                  ],
-                ),
                 const SizedBox(height: 20),
                 SizedBox(
                   width: double.infinity,
@@ -797,7 +786,6 @@ class _AddAddressSheetState extends State<_AddAddressSheet> {
                       Navigator.of(context).pop(
                         _AddressDraft(
                           label: _labelController.text.trim(),
-                          icon: _selectedIcon,
                           name: _nameController.text.trim(),
                           phone: _phoneController.text.trim(),
                           address: _addressController.text.trim(),
@@ -814,47 +802,6 @@ class _AddAddressSheetState extends State<_AddAddressSheet> {
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _AddressIconOption extends StatelessWidget {
-  const _AddressIconOption({
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        width: 56,
-        height: 56,
-        decoration: BoxDecoration(
-          color: selected
-              ? theme.colorScheme.primary.withValues(alpha: 0.12)
-              : const Color(0xFFF1F3F5),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: selected
-                ? theme.colorScheme.primary
-                : const Color(0xFFE2E8F0),
-            width: selected ? 2 : 1,
-          ),
-        ),
-        child: Icon(
-          icon,
-          color: selected ? theme.colorScheme.primary : const Color(0xFF6D5A58),
         ),
       ),
     );
@@ -912,39 +859,10 @@ class _EmptyAddressesCard extends StatelessWidget {
   }
 }
 
-class _AddressIconMapper {
-  static IconData fromStorageName(String name) {
-    switch (name) {
-      case 'home_outlined':
-        return Icons.home_outlined;
-      case 'business_outlined':
-        return Icons.business_outlined;
-      case 'people_outline_rounded':
-        return Icons.people_outline_rounded;
-      default:
-        return Icons.location_on_outlined;
-    }
-  }
-
-  static String toStorageName(IconData icon) {
-    if (icon == Icons.home_outlined) {
-      return 'home_outlined';
-    }
-    if (icon == Icons.business_outlined) {
-      return 'business_outlined';
-    }
-    if (icon == Icons.people_outline_rounded) {
-      return 'people_outline_rounded';
-    }
-    return 'location_on_outlined';
-  }
-}
-
 const List<_AddressData> _fallbackAddresses = [
   _AddressData(
     id: 'fallback_home',
     label: 'Home',
-    icon: Icons.home_outlined,
     name: 'Budi Santoso',
     phone: '+62 812-3456-7890',
     address:
@@ -954,7 +872,6 @@ const List<_AddressData> _fallbackAddresses = [
   _AddressData(
     id: 'fallback_work',
     label: 'Work',
-    icon: Icons.business_outlined,
     name: 'Budi Santoso',
     phone: '+62 812-3456-7890',
     address:
@@ -964,7 +881,6 @@ const List<_AddressData> _fallbackAddresses = [
   _AddressData(
     id: 'fallback_parents',
     label: 'Parents',
-    icon: Icons.people_outline_rounded,
     name: 'Santoso Family',
     phone: '+62 813-9876-5432',
     address:

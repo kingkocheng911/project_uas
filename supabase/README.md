@@ -78,6 +78,42 @@ Jika credential belum diisi, aplikasi tetap bisa berjalan dalam mode demo lokal.
   - `addresses`
   - `user_settings`
 
+## Migration KDMP Retail
+
+Backend retail multi-cabang KDMP sudah mulai dipisahkan melalui migration:
+
+- `supabase/migrations/20260619210602_add_kdmp_retail_backend.sql`
+
+Migration ini menambahkan atau memperluas:
+
+- `branches`
+- `branch_admins`
+- `branch_products`
+- `promotions`
+- `notifications`
+- `notification_settings`
+- `payment_methods`
+- `orders`
+- `order_items`
+- `stock_movements`
+- `branch_performance`
+
+Selain tabel inti, migration tersebut juga menyiapkan:
+
+- helper function RLS untuk `superadmin` dan `branch_admin`
+- policy akses data per role
+- bucket storage:
+  - `avatars`
+  - `product-images`
+  - `branch-assets`
+  - `promotion-banners`
+
+Catatan:
+
+- Migration ini dibuat additive agar auth, profile, dan address yang sudah ada tetap bisa dipertahankan.
+- `products` saat ini tetap dipakai sebagai master produk, sedangkan harga dan stok operasional dipindahkan ke `branch_products`.
+- `user_settings` belum dihapus, tetapi preferensi notifikasi mulai diarahkan ke `notification_settings`.
+
 ## Workflow Supabase CLI
 
 Project ini sekarang sudah disiapkan untuk workflow Supabase CLI:

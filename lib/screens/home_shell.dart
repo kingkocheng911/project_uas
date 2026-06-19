@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../catalog_repository.dart';
 import '../mock_data.dart';
 import '../models.dart';
@@ -13,17 +13,8 @@ import 'notification_settings_screen.dart';
 import 'payment_methods_screen.dart';
 import 'security_settings_screen.dart';
 
-const _profileImageUrl =
-    'https://lh3.googleusercontent.com/aida-public/AB6AXuBK38PfAiyHOiE6kMysiQgsdlCCaiTZUI4b6gmDIwhe7ReUvEF9AOZtc7zqWWpVxTvrZR01xBh3zwriMDBPGCAo8CThIn0t0ntISl8DH-ep3Z-QGr7OWGhZ3xzhTCYILlx9u9FIcdh72iy8WgdEZ-5Ow0Z7K3GctB5GWYGI-vV-GtzOo52Gm493KbofV8djVAmlUkGGmTVDG9cAGxX5fu1r6zYUEtMTvVVdJdvfWy0C3YN2beA5eJaitKgtJFVoqPaqkjSAbfMpshmD';
 const _cooperativeImageUrl =
     'https://images.unsplash.com/photo-1516321497487-e288fb19713f?auto=format&fit=crop&w=600&q=80';
-const _profileAvatarOptions = <String>[
-  _profileImageUrl,
-  'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=400&q=80',
-  'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&q=80',
-  'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80',
-  'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=400&q=80',
-];
 const _initialsAvatarKey = '__initials__';
 
 List<String> get productCategories => [
@@ -140,7 +131,7 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   static const _catalogRepository = CatalogRepository();
   int _currentIndex = 0;
-  int _mepuBalance = 150000;
+  int _mepuBalance = 0;
   String _shopSelectedCategory = 'Semua';
   late UserProfile _profile;
   late final Map<String, int> _productStocks = _createStocks(products);
@@ -153,6 +144,7 @@ class _HomeShellState extends State<HomeShell> {
     super.initState();
     _profile = widget.initialProfile;
     unawaited(_loadCatalog());
+    unawaited(_loadWalletBalance());
   }
 
   @override
@@ -240,6 +232,54 @@ class _HomeShellState extends State<HomeShell> {
     } catch (_) {
       // Keep fallback catalog if remote load fails.
     }
+  }
+
+  bool get _canUseSupabase {
+    try {
+      return Supabase.instance.client.auth.currentUser != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _loadWalletBalance() async {
+    if (!_canUseSupabase) return;
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) return;
+      final row = await Supabase.instance.client
+          .from('profiles')
+          .select('wallet_balance')
+          .eq('id', user.id)
+          .maybeSingle();
+      final balance = (row?['wallet_balance'] as num?)?.toInt() ?? 0;
+      if (!mounted) return;
+      setState(() => _mepuBalance = balance);
+    } catch (_) {
+      // Keep local fallback balance if remote load fails.
+    }
+  }
+
+  Future<bool> _persistWalletBalance(int newBalance) async {
+    if (!_canUseSupabase) return true;
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) return false;
+      await Supabase.instance.client
+          .from('profiles')
+          .update({
+            'wallet_balance': newBalance.clamp(0, 2147483647),
+          })
+          .eq('id', user.id);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  void _setWalletBalance(int newBalance) {
+    setState(() => _mepuBalance = newBalance.clamp(0, 2147483647));
+    unawaited(_persistWalletBalance(_mepuBalance));
   }
 
   void _openShopCategory(String category) {
@@ -352,6 +392,9 @@ class _HomeShellState extends State<HomeShell> {
                   }
                   if (clearCart) _cartItems.clear();
                 });
+                if (paymentMethod == 'Saldo MepuPoin') {
+                  unawaited(_persistWalletBalance(_mepuBalance));
+                }
                 return order;
               },
         ),
@@ -518,19 +561,110 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   Future<void> _openTopUpDialog() async {
-    final amount = await showDialog<int>(
+    final request = await showDialog<_TopUpRequest>(
       context: context,
       builder: (_) => const _TopUpDialog(),
     );
-    if (!mounted || amount == null || amount <= 0) return;
+    if (!mounted || request == null || request.amount <= 0) return;
+    await _startSandboxTopUp(request);
+  }
 
-    setState(() => _mepuBalance += amount);
-    _showFeatureSnack(
-      context,
-      'Saldo bertambah ${formatRupiah(amount)}. Saldo sekarang ${formatRupiah(_mepuBalance)}.',
-      title: 'Top Up Berhasil',
-      icon: Icons.account_balance_wallet_outlined,
-    );
+  Future<void> _startSandboxTopUp(_TopUpRequest request) async {
+    if (!_canUseSupabase) {
+      final newBalance = _mepuBalance + request.amount;
+      _setWalletBalance(newBalance);
+      _showFeatureSnack(
+        context,
+        'Mode lokal aktif. Saldo bertambah ${formatRupiah(request.amount)}.',
+        title: 'Top Up Demo',
+        icon: Icons.account_balance_wallet_outlined,
+      );
+      return;
+    }
+
+    try {
+      final createdResult = await Supabase.instance.client.rpc(
+        'create_wallet_topup',
+        params: {
+          'p_amount': request.amount,
+          'p_payment_method': _walletPaymentMethodCode(request.method),
+        },
+      );
+      final createdRow = _rpcRow(createdResult);
+      if (createdRow == null) {
+        throw Exception('Transaksi top up sandbox tidak dapat dibuat.');
+      }
+
+      if (!mounted) return;
+
+      final confirmed = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _SandboxPaymentDialog(
+          summary: _SandboxTopUpSummary.fromRow(createdRow),
+        ),
+      );
+      if (!mounted) return;
+
+      if (confirmed != true) {
+        _showFeatureSnack(
+          context,
+          'Transaksi sandbox disimpan sebagai pending. Anda bisa lanjutkan lagi nanti.',
+          title: 'Menunggu Pembayaran',
+          icon: Icons.schedule_outlined,
+        );
+        return;
+      }
+
+      final confirmResult = await Supabase.instance.client.rpc(
+        'confirm_wallet_topup',
+        params: {
+          'p_topup_id': createdRow['topup_id'],
+        },
+      );
+      final confirmRow = _rpcRow(confirmResult);
+      if (confirmRow == null) {
+        throw Exception('Konfirmasi pembayaran sandbox gagal.');
+      }
+
+      final newBalance = (confirmRow['wallet_balance'] as num?)?.toInt() ?? _mepuBalance;
+      if (!mounted) return;
+      setState(() => _mepuBalance = newBalance);
+      _showFeatureSnack(
+        context,
+        'Sandbox sukses. Saldo bertambah ${formatRupiah(request.amount)} dan sekarang ${formatRupiah(newBalance)}.',
+        title: 'Top Up Berhasil',
+        icon: Icons.account_balance_wallet_outlined,
+      );
+    } on PostgrestException catch (error) {
+      if (!mounted) return;
+      _showFeatureSnack(
+        context,
+        error.message,
+        title: 'Top Up Gagal',
+        icon: Icons.error_outline_rounded,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _showFeatureSnack(
+        context,
+        '$error',
+        title: 'Top Up Gagal',
+        icon: Icons.error_outline_rounded,
+      );
+    }
+  }
+
+  Map<String, dynamic>? _rpcRow(dynamic result) {
+    if (result is Map<String, dynamic>) return result;
+    if (result is List && result.isNotEmpty && result.first is Map<String, dynamic>) {
+      return result.first as Map<String, dynamic>;
+    }
+    return null;
+  }
+
+  String _walletPaymentMethodCode(String method) {
+    return method == 'QRIS' ? 'qris' : 'virtual_account';
   }
 
   OrderItem? _payOrder(OrderItem order) {
@@ -565,6 +699,9 @@ class _HomeShellState extends State<HomeShell> {
       );
       _orderItems[index] = updatedOrder;
     });
+    if (usesMepuBalance) {
+      unawaited(_persistWalletBalance(_mepuBalance));
+    }
     _showFeatureSnack(
       context,
       'Pembayaran berhasil. Pesanan masuk ke Aktif.',
@@ -1169,7 +1306,200 @@ class _TopUpDialogState extends State<_TopUpDialog> {
       setState(() => _errorText = 'Minimal top up Rp 10.000');
       return;
     }
-    Navigator.of(context).pop(amount);
+    Navigator.of(
+      context,
+    ).pop(_TopUpRequest(amount: amount, method: _selectedMethod));
+  }
+}
+
+class _TopUpRequest {
+  const _TopUpRequest({
+    required this.amount,
+    required this.method,
+  });
+
+  final int amount;
+  final String method;
+}
+
+class _SandboxTopUpSummary {
+  const _SandboxTopUpSummary({
+    required this.topupId,
+    required this.amount,
+    required this.adminFee,
+    required this.totalPayment,
+    required this.paymentMethod,
+    required this.status,
+    required this.reference,
+    required this.instruction,
+    required this.expiresAt,
+  });
+
+  factory _SandboxTopUpSummary.fromRow(Map<String, dynamic> row) {
+    return _SandboxTopUpSummary(
+      topupId: (row['topup_id'] ?? '').toString(),
+      amount: (row['amount'] as num?)?.toInt() ?? 0,
+      adminFee: (row['admin_fee'] as num?)?.toInt() ?? 0,
+      totalPayment: (row['total_payment'] as num?)?.toInt() ?? 0,
+      paymentMethod: (row['payment_method'] ?? '').toString(),
+      status: (row['status'] ?? '').toString(),
+      reference: (row['sandbox_reference'] ?? '').toString(),
+      instruction: (row['payment_instruction'] ?? '').toString(),
+      expiresAt: DateTime.tryParse((row['expires_at'] ?? '').toString()),
+    );
+  }
+
+  final String topupId;
+  final int amount;
+  final int adminFee;
+  final int totalPayment;
+  final String paymentMethod;
+  final String status;
+  final String reference;
+  final String instruction;
+  final DateTime? expiresAt;
+
+  String get paymentMethodLabel {
+    if (paymentMethod == 'qris') return 'QRIS Sandbox';
+    return 'Virtual Account Sandbox';
+  }
+}
+
+class _SandboxPaymentDialog extends StatelessWidget {
+  const _SandboxPaymentDialog({required this.summary});
+
+  final _SandboxTopUpSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final expiresAt = summary.expiresAt;
+    final expiresLabel = expiresAt == null
+        ? '-'
+        : '${expiresAt.day.toString().padLeft(2, '0')}/${expiresAt.month.toString().padLeft(2, '0')}/${expiresAt.year} '
+            '${expiresAt.hour.toString().padLeft(2, '0')}:${expiresAt.minute.toString().padLeft(2, '0')}';
+
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      child: Padding(
+        padding: const EdgeInsets.all(22),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(
+                    Icons.account_balance_wallet_outlined,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Pembayaran Sandbox',
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            Text(
+              'Transaksi top up sudah dibuat sebagai sandbox. Simulasikan pembayaran berhasil untuk menambah saldo ke akun Anda.',
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 18),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                children: [
+                  _TopUpSummaryRow(
+                    label: 'Reference',
+                    value: summary.reference,
+                  ),
+                  const SizedBox(height: 10),
+                  _TopUpSummaryRow(
+                    label: 'Metode',
+                    value: summary.paymentMethodLabel,
+                  ),
+                  const SizedBox(height: 10),
+                  _TopUpSummaryRow(
+                    label: 'Saldo masuk',
+                    value: formatRupiah(summary.amount),
+                  ),
+                  const SizedBox(height: 10),
+                  _TopUpSummaryRow(
+                    label: 'Biaya admin',
+                    value: formatRupiah(summary.adminFee),
+                  ),
+                  const Divider(height: 24),
+                  _TopUpSummaryRow(
+                    label: 'Total bayar',
+                    value: formatRupiah(summary.totalPayment),
+                    emphasized: true,
+                  ),
+                  const SizedBox(height: 10),
+                  _TopUpSummaryRow(
+                    label: 'Berlaku sampai',
+                    value: expiresLabel,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF7ED),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFFED7AA)),
+              ),
+              child: Text(
+                summary.instruction,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: const Color(0xFF9A3412),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: const Text('Nanti Saja'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    child: const Text('Simulasikan Berhasil'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -3240,32 +3570,11 @@ class ProfileScreen extends StatelessWidget {
                     padding: const EdgeInsets.all(24),
                     child: Column(
                       children: [
-                        Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            ProfileAvatar(
-                              radius: 74,
-                              bordered: false,
-                              imageUrl: profile.avatarUrl,
-                              initials: _initialsFromName(profile.name),
-                            ),
-                            Positioned(
-                              right: -6,
-                              bottom: 6,
-                              child: InkWell(
-                                onTap: onEditProfile,
-                                borderRadius: BorderRadius.circular(999),
-                                child: CircleAvatar(
-                                  radius: 28,
-                                  backgroundColor: theme.colorScheme.primary,
-                                  child: const Icon(
-                                    Icons.photo_camera_outlined,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
+                        ProfileAvatar(
+                          radius: 74,
+                          bordered: false,
+                          imageUrl: profile.avatarUrl,
+                          initials: _initialsFromName(profile.name),
                         ),
                         const SizedBox(height: 18),
                         Text(
@@ -3822,60 +4131,6 @@ class _SupportActionCard extends StatelessWidget {
   }
 }
 
-class _AvatarPickerOption extends StatelessWidget {
-  const _AvatarPickerOption({
-    required this.child,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final Widget child;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: selected
-                    ? theme.colorScheme.primary
-                    : const Color(0xFFE2E8F0),
-                width: 3,
-              ),
-            ),
-            child: child,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: selected
-                  ? theme.colorScheme.primary
-                  : const Color(0xFF64748B),
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _ProductDetailScreenState extends State<ProductDetailScreen> {
   int quantity = 1;
 
@@ -4272,7 +4527,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   String paymentMethod = 'Saldo MepuPoin';
   CheckoutVoucher? selectedVoucher;
   int selectedAddressIndex = 0;
-  final List<CheckoutAddress> deliveryAddresses = [
+  bool _isLoadingAddresses = true;
+  List<CheckoutAddress> deliveryAddresses = [
     const CheckoutAddress(
       label: 'Rumah',
       name: 'Budi Santoso',
@@ -4289,8 +4545,66 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     ),
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadDeliveryAddresses());
+  }
+
   CheckoutAddress get selectedAddress =>
       deliveryAddresses[selectedAddressIndex];
+
+  Future<void> _loadDeliveryAddresses() async {
+    try {
+      final client = Supabase.instance.client;
+      final user = client.auth.currentUser;
+      if (user == null) {
+        if (!mounted) return;
+        setState(() => _isLoadingAddresses = false);
+        return;
+      }
+
+      final rows = await client
+          .from('addresses')
+          .select()
+          .eq('user_id', user.id)
+          .order('is_primary', ascending: false)
+          .order('created_at', ascending: true);
+
+      final loadedAddresses = rows
+          .map<CheckoutAddress>(
+            (row) => _toCheckoutAddress(
+              SavedAddressResult.fromMap(
+                row,
+                fallbackUserId: user.id,
+              ),
+            ),
+          )
+          .toList();
+
+      if (!mounted) return;
+      setState(() {
+        if (loadedAddresses.isNotEmpty) {
+          deliveryAddresses = loadedAddresses;
+          selectedAddressIndex = 0;
+        }
+        _isLoadingAddresses = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isLoadingAddresses = false);
+    }
+  }
+
+  CheckoutAddress _toCheckoutAddress(SavedAddressResult address) {
+    return CheckoutAddress(
+      label: address.label,
+      name: address.name,
+      phone: address.phone,
+      address: address.address,
+      icon: Icons.location_on_outlined,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -4381,20 +4695,30 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               children: [
                 _CheckoutOption(
                   title: const Text('Kirim ke Rumah'),
-                  subtitle: Text(selectedAddress.address),
+                  subtitle: Text(
+                    deliveryAddresses.isEmpty
+                        ? 'Belum ada alamat tersimpan'
+                        : selectedAddress.address,
+                  ),
                   selected: deliveryMethod == 'Kirim ke Rumah',
                   onTap: () => _updateDeliveryMethod(context, 'Kirim ke Rumah'),
                 ),
                 if (deliveryMethod == 'Kirim ke Rumah') ...[
                   const SizedBox(height: 8),
-                  _DeliveryAddressBook(
-                    addresses: deliveryAddresses,
-                    selectedIndex: selectedAddressIndex,
-                    onSelect: (index) =>
-                        setState(() => selectedAddressIndex = index),
-                    onEdit: _editDeliveryAddress,
-                    onAdd: _addDeliveryAddress,
-                  ),
+                  if (_isLoadingAddresses)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else
+                    _DeliveryAddressBook(
+                      addresses: deliveryAddresses,
+                      selectedIndex: selectedAddressIndex,
+                      onSelect: (index) =>
+                          setState(() => selectedAddressIndex = index),
+                      onEdit: _editDeliveryAddress,
+                      onAdd: _addDeliveryAddress,
+                    ),
                 ],
                 _CheckoutOption(
                   title: const Text('Ambil di Koperasi'),
@@ -4572,6 +4896,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return;
     }
 
+    if (deliveryMethod == 'Kirim ke Rumah' && deliveryAddresses.isEmpty) {
+      _showFeatureSnack(
+        context,
+        'Tambahkan alamat pengiriman terlebih dahulu dari backend Supabase.',
+        title: 'Alamat Dibutuhkan',
+        icon: Icons.location_on_outlined,
+      );
+      return;
+    }
+
     final order = widget.onPlaceOrder(
       widget.items,
       paymentMethod,
@@ -4639,39 +4973,48 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _editDeliveryAddress() async {
-    final updatedAddress = await showDialog<CheckoutAddress>(
-      context: context,
-      builder: (_) => _EditDeliveryAddressDialog(
-        initialAddress: selectedAddress,
-        title: 'Ubah Alamat Pengiriman',
+    final selected = await Navigator.of(context).push<SavedAddressResult>(
+      MaterialPageRoute<SavedAddressResult>(
+        builder: (_) => const ManageAddressesScreen(),
       ),
     );
-    if (!mounted || updatedAddress == null) return;
+    if (!mounted || selected == null) return;
 
-    setState(() => deliveryAddresses[selectedAddressIndex] = updatedAddress);
+    await _loadDeliveryAddresses();
+    if (!mounted) return;
+    final newIndex = deliveryAddresses.indexWhere(
+      (address) => address.address == selected.address && address.label == selected.label,
+    );
+    if (newIndex >= 0) {
+      setState(() => selectedAddressIndex = newIndex);
+    }
     _showFeatureSnack(
       context,
-      'Alamat pengiriman berhasil diperbarui.',
+      'Alamat pengiriman berhasil diperbarui dari backend.',
       title: 'Alamat Tersimpan',
       icon: Icons.location_on_outlined,
     );
   }
 
   Future<void> _addDeliveryAddress() async {
-    final newAddress = await showDialog<CheckoutAddress>(
-      context: context,
-      builder: (_) =>
-          const _EditDeliveryAddressDialog(title: 'Tambah Alamat Baru'),
+    final selected = await Navigator.of(context).push<SavedAddressResult>(
+      MaterialPageRoute<SavedAddressResult>(
+        builder: (_) => const ManageAddressesScreen(),
+      ),
     );
-    if (!mounted || newAddress == null) return;
+    if (!mounted || selected == null) return;
 
-    setState(() {
-      deliveryAddresses.add(newAddress);
-      selectedAddressIndex = deliveryAddresses.length - 1;
-    });
+    await _loadDeliveryAddresses();
+    if (!mounted) return;
+    final newIndex = deliveryAddresses.indexWhere(
+      (address) => address.address == selected.address && address.label == selected.label,
+    );
+    if (newIndex >= 0) {
+      setState(() => selectedAddressIndex = newIndex);
+    }
     _showFeatureSnack(
       context,
-      'Alamat baru berhasil ditambahkan dan dipilih untuk pengiriman.',
+      'Alamat backend berhasil dipilih untuk pengiriman.',
       title: 'Alamat Ditambahkan',
       icon: Icons.add_location_alt_outlined,
     );
@@ -5502,10 +5845,9 @@ class _DeliveryAddressTile extends StatelessWidget {
 }
 
 class _EditDeliveryAddressDialog extends StatefulWidget {
-  const _EditDeliveryAddressDialog({required this.title, this.initialAddress});
+  const _EditDeliveryAddressDialog({required this.title});
 
   final String title;
-  final CheckoutAddress? initialAddress;
 
   @override
   State<_EditDeliveryAddressDialog> createState() =>
@@ -5524,14 +5866,11 @@ class _EditDeliveryAddressDialogState
   @override
   void initState() {
     super.initState();
-    final initialAddress = widget.initialAddress;
-    _labelController = TextEditingController(text: initialAddress?.label ?? '');
-    _nameController = TextEditingController(text: initialAddress?.name ?? '');
-    _phoneController = TextEditingController(text: initialAddress?.phone ?? '');
-    _addressController = TextEditingController(
-      text: initialAddress?.address ?? '',
-    );
-    _selectedIcon = initialAddress?.icon ?? Icons.location_on_outlined;
+    _labelController = TextEditingController();
+    _nameController = TextEditingController();
+    _phoneController = TextEditingController();
+    _addressController = TextEditingController();
+    _selectedIcon = Icons.location_on_outlined;
   }
 
   @override
@@ -6507,11 +6846,9 @@ class EditProfileScreen extends StatefulWidget {
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _imagePicker = ImagePicker();
   late final TextEditingController _nameController;
   late final TextEditingController _phoneController;
   late final TextEditingController _emailController;
-  late String _selectedAvatarUrl;
 
   @override
   void initState() {
@@ -6519,7 +6856,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _nameController = TextEditingController(text: widget.profile.name);
     _phoneController = TextEditingController(text: widget.profile.phone);
     _emailController = TextEditingController(text: widget.profile.email);
-    _selectedAvatarUrl = widget.profile.avatarUrl;
   }
 
   @override
@@ -6554,28 +6890,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     ProfileAvatar(
                       radius: 56,
                       bordered: false,
-                      imageUrl: _selectedAvatarUrl,
+                      imageUrl: _initialsAvatarKey,
                       initials: _initialsFromName(_nameController.text.trim()),
-                    ),
-                    Positioned(
-                      right: -4,
-                      bottom: 2,
-                      child: Material(
-                        color: theme.colorScheme.primary,
-                        shape: const CircleBorder(),
-                        child: InkWell(
-                          customBorder: const CircleBorder(),
-                          onTap: _pickProfilePhoto,
-                          child: const Padding(
-                            padding: EdgeInsets.all(12),
-                            child: Icon(
-                              Icons.photo_camera_outlined,
-                              color: Colors.white,
-                              size: 18,
-                            ),
-                          ),
-                        ),
-                      ),
                     ),
                   ],
                 ),
@@ -6694,129 +7010,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         name: _nameController.text.trim(),
         phone: _phoneController.text.trim(),
         email: _emailController.text.trim(),
-        avatarUrl: _selectedAvatarUrl,
+        avatarUrl: _initialsAvatarKey,
       ),
-    );
-  }
-
-  Future<void> _pickProfilePhoto() async {
-    final selected = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (context) {
-        final theme = Theme.of(context);
-        return SafeArea(
-          child: FractionallySizedBox(
-            heightFactor: 0.72,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Pilih Foto Profil',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Unggah foto dari galeri atau pilih avatar yang ingin digunakan untuk akun kamu.',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: const Color(0xFF64748B),
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () => Navigator.of(context).pop('__upload__'),
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(52),
-                      ),
-                      icon: const Icon(Icons.upload_rounded),
-                      label: const Text('Upload dari Galeri'),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: GridView.count(
-                      crossAxisCount: 3,
-                      mainAxisSpacing: 16,
-                      crossAxisSpacing: 16,
-                      childAspectRatio: 0.88,
-                      children: [
-                        _AvatarPickerOption(
-                          label: 'Inisial',
-                          selected: _selectedAvatarUrl == _initialsAvatarKey,
-                          onTap: () =>
-                              Navigator.of(context).pop(_initialsAvatarKey),
-                          child: ProfileAvatar(
-                            radius: 34,
-                            bordered: false,
-                            imageUrl: _initialsAvatarKey,
-                            initials: _initialsFromName(
-                              _nameController.text.trim(),
-                            ),
-                          ),
-                        ),
-                        for (final avatarUrl in _profileAvatarOptions)
-                          _AvatarPickerOption(
-                            label: 'Avatar',
-                            selected: avatarUrl == _selectedAvatarUrl,
-                            onTap: () => Navigator.of(context).pop(avatarUrl),
-                            child: ProfileAvatar(
-                              radius: 34,
-                              bordered: false,
-                              imageUrl: avatarUrl,
-                              initials: _initialsFromName(
-                                _nameController.text.trim(),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-
-    if (!mounted || selected == null) return;
-    if (selected == '__upload__') {
-      await _uploadProfilePhoto();
-      return;
-    }
-    setState(() => _selectedAvatarUrl = selected);
-    _showFeatureSnack(
-      context,
-      selected == _initialsAvatarKey
-          ? 'Avatar inisial dipilih dan siap disimpan.'
-          : 'Foto profil baru dipilih dan siap disimpan.',
-      title: 'Foto Profil',
-      icon: selected == _initialsAvatarKey
-          ? Icons.text_fields_rounded
-          : Icons.photo_camera_outlined,
-    );
-  }
-
-  Future<void> _uploadProfilePhoto() async {
-    final file = await _imagePicker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1800,
-      imageQuality: 88,
-    );
-    if (!mounted || file == null) return;
-    setState(() => _selectedAvatarUrl = file.path);
-    _showFeatureSnack(
-      context,
-      'Foto dari galeri berhasil dipilih dan siap disimpan.',
-      title: 'Upload Berhasil',
-      icon: Icons.image_outlined,
     );
   }
 }
@@ -7885,7 +8080,7 @@ class ProfileAvatar extends StatelessWidget {
     super.key,
     required this.radius,
     this.bordered = true,
-    this.imageUrl = _profileImageUrl,
+    this.imageUrl = _initialsAvatarKey,
     this.initials = 'BS',
   });
 
