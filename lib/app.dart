@@ -8,6 +8,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'screens/superadmin/dashboard_overview.dart';
 import 'screens/home_shell.dart';
 import 'theme.dart';
+import 'screens/admin/dashboard/admin_dashboard.dart';
+import 'screens/admin/dashboard/dashboard_overview.dart';
+import 'screens/admin/dashboard/dashboard_stats.dart';
+
+import 'screens/admin/products/product_list_screen.dart';
+import 'screens/admin/products/add_product_screen.dart';
+import 'screens/admin/products/edit_product_screen.dart';
 
 const _defaultAvatarUrl =
     'https://lh3.googleusercontent.com/aida-public/AB6AXuBK38PfAiyHOiE6kMysiQgsdlCCaiTZUI4b6gmDIwhe7ReUvEF9AOZtc7zqWWpVxTvrZR01xBh3zwriMDBPGCAo8CThIn0t0ntISl8DH-ep3Z-QGr7OWGhZ3xzhTCYILlx9u9FIcdh72iy8WgdEZ-5Ow0Z7K3GctB5GWYGI-vV-GtzOo52Gm493KbofV8djVAmlUkGGmTVDG9cAGxX5fu1r6zYUEtMTvVVdJdvfWy0C3YN2beA5eJaitKgtJFVoqPaqkjSAbfMpshmD';
@@ -59,6 +66,18 @@ class _KdmpAppState extends State<KdmpApp> {
     password: 'superadmin123',
   );
 
+//admin
+  final _MockAuthUser _mockAdmin = const _MockAuthUser(
+  profile: UserProfile(
+    name: 'Admin Cabang Sukamaju',
+    phone: '+62 811-1111-2222',
+    email: 'admincabang@mepupoin.com',
+    avatarUrl: _defaultAvatarUrl,
+    role: 'admin',
+  ),
+  password: 'admin123',
+);
+
   UserProfile? _activeProfile;
   StreamSubscription<AuthState>? _authSubscription;
 
@@ -84,7 +103,8 @@ class _KdmpAppState extends State<KdmpApp> {
       // Jika di web, default langsung gunakan profil superadmin mock
       _activeProfile = kIsWeb
           ? _mockSuperAdmin.profile
-          : _mockRegisteredUser.profile;
+           : _mockAdmin.profile;
+          
     }
   }
 
@@ -102,33 +122,58 @@ class _KdmpAppState extends State<KdmpApp> {
       theme: buildKdmpTheme(),
       scrollBehavior: const _KdmpScrollBehavior(),
       // 2. Lakukan percabangan Home berdasarkan platform (Web vs Mobile)
-      home: _activeProfile == null
-          ? AuthScreen(
-              initialEmail: _useSupabase
-                  ? ''
-                  : (kIsWeb
-                        ? _mockSuperAdmin.profile.email
-                        : _mockRegisteredUser.profile.email),
-              initialPassword: _useSupabase
-                  ? ''
-                  : (kIsWeb
-                        ? _mockSuperAdmin.password
-                        : _mockRegisteredUser.password),
-              onLogin: _handleLogin,
-              onSignUp: _handleSignUp,
-              usingSupabase: _useSupabase,
-            )
-          : (kIsWeb
-                ? const SuperAdminDashboardOverview() // Tampilan utama jika login via Web Browser
-                : HomeShell(
-                    // Tampilan utama jika login via Mobile
-                    initialProfile: _activeProfile!,
-                    onLogout: () => unawaited(_handleLogout()),
-                    onProfileChanged: (profile) =>
-                        unawaited(_handleProfileChanged(profile)),
-                  )),
+     home: _activeProfile == null
+    ? AuthScreen(
+        initialEmail: _useSupabase
+            ? ''
+            : (kIsWeb
+                ? _mockSuperAdmin.profile.email
+                : _mockRegisteredUser.profile.email),
+        initialPassword: _useSupabase
+            ? ''
+            : (kIsWeb
+                ? _mockSuperAdmin.password
+                : _mockRegisteredUser.password),
+        onLogin: _handleLogin,
+        onSignUp: _handleSignUp,
+        usingSupabase: _useSupabase,
+
+      )
+    : _buildHomeByRole(),
     );
   }
+
+  Widget _buildHomeByRole() {
+  if (_activeProfile == null) {
+    return const SizedBox.shrink();
+  }
+
+  switch (_activeProfile!.role) {
+    case 'superadmin':
+      return const SuperAdminDashboardOverview();
+
+    case 'admin':
+      return const AdminDashboard();
+
+    case 'courier':
+      return const Scaffold(
+        body: Center(
+          child: Text('Courier Dashboard'),
+        ),
+      );
+
+    case 'user':
+    default:
+      return HomeShell(
+        initialProfile: _activeProfile!,
+        onLogout: () => unawaited(_handleLogout()),
+        onProfileChanged: (profile) =>
+            unawaited(_handleProfileChanged(profile)),
+      );
+  }
+}
+
+  
 
   Future<String?> _handleLogin({
     required String email,
@@ -174,19 +219,28 @@ class _KdmpAppState extends State<KdmpApp> {
         return 'Email atau kata sandi Superadmin salah.';
       }
       setState(() => _activeProfile = _mockSuperAdmin.profile);
-    } else {
-      // Validasi mock user biasa untuk mobile
-      final matchesEmail =
-          _mockRegisteredUser.profile.email.toLowerCase() ==
-          email.toLowerCase();
-      final matchesPassword = _mockRegisteredUser.password == password;
-      if (!matchesEmail || !matchesPassword) {
-        return 'Email atau kata sandi tidak sesuai.';
-      }
-      setState(() => _activeProfile = _mockRegisteredUser.profile);
-    }
+ } else {
+
+  // LOGIN ADMIN
+  if (_mockAdmin.profile.email.toLowerCase() ==
+          email.toLowerCase() &&
+      _mockAdmin.password == password) {
+
+    setState(() => _activeProfile = _mockAdmin.profile);
     return null;
   }
+ }
+  // LOGIN USER
+  if (_mockRegisteredUser.profile.email.toLowerCase() ==
+          email.toLowerCase() &&
+      _mockRegisteredUser.password == password) {
+
+    setState(() => _activeProfile = _mockRegisteredUser.profile);
+    return null;
+  }
+
+  return 'Email atau password salah';
+}
 
   Future<String?> _handleSignUp({
     required String name,
