@@ -1,20 +1,13 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart'; // 1. Tambahkan untuk mendeteksi kIsWeb
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-// Import UI Dashboard Web yang sudah kita buat sebelumnya
 import 'screens/superadmin/dashboard_overview.dart';
 import 'screens/home_shell.dart';
 import 'theme.dart';
 import 'screens/admin/dashboard/admin_dashboard.dart';
-import 'screens/admin/dashboard/dashboard_overview.dart';
-import 'screens/admin/dashboard/dashboard_stats.dart';
-
-import 'screens/admin/products/product_list_screen.dart';
-import 'screens/admin/products/add_product_screen.dart';
-import 'screens/admin/products/edit_product_screen.dart';
 
 const _defaultAvatarUrl =
     'https://lh3.googleusercontent.com/aida-public/AB6AXuBK38PfAiyHOiE6kMysiQgsdlCCaiTZUI4b6gmDIwhe7ReUvEF9AOZtc7zqWWpVxTvrZR01xBh3zwriMDBPGCAo8CThIn0t0ntISl8DH-ep3Z-QGr7OWGhZ3xzhTCYILlx9u9FIcdh72iy8WgdEZ-5Ow0Z7K3GctB5GWYGI-vV-GtzOo52Gm493KbofV8djVAmlUkGGmTVDG9cAGxX5fu1r6zYUEtMTvVVdJdvfWy0C3YN2beA5eJaitKgtJFVoqPaqkjSAbfMpshmD';
@@ -66,17 +59,17 @@ class _KdmpAppState extends State<KdmpApp> {
     password: 'superadmin123',
   );
 
-//admin
+  //admin
   final _MockAuthUser _mockAdmin = const _MockAuthUser(
-  profile: UserProfile(
-    name: 'Admin Cabang Sukamaju',
-    phone: '+62 811-1111-2222',
-    email: 'admincabang@mepupoin.com',
-    avatarUrl: _defaultAvatarUrl,
-    role: 'admin',
-  ),
-  password: 'admin123',
-);
+    profile: UserProfile(
+      name: 'Admin Cabang Sukamaju',
+      phone: '+62 811-1111-2222',
+      email: 'admincabang@mepupoin.com',
+      avatarUrl: _defaultAvatarUrl,
+      role: 'admin',
+    ),
+    password: 'admin123',
+  );
 
   UserProfile? _activeProfile;
   StreamSubscription<AuthState>? _authSubscription;
@@ -92,7 +85,8 @@ class _KdmpAppState extends State<KdmpApp> {
       unawaited(_syncActiveProfile(currentUser));
       _authSubscription = Supabase.instance.client.auth.onAuthStateChange
           .listen((data) async {
-            final user = data.session?.user ?? Supabase.instance.client.auth.currentUser;
+            final user =
+                data.session?.user ?? Supabase.instance.client.auth.currentUser;
             if (!mounted) return;
             setState(() {
               _activeProfile = _profileFallbackFromSupabaseUser(user);
@@ -101,10 +95,7 @@ class _KdmpAppState extends State<KdmpApp> {
           });
     } else if (widget.startAuthenticated) {
       // Jika di web, default langsung gunakan profil superadmin mock
-      _activeProfile = kIsWeb
-          ? _mockSuperAdmin.profile
-           : _mockAdmin.profile;
-          
+      _activeProfile = kIsWeb ? _mockSuperAdmin.profile : _mockAdmin.profile;
     }
   }
 
@@ -122,58 +113,51 @@ class _KdmpAppState extends State<KdmpApp> {
       theme: buildKdmpTheme(),
       scrollBehavior: const _KdmpScrollBehavior(),
       // 2. Lakukan percabangan Home berdasarkan platform (Web vs Mobile)
-     home: _activeProfile == null
-    ? AuthScreen(
-        initialEmail: _useSupabase
-            ? ''
-            : (kIsWeb
-                ? _mockSuperAdmin.profile.email
-                : _mockRegisteredUser.profile.email),
-        initialPassword: _useSupabase
-            ? ''
-            : (kIsWeb
-                ? _mockSuperAdmin.password
-                : _mockRegisteredUser.password),
-        onLogin: _handleLogin,
-        onSignUp: _handleSignUp,
-        usingSupabase: _useSupabase,
-
-      )
-    : _buildHomeByRole(),
+      home: _activeProfile == null
+          ? AuthScreen(
+              initialEmail: _useSupabase
+                  ? ''
+                  : (kIsWeb
+                        ? _mockSuperAdmin.profile.email
+                        : _mockRegisteredUser.profile.email),
+              initialPassword: _useSupabase
+                  ? ''
+                  : (kIsWeb
+                        ? _mockSuperAdmin.password
+                        : _mockRegisteredUser.password),
+              onLogin: _handleLogin,
+              onSignUp: _handleSignUp,
+              usingSupabase: _useSupabase,
+            )
+          : _buildHomeByRole(),
     );
   }
 
   Widget _buildHomeByRole() {
-  if (_activeProfile == null) {
-    return const SizedBox.shrink();
+    if (_activeProfile == null) {
+      return const SizedBox.shrink();
+    }
+
+    switch (_activeProfile!.role) {
+      case 'superadmin':
+        return const SuperAdminDashboardOverview();
+
+      case 'admin':
+        return const AdminDashboard();
+
+      case 'courier':
+        return const Scaffold(body: Center(child: Text('Courier Dashboard')));
+
+      case 'user':
+      default:
+        return HomeShell(
+          initialProfile: _activeProfile!,
+          onLogout: () => unawaited(_handleLogout()),
+          onProfileChanged: (profile) =>
+              unawaited(_handleProfileChanged(profile)),
+        );
+    }
   }
-
-  switch (_activeProfile!.role) {
-    case 'superadmin':
-      return const SuperAdminDashboardOverview();
-
-    case 'admin':
-      return const AdminDashboard();
-
-    case 'courier':
-      return const Scaffold(
-        body: Center(
-          child: Text('Courier Dashboard'),
-        ),
-      );
-
-    case 'user':
-    default:
-      return HomeShell(
-        initialProfile: _activeProfile!,
-        onLogout: () => unawaited(_handleLogout()),
-        onProfileChanged: (profile) =>
-            unawaited(_handleProfileChanged(profile)),
-      );
-  }
-}
-
-  
 
   Future<String?> _handleLogin({
     required String email,
@@ -190,10 +174,7 @@ class _KdmpAppState extends State<KdmpApp> {
           return 'Login gagal. Coba lagi beberapa saat.';
         }
 
-        await _ensureUserData(
-          user,
-          fallbackName: _nameFromEmail(email),
-        );
+        await _ensureUserData(user, fallbackName: _nameFromEmail(email));
         final profile = await _profileFromSupabaseUser(user);
         if (profile == null) {
           return 'Profil akun belum berhasil dimuat. Coba login kembali.';
@@ -226,28 +207,24 @@ class _KdmpAppState extends State<KdmpApp> {
         return 'Email atau kata sandi Superadmin salah.';
       }
       setState(() => _activeProfile = _mockSuperAdmin.profile);
- } else {
+    } else {
+      // LOGIN ADMIN
+      if (_mockAdmin.profile.email.toLowerCase() == email.toLowerCase() &&
+          _mockAdmin.password == password) {
+        setState(() => _activeProfile = _mockAdmin.profile);
+        return null;
+      }
+    }
+    // LOGIN USER
+    if (_mockRegisteredUser.profile.email.toLowerCase() ==
+            email.toLowerCase() &&
+        _mockRegisteredUser.password == password) {
+      setState(() => _activeProfile = _mockRegisteredUser.profile);
+      return null;
+    }
 
-  // LOGIN ADMIN
-  if (_mockAdmin.profile.email.toLowerCase() ==
-          email.toLowerCase() &&
-      _mockAdmin.password == password) {
-
-    setState(() => _activeProfile = _mockAdmin.profile);
-    return null;
+    return 'Email atau password salah';
   }
- }
-  // LOGIN USER
-  if (_mockRegisteredUser.profile.email.toLowerCase() ==
-          email.toLowerCase() &&
-      _mockRegisteredUser.password == password) {
-
-    setState(() => _activeProfile = _mockRegisteredUser.profile);
-    return null;
-  }
-
-  return 'Email atau password salah';
-}
 
   Future<String?> _handleSignUp({
     required String name,
@@ -280,23 +257,17 @@ class _KdmpAppState extends State<KdmpApp> {
 
         if (session == null) {
           final signInResponse = await Supabase.instance.client.auth
-              .signInWithPassword(
-                email: email,
-                password: password,
-              );
+              .signInWithPassword(email: email, password: password);
           session = signInResponse.session;
-          user = signInResponse.user ?? Supabase.instance.client.auth.currentUser;
+          user =
+              signInResponse.user ?? Supabase.instance.client.auth.currentUser;
         }
 
         if (user == null) {
           return 'Akun dibuat, tapi sesi belum aktif. Coba login kembali.';
         }
 
-        await _ensureUserData(
-          user,
-          fallbackName: name,
-          fallbackPhone: phone,
-        );
+        await _ensureUserData(user, fallbackName: name, fallbackPhone: phone);
         final profile = await _profileFromSupabaseUser(user);
         if (profile == null) {
           return 'Akun berhasil dibuat, tetapi profil belum siap. Silakan login ulang.';
@@ -358,7 +329,9 @@ class _KdmpAppState extends State<KdmpApp> {
               email: updatedProfile.email,
               data: {
                 'full_name': updatedProfile.name,
-                'phone': updatedProfile.phone == '-' ? null : updatedProfile.phone,
+                'phone': updatedProfile.phone == '-'
+                    ? null
+                    : updatedProfile.phone,
                 'avatar_url': updatedProfile.avatarUrl,
                 'role_type': _profileRoleType(updatedProfile.role),
               },
@@ -393,7 +366,9 @@ class _KdmpAppState extends State<KdmpApp> {
       await _ensureUserData(
         user,
         fallbackName: fallbackProfile.name,
-        fallbackPhone: fallbackProfile.phone == '-' ? null : fallbackProfile.phone,
+        fallbackPhone: fallbackProfile.phone == '-'
+            ? null
+            : fallbackProfile.phone,
       );
 
       final row = await client
@@ -473,10 +448,15 @@ class _KdmpAppState extends State<KdmpApp> {
   }
 
   String _roleFromMetadata(Map<String, dynamic> metadata) {
-    final rawRoleType = (metadata['role_type'] ?? '').toString().trim().toLowerCase();
+    final rawRoleType = (metadata['role_type'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
     final rawRole = (metadata['role'] ?? '').toString().trim().toLowerCase();
 
-    if (rawRole == 'superadmin' || rawRole == 'super_admin') return 'superadmin';
+    if (rawRole == 'superadmin' || rawRole == 'super_admin') {
+      return 'superadmin';
+    }
     if (rawRoleType == 'superadmin' || rawRoleType == 'super_admin') {
       return 'superadmin';
     }
@@ -506,10 +486,12 @@ class _KdmpAppState extends State<KdmpApp> {
         (metadata['full_name'] ?? metadata['name'] ?? fallbackName ?? '')
             .toString()
             .trim();
-    final profilePhone =
-        (metadata['phone'] ?? fallbackPhone ?? '').toString().trim();
-    final avatarUrl =
-        (metadata['avatar_url'] ?? '__initials__').toString().trim();
+    final profilePhone = (metadata['phone'] ?? fallbackPhone ?? '')
+        .toString()
+        .trim();
+    final avatarUrl = (metadata['avatar_url'] ?? '__initials__')
+        .toString()
+        .trim();
     final roleType = _profileRoleType(_roleFromMetadata(metadata));
 
     await client.from('profiles').upsert({
@@ -523,9 +505,7 @@ class _KdmpAppState extends State<KdmpApp> {
       'is_active': true,
     });
 
-    await client.from('notification_settings').upsert({
-      'user_id': user.id,
-    });
+    await client.from('notification_settings').upsert({'user_id': user.id});
   }
 
   String _nameFromEmail(String email) {
