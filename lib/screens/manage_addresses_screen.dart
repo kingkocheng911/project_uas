@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../services/google_maps_address_service.dart';
+
+const LatLng _defaultAddressMapCenter = LatLng(-7.5666, 110.8167);
 
 class SavedAddressResult {
   const SavedAddressResult({
@@ -9,6 +14,8 @@ class SavedAddressResult {
     required this.phone,
     required this.address,
     required this.isPrimary,
+    this.latitude,
+    this.longitude,
   });
 
   final String id;
@@ -17,6 +24,8 @@ class SavedAddressResult {
   final String phone;
   final String address;
   final bool isPrimary;
+  final double? latitude;
+  final double? longitude;
 
   factory SavedAddressResult.fromMap(
     Map<String, dynamic> map, {
@@ -30,6 +39,8 @@ class SavedAddressResult {
       phone: (map['phone'] ?? '').toString(),
       address: (map['address'] ?? '').toString(),
       isPrimary: map['is_primary'] == true,
+      latitude: (map['latitude'] as num?)?.toDouble(),
+      longitude: (map['longitude'] as num?)?.toDouble(),
     );
   }
 }
@@ -157,6 +168,8 @@ class _ManageAddressesScreenState extends State<ManageAddressesScreen> {
                                       phone: _selectedAddress!.phone,
                                       address: _selectedAddress!.address,
                                       isPrimary: _selectedAddress!.isPrimary,
+                                      latitude: _selectedAddress!.latitude,
+                                      longitude: _selectedAddress!.longitude,
                                     ),
                             ),
                     style: FilledButton.styleFrom(
@@ -298,6 +311,12 @@ class _ManageAddressesScreenState extends State<ManageAddressesScreen> {
         name: draft.name,
         phone: draft.phone,
         address: draft.address,
+        province: draft.province,
+        city: draft.city,
+        district: draft.district,
+        postalCode: draft.postalCode,
+        latitude: draft.latitude,
+        longitude: draft.longitude,
       );
 
       if (_canUseSupabase) {
@@ -382,6 +401,12 @@ class _AddressData {
     required this.phone,
     required this.address,
     required this.isPrimary,
+    this.province = '',
+    this.city = '',
+    this.district = '',
+    this.postalCode = '',
+    this.latitude,
+    this.longitude,
   });
 
   final String id;
@@ -390,6 +415,12 @@ class _AddressData {
   final String phone;
   final String address;
   final bool isPrimary;
+  final String province;
+  final String city;
+  final String district;
+  final String postalCode;
+  final double? latitude;
+  final double? longitude;
 
   factory _AddressData.fromMap(
     Map<String, dynamic> map, {
@@ -403,6 +434,12 @@ class _AddressData {
       phone: (map['phone'] ?? '').toString(),
       address: (map['address'] ?? '').toString(),
       isPrimary: map['is_primary'] == true,
+      province: (map['province'] ?? '').toString(),
+      city: (map['city'] ?? '').toString(),
+      district: (map['district'] ?? '').toString(),
+      postalCode: (map['postal_code'] ?? '').toString(),
+      latitude: (map['latitude'] as num?)?.toDouble(),
+      longitude: (map['longitude'] as num?)?.toDouble(),
     );
   }
 
@@ -412,6 +449,12 @@ class _AddressData {
     String? phone,
     String? address,
     bool? isPrimary,
+    String? province,
+    String? city,
+    String? district,
+    String? postalCode,
+    double? latitude,
+    double? longitude,
   }) {
     return _AddressData(
       id: id,
@@ -420,6 +463,12 @@ class _AddressData {
       phone: phone ?? this.phone,
       address: address ?? this.address,
       isPrimary: isPrimary ?? this.isPrimary,
+      province: province ?? this.province,
+      city: city ?? this.city,
+      district: district ?? this.district,
+      postalCode: postalCode ?? this.postalCode,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
     );
   }
 }
@@ -430,12 +479,24 @@ class _AddressDraft {
     required this.name,
     required this.phone,
     required this.address,
+    required this.province,
+    required this.city,
+    required this.district,
+    required this.postalCode,
+    this.latitude,
+    this.longitude,
   });
 
   final String label;
   final String name;
   final String phone;
   final String address;
+  final String province;
+  final String city;
+  final String district;
+  final String postalCode;
+  final double? latitude;
+  final double? longitude;
 
   Map<String, dynamic> toInsertMap({required String userId}) {
     return {
@@ -444,6 +505,12 @@ class _AddressDraft {
       'recipient_name': name,
       'phone': phone,
       'address': address,
+      'province': province,
+      'city': city,
+      'district': district,
+      'postal_code': postalCode,
+      'latitude': latitude,
+      'longitude': longitude,
       'is_primary': false,
     };
   }
@@ -454,6 +521,12 @@ class _AddressDraft {
       'recipient_name': name,
       'phone': phone,
       'address': address,
+      'province': province,
+      'city': city,
+      'district': district,
+      'postal_code': postalCode,
+      'latitude': latitude,
+      'longitude': longitude,
     };
   }
 
@@ -465,6 +538,12 @@ class _AddressDraft {
       phone: phone,
       address: address,
       isPrimary: false,
+      province: province,
+      city: city,
+      district: district,
+      postalCode: postalCode,
+      latitude: latitude,
+      longitude: longitude,
     );
   }
 }
@@ -669,11 +748,14 @@ class _AddAddressSheet extends StatefulWidget {
 }
 
 class _AddAddressSheetState extends State<_AddAddressSheet> {
+  final GoogleMapsAddressService _mapsService = const GoogleMapsAddressService();
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _labelController;
   late final TextEditingController _nameController;
   late final TextEditingController _phoneController;
   late final TextEditingController _addressController;
+  GoogleAddressDetails? _selectedLocation;
+  bool _isResolvingLocation = false;
 
   bool get _isEditing => widget.initialAddress != null;
 
@@ -685,6 +767,18 @@ class _AddAddressSheetState extends State<_AddAddressSheet> {
     _nameController = TextEditingController(text: address?.name ?? '');
     _phoneController = TextEditingController(text: address?.phone ?? '');
     _addressController = TextEditingController(text: address?.address ?? '');
+    if (address?.latitude != null && address?.longitude != null) {
+      _selectedLocation = GoogleAddressDetails(
+        placeId: '',
+        formattedAddress: address?.address ?? '',
+        latitude: address!.latitude!,
+        longitude: address.longitude!,
+        province: address.province,
+        city: address.city,
+        district: address.district,
+        postalCode: address.postalCode,
+      );
+    }
   }
 
   @override
@@ -724,6 +818,14 @@ class _AddAddressSheetState extends State<_AddAddressSheet> {
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: const Color(0xFF6D5A58),
                   ),
+                ),
+                const SizedBox(height: 18),
+                _MapAddressPickerCard(
+                  isConfigured: _mapsService.isConfigured,
+                  location: _selectedLocation,
+                  isLoading: _isResolvingLocation,
+                  onSearch: _isResolvingLocation ? null : _searchAddressFromGoogle,
+                  onOpenMap: _isResolvingLocation ? null : _openMapPicker,
                 ),
                 const SizedBox(height: 18),
                 TextFormField(
@@ -777,6 +879,10 @@ class _AddAddressSheetState extends State<_AddAddressSheet> {
                     return null;
                   },
                 ),
+                if (_selectedLocation != null) ...[
+                  const SizedBox(height: 12),
+                  _LocationMetaPanel(location: _selectedLocation!),
+                ],
                 const SizedBox(height: 20),
                 SizedBox(
                   width: double.infinity,
@@ -789,6 +895,12 @@ class _AddAddressSheetState extends State<_AddAddressSheet> {
                           name: _nameController.text.trim(),
                           phone: _phoneController.text.trim(),
                           address: _addressController.text.trim(),
+                          province: _selectedLocation?.province ?? '',
+                          city: _selectedLocation?.city ?? '',
+                          district: _selectedLocation?.district ?? '',
+                          postalCode: _selectedLocation?.postalCode ?? '',
+                          latitude: _selectedLocation?.latitude,
+                          longitude: _selectedLocation?.longitude,
                         ),
                       );
                     },
@@ -805,6 +917,541 @@ class _AddAddressSheetState extends State<_AddAddressSheet> {
         ),
       ),
     );
+  }
+
+  Future<void> _searchAddressFromGoogle() async {
+    if (!_mapsService.isConfigured) {
+      _showSheetNotice(
+        'Google Maps belum aktif. Isi GOOGLE_MAPS_API_KEY dulu agar pencarian alamat bisa dipakai.',
+      );
+      return;
+    }
+
+    final suggestion = await showModalBottomSheet<GooglePlaceSuggestion>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) => _GoogleAddressSearchSheet(service: _mapsService),
+    );
+
+    if (!mounted || suggestion == null) return;
+
+    setState(() => _isResolvingLocation = true);
+    try {
+      final details = await _mapsService.getPlaceDetails(suggestion.placeId);
+      if (!mounted) return;
+      setState(() {
+        _selectedLocation = details;
+        _addressController.text = details.formattedAddress;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      _showSheetNotice(error.toString());
+    } finally {
+      if (mounted) {
+        setState(() => _isResolvingLocation = false);
+      }
+    }
+  }
+
+  Future<void> _openMapPicker() async {
+    if (!_mapsService.isConfigured) {
+      _showSheetNotice(
+        'Google Maps belum aktif. Isi GOOGLE_MAPS_API_KEY dulu agar peta bisa dipakai.',
+      );
+      return;
+    }
+
+    final selected = await Navigator.of(context).push<GoogleAddressDetails>(
+      MaterialPageRoute(
+        builder: (_) => _AddressMapPickerScreen(
+          service: _mapsService,
+          initialLocation: _selectedLocation,
+        ),
+        fullscreenDialog: true,
+      ),
+    );
+
+    if (!mounted || selected == null) return;
+
+    setState(() {
+      _selectedLocation = selected;
+      _addressController.text = selected.formattedAddress;
+    });
+  }
+
+  void _showSheetNotice(String message) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+}
+
+class _MapAddressPickerCard extends StatelessWidget {
+  const _MapAddressPickerCard({
+    required this.isConfigured,
+    required this.location,
+    required this.isLoading,
+    required this.onSearch,
+    required this.onOpenMap,
+  });
+
+  final bool isConfigured;
+  final GoogleAddressDetails? location;
+  final bool isLoading;
+  final VoidCallback? onSearch;
+  final VoidCallback? onOpenMap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final primary = theme.colorScheme.primary;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF8F7),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE8BCB8)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(Icons.map_outlined, color: primary),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Google Maps',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      location == null
+                          ? 'Cari alamat atau pilih titik peta agar alamat lebih akurat.'
+                          : 'Lokasi sudah dipilih. Kamu masih bisa ubah titiknya.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFF6D5A58),
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (!isConfigured) ...[
+            const SizedBox(height: 12),
+            const Text(
+              'API key Google Maps belum diisi, jadi tombol pencarian dan peta belum aktif.',
+              style: TextStyle(
+                color: Color(0xFFBA1A1A),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: isConfigured ? onSearch : null,
+                  icon: isLoading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.search_rounded),
+                  label: const Text('Cari Alamat'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: isConfigured ? onOpenMap : null,
+                  icon: const Icon(Icons.place_outlined),
+                  label: Text(location == null ? 'Pilih di Peta' : 'Ubah Titik'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LocationMetaPanel extends StatelessWidget {
+  const _LocationMetaPanel({required this.location});
+
+  final GoogleAddressDetails location;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = [
+      if (location.district.isNotEmpty) ('Kecamatan', location.district),
+      if (location.city.isNotEmpty) ('Kota/Kabupaten', location.city),
+      if (location.province.isNotEmpty) ('Provinsi', location.province),
+      if (location.postalCode.isNotEmpty) ('Kode Pos', location.postalCode),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE8BCB8)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Data lokasi dari Google Maps',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 10),
+          for (final row in rows)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 110,
+                    child: Text(
+                      row.$1,
+                      style: const TextStyle(color: Color(0xFF6D5A58)),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      row.$2,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          Text(
+            'Lat ${location.latitude.toStringAsFixed(6)}, Lng ${location.longitude.toStringAsFixed(6)}',
+            style: const TextStyle(
+              color: Color(0xFF6D5A58),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GoogleAddressSearchSheet extends StatefulWidget {
+  const _GoogleAddressSearchSheet({required this.service});
+
+  final GoogleMapsAddressService service;
+
+  @override
+  State<_GoogleAddressSearchSheet> createState() => _GoogleAddressSearchSheetState();
+}
+
+class _GoogleAddressSearchSheetState extends State<_GoogleAddressSearchSheet> {
+  final TextEditingController _searchController = TextEditingController();
+  List<GooglePlaceSuggestion> _results = const [];
+  bool _isLoading = false;
+  String? _errorMessage;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _search() async {
+    final query = _searchController.text.trim();
+    if (query.length < 3) {
+      setState(() {
+        _results = const [];
+        _errorMessage = 'Masukkan minimal 3 karakter.';
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final results = await widget.service.autocomplete(query);
+      if (!mounted) return;
+      setState(() {
+        _results = results;
+        if (results.isEmpty) {
+          _errorMessage = 'Alamat tidak ditemukan.';
+        }
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _errorMessage = error.toString());
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 8,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _searchController,
+              textInputAction: TextInputAction.search,
+              onSubmitted: (_) => _search(),
+              decoration: InputDecoration(
+                hintText: 'Cari alamat, jalan, atau tempat',
+                prefixIcon: const Icon(Icons.search_rounded),
+                suffixIcon: IconButton(
+                  onPressed: _isLoading ? null : _search,
+                  icon: _isLoading
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.arrow_forward_rounded),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Flexible(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 360),
+                child: _results.isNotEmpty
+                    ? ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: _results.length,
+                        separatorBuilder: (_, _) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final suggestion = _results[index];
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: const Icon(Icons.place_outlined),
+                            title: Text(suggestion.mainText),
+                            subtitle: suggestion.secondaryText == null
+                                ? null
+                                : Text(suggestion.secondaryText!),
+                            onTap: () => Navigator.of(context).pop(suggestion),
+                          );
+                        },
+                      )
+                    : Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 24),
+                        child: Text(
+                          _errorMessage ??
+                              'Cari alamat dari Google Maps agar lokasi pengiriman lebih akurat.',
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AddressMapPickerScreen extends StatefulWidget {
+  const _AddressMapPickerScreen({
+    required this.service,
+    this.initialLocation,
+  });
+
+  final GoogleMapsAddressService service;
+  final GoogleAddressDetails? initialLocation;
+
+  @override
+  State<_AddressMapPickerScreen> createState() => _AddressMapPickerScreenState();
+}
+
+class _AddressMapPickerScreenState extends State<_AddressMapPickerScreen> {
+  GoogleAddressDetails? _selectedLocation;
+  bool _isResolving = false;
+  GoogleMapController? _mapController;
+  late LatLng _cameraTarget;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedLocation = widget.initialLocation;
+    _cameraTarget = _selectedLocation == null
+        ? _defaultAddressMapCenter
+        : LatLng(_selectedLocation!.latitude, _selectedLocation!.longitude);
+    if (_selectedLocation == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _resolveFromCameraTarget(_defaultAddressMapCenter);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _mapController?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final target = _selectedLocation == null
+        ? _cameraTarget
+        : LatLng(_selectedLocation!.latitude, _selectedLocation!.longitude);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Pilih Titik Alamat'),
+      ),
+      body: Stack(
+        children: [
+          GoogleMap(
+            initialCameraPosition: CameraPosition(target: target, zoom: 16),
+            onMapCreated: (controller) => _mapController = controller,
+            myLocationButtonEnabled: false,
+            zoomControlsEnabled: false,
+            markers: {
+              Marker(
+                markerId: const MarkerId('selected-address'),
+                position: target,
+                draggable: true,
+                onDragEnd: _resolveFromCameraTarget,
+              ),
+            },
+            onTap: _resolveFromCameraTarget,
+            onCameraMove: (position) {
+              _cameraTarget = position.target;
+            },
+            onCameraIdle: () async {
+              await _resolveFromCameraTarget(_cameraTarget, moveCamera: false);
+            },
+          ),
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 20,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x1A000000),
+                    blurRadius: 14,
+                    offset: Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.place_outlined, color: Color(0xFFD9001B)),
+                      const SizedBox(width: 8),
+                      Text(
+                        _isResolving ? 'Mencari alamat...' : 'Alamat terpilih',
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    _selectedLocation?.formattedAddress ??
+                        'Geser pin atau tap peta untuk memilih lokasi.',
+                    style: const TextStyle(height: 1.4),
+                  ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: _selectedLocation == null || _isResolving
+                          ? null
+                          : () => Navigator.of(context).pop(_selectedLocation),
+                      child: const Text('Gunakan Lokasi Ini'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _resolveFromCameraTarget(
+    LatLng target, {
+    bool moveCamera = true,
+  }) async {
+    setState(() => _isResolving = true);
+    if (moveCamera) {
+      await _mapController?.animateCamera(CameraUpdate.newLatLng(target));
+    }
+    try {
+      final details = await widget.service.reverseGeocode(
+        latitude: target.latitude,
+        longitude: target.longitude,
+      );
+      if (!mounted) return;
+      setState(() => _selectedLocation = details);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _selectedLocation = GoogleAddressDetails(
+          placeId: '',
+          formattedAddress:
+              'Titik dipilih di ${target.latitude.toStringAsFixed(6)}, ${target.longitude.toStringAsFixed(6)}',
+          latitude: target.latitude,
+          longitude: target.longitude,
+          province: '',
+          city: '',
+          district: '',
+          postalCode: '',
+        );
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isResolving = false);
+      }
+    }
   }
 }
 

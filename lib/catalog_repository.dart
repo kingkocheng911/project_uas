@@ -16,7 +16,7 @@ class CatalogSnapshot {
 class CatalogRepository {
   const CatalogRepository();
 
-  Future<CatalogSnapshot> load() async {
+  Future<CatalogSnapshot> load({required String? branchId}) async {
     try {
       final client = Supabase.instance.client;
       final categoryRows = await client
@@ -24,22 +24,42 @@ class CatalogRepository {
           .select('id, label, icon_name, sort_order, is_active')
           .eq('is_active', true)
           .order('sort_order');
-      final productRows = await client
-          .from('products')
+
+      if (branchId == null || branchId.isEmpty) {
+        return CatalogSnapshot(
+          categories: categoryRows
+              .map<CategoryItem>(
+                (row) => CategoryItem(
+                  label: _categoryLabelFromRow(row),
+                  icon: _categoryIconFromName(
+                    (row['icon_name'] ?? '').toString(),
+                  ),
+                ),
+              )
+              .where((item) => item.label.isNotEmpty)
+              .toList(),
+          products: const [],
+        );
+      }
+
+      final branchProductRows = await client
+          .from('branch_products')
           .select(
-            'id, name, price, original_price, stock, claimed_percent, reward_points, '
-            'badge, description, icon_name, tone_hex, image_url, category_labels, '
-            'highlights, related_ids, sort_order, is_active, category_id',
+            'selling_price, original_price, stock_on_hand, is_featured, '
+            'products(id, name, claimed_percent, reward_points, badge, description, '
+            'icon_name, tone_hex, image_url, category_labels, highlights, related_ids, is_active)',
           )
+          .eq('branch_id', branchId)
           .eq('is_active', true)
-          .order('sort_order');
+          .order('is_featured', ascending: false)
+          .order('updated_at', ascending: false);
 
       final activeCategoryLabels = categoryRows
           .map<String>(_categoryLabelFromRow)
           .where((label) => label.isNotEmpty)
           .toSet();
 
-      final mappedProducts = productRows
+      final mappedProducts = branchProductRows
           .map<Product?>(
             (row) => _productFromRow(
               row,
@@ -83,8 +103,15 @@ class CatalogRepository {
     Map<String, dynamic> row, {
     required Set<String> activeCategoryLabels,
   }) {
-    final categoryLabels = row['category_labels'] is List
-        ? (row['category_labels'] as List)
+    final productRow = row['products'] is Map<String, dynamic>
+        ? Map<String, dynamic>.from(row['products'] as Map)
+        : const <String, dynamic>{};
+
+    if (productRow.isEmpty) return null;
+    if (productRow['is_active'] == false) return null;
+
+    final categoryLabels = productRow['category_labels'] is List
+        ? (productRow['category_labels'] as List)
               .map((item) => item.toString())
               .where((item) => item.isNotEmpty)
               .toList()
@@ -97,31 +124,35 @@ class CatalogRepository {
       return null;
     }
 
-    final highlights = row['highlights'] is List
-        ? (row['highlights'] as List).map((item) => item.toString()).toList()
+    final highlights = productRow['highlights'] is List
+        ? (productRow['highlights'] as List)
+              .map((item) => item.toString())
+              .toList()
         : const <String>[];
-    final relatedIds = row['related_ids'] is List
-        ? (row['related_ids'] as List).map((item) => item.toString()).toList()
+    final relatedIds = productRow['related_ids'] is List
+        ? (productRow['related_ids'] as List)
+              .map((item) => item.toString())
+              .toList()
         : const <String>[];
 
     return Product(
-      id: (row['id'] ?? '').toString(),
-      name: (row['name'] ?? '').toString(),
-      price: (row['price'] as num?)?.toInt() ?? 0,
+      id: (productRow['id'] ?? '').toString(),
+      name: (productRow['name'] ?? '').toString(),
+      price: (row['selling_price'] as num?)?.toInt() ?? 0,
       originalPrice: (row['original_price'] as num?)?.toInt() ?? 0,
-      stock: (row['stock'] as num?)?.toInt() ?? 0,
-      claimedPercent: (row['claimed_percent'] as num?)?.toInt() ?? 0,
-      rewardPoints: (row['reward_points'] as num?)?.toInt() ?? 0,
-      badge: (row['badge'] ?? '').toString(),
-      description: (row['description'] ?? '').toString(),
-      icon: _productIconFromName((row['icon_name'] ?? '').toString()),
-      tone: _colorFromHex((row['tone_hex'] ?? '#8B0011').toString()),
+      stock: (row['stock_on_hand'] as num?)?.toInt() ?? 0,
+      claimedPercent: (productRow['claimed_percent'] as num?)?.toInt() ?? 0,
+      rewardPoints: (productRow['reward_points'] as num?)?.toInt() ?? 0,
+      badge: (productRow['badge'] ?? '').toString(),
+      description: (productRow['description'] ?? '').toString(),
+      icon: _productIconFromName((productRow['icon_name'] ?? '').toString()),
+      tone: _colorFromHex((productRow['tone_hex'] ?? '#8B0011').toString()),
       categories: normalizedCategories.isEmpty
           ? const ['Lainnya']
           : normalizedCategories,
-      imageUrl: (row['image_url'] as String?)?.trim().isEmpty ?? true
+      imageUrl: (productRow['image_url'] as String?)?.trim().isEmpty ?? true
           ? null
-          : (row['image_url'] as String),
+          : (productRow['image_url'] as String),
       highlights: highlights,
       relatedIds: relatedIds,
     );

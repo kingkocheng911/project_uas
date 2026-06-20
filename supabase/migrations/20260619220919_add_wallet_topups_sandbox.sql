@@ -194,9 +194,9 @@ begin
   where id = v_topup.id;
 
   update public.profiles
-  set wallet_balance = wallet_balance + v_topup.amount
+  set wallet_balance = public.profiles.wallet_balance + v_topup.amount
   where id = v_user_id
-  returning profiles.wallet_balance into v_wallet_balance;
+  returning public.profiles.wallet_balance into v_wallet_balance;
 
   return query
   select v_topup.id, 'paid'::text, coalesce(v_wallet_balance, 0), now();

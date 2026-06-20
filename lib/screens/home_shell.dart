@@ -59,6 +59,7 @@ class CheckoutVoucher {
 
 class CheckoutAddress {
   const CheckoutAddress({
+    required this.id,
     required this.label,
     required this.name,
     required this.phone,
@@ -66,11 +67,59 @@ class CheckoutAddress {
     required this.icon,
   });
 
+  final String id;
   final String label;
   final String name;
   final String phone;
   final String address;
   final IconData icon;
+}
+
+class _CheckoutBranchContext {
+  const _CheckoutBranchContext({
+    required this.branchId,
+    required this.branchName,
+  });
+
+  final String? branchId;
+  final String branchName;
+}
+
+class _CustomerOrderSnapshot {
+  const _CustomerOrderSnapshot({
+    required this.name,
+    required this.phone,
+  });
+
+  final String name;
+  final String? phone;
+}
+
+final RegExp _uuidPattern = RegExp(
+  r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
+);
+
+class _UserBranchOption {
+  const _UserBranchOption({
+    required this.id,
+    required this.code,
+    required this.name,
+    required this.address,
+    required this.district,
+    required this.city,
+  });
+
+  final String id;
+  final String code;
+  final String name;
+  final String address;
+  final String district;
+  final String city;
+
+  String get subtitle {
+    final parts = [district, city].where((item) => item.isNotEmpty).toList();
+    return parts.isEmpty ? address : parts.join(', ');
+  }
 }
 
 const _checkoutVouchers = <CheckoutVoucher>[
@@ -137,14 +186,18 @@ class _HomeShellState extends State<HomeShell> {
   late final Map<String, int> _productStocks = _createStocks(products);
   final List<Product> _cartItems = [];
   final List<OrderItem> _orderItems = List<OrderItem>.of(orders);
-  final Map<String, List<Product>> _orderProducts = {};
+  List<_UserBranchOption> _branches = const [];
+  String? _selectedBranchId;
+  String _selectedBranchName = 'Pilih Cabang';
+  String _selectedBranchSubtitle = 'Pilih cabang KDMP terdekat';
 
   @override
   void initState() {
     super.initState();
     _profile = widget.initialProfile;
-    unawaited(_loadCatalog());
+    unawaited(_initializeBranchSelection());
     unawaited(_loadWalletBalance());
+    unawaited(_loadOrders());
   }
 
   @override
@@ -156,12 +209,16 @@ class _HomeShellState extends State<HomeShell> {
         productStocks: _productStocks,
         products: products,
         categories: productCategories,
+        selectedBranchName: _selectedBranchName,
+        selectedBranchSubtitle: _selectedBranchSubtitle,
         onOpenProduct: _openProduct,
         onChangeTab: _changeTab,
         onOpenCart: _openCart,
         onAddToCart: _addToCart,
         onTopUp: _openTopUpDialog,
         onSelectCategory: _openShopCategory,
+        onOpenNotifications: _openNotifications,
+        onSelectBranch: _handleSelectBranchTap,
       ),
       ShopScreen(
         cartItemCount: _cartItems.length,
@@ -169,9 +226,11 @@ class _HomeShellState extends State<HomeShell> {
         products: products,
         categories: productCategories,
         selectedCategory: _shopSelectedCategory,
+        selectedBranchName: _selectedBranchName,
         onOpenProduct: _openProduct,
         onOpenCart: _openCart,
         onAddToCart: _addToCart,
+        onSelectBranch: _handleSelectBranchTap,
       ),
       OrdersScreen(
         orders: _orderItems,
@@ -209,9 +268,86 @@ class _HomeShellState extends State<HomeShell> {
     setState(() => _currentIndex = index);
   }
 
+  void _handleSelectBranchTap() {
+    unawaited(_openBranchSelector());
+  }
+
+  Future<void> _initializeBranchSelection() async {
+    await _loadBranches();
+    await _loadCatalog();
+  }
+
+  Future<void> _loadBranches() async {
+    try {
+      final rows = await Supabase.instance.client
+          .from('branches')
+          .select('id, code, name, address, district, city')
+          .eq('is_active', true)
+          .order('name');
+
+      final branches = rows
+          .map<_UserBranchOption>(
+            (row) => _UserBranchOption(
+              id: (row['id'] ?? '').toString(),
+              code: (row['code'] ?? '').toString(),
+              name: (row['name'] ?? '').toString(),
+              address: (row['address'] ?? '').toString(),
+              district: (row['district'] ?? '').toString(),
+              city: (row['city'] ?? '').toString(),
+            ),
+          )
+          .where((branch) => branch.id.isNotEmpty && branch.name.isNotEmpty)
+          .toList(growable: false);
+
+      if (!mounted) return;
+
+      String? preferredBranchId = _selectedBranchId;
+      if ((preferredBranchId ?? '').isEmpty && _canUseSupabase) {
+        final user = Supabase.instance.client.auth.currentUser;
+        if (user != null) {
+          final profileRow = await Supabase.instance.client
+              .from('profiles')
+              .select('default_branch_id')
+              .eq('id', user.id)
+              .maybeSingle();
+          preferredBranchId = profileRow?['default_branch_id']?.toString();
+        }
+      }
+
+      final selectedBranch = branches.firstWhere(
+        (branch) => branch.id == preferredBranchId,
+        orElse: () => branches.isNotEmpty ? branches.first : const _UserBranchOption(
+          id: '',
+          code: '',
+          name: 'Pilih Cabang',
+          address: '',
+          district: '',
+          city: '',
+        ),
+      );
+
+      setState(() {
+        _branches = branches;
+        _selectedBranchId = selectedBranch.id.isEmpty ? null : selectedBranch.id;
+        _selectedBranchName = selectedBranch.name;
+        _selectedBranchSubtitle = selectedBranch.id.isEmpty
+            ? 'Pilih cabang KDMP terdekat'
+            : selectedBranch.subtitle;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _branches = const [];
+        _selectedBranchId = null;
+        _selectedBranchName = 'Pilih Cabang';
+        _selectedBranchSubtitle = 'Pilih cabang KDMP terdekat';
+      });
+    }
+  }
+
   Future<void> _loadCatalog() async {
     try {
-      final snapshot = await _catalogRepository.load();
+      final snapshot = await _catalogRepository.load(branchId: _selectedBranchId);
       final loadedCategories = List<CategoryItem>.of(snapshot.categories);
       final loadedProducts = List<Product>.of(snapshot.products);
       if (!mounted) return;
@@ -260,6 +396,40 @@ class _HomeShellState extends State<HomeShell> {
     }
   }
 
+  Future<void> _loadOrders() async {
+    if (!_canUseSupabase) return;
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) return;
+
+      final rows = await Supabase.instance.client
+          .from('orders')
+          .select(
+            'order_no, order_status, payment_status, grand_total, placed_at, '
+            'order_type, delivery_label, delivery_address, courier_name, courier_phone, '
+            'payment_methods(code, name), addresses(label, address), order_items(product_name, qty)',
+          )
+          .eq('user_id', user.id)
+          .order('placed_at', ascending: false);
+
+      final mappedOrders = rows
+          .map<OrderItem?>(
+            (row) => _orderFromBackendRow(Map<String, dynamic>.from(row)),
+          )
+          .whereType<OrderItem>()
+          .toList();
+
+      if (!mounted) return;
+      setState(() {
+        _orderItems
+          ..clear()
+          ..addAll(mappedOrders);
+      });
+    } catch (_) {
+      // Keep local fallback orders if remote load fails.
+    }
+  }
+
   Future<bool> _persistWalletBalance(int newBalance) async {
     if (!_canUseSupabase) return true;
     try {
@@ -280,6 +450,50 @@ class _HomeShellState extends State<HomeShell> {
   void _setWalletBalance(int newBalance) {
     setState(() => _mepuBalance = newBalance.clamp(0, 2147483647));
     unawaited(_persistWalletBalance(_mepuBalance));
+  }
+
+  Future<void> _createNotification({
+    required String type,
+    required String title,
+    required String message,
+    Map<String, dynamic>? data,
+  }) async {
+    if (!_canUseSupabase) return;
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) return;
+
+      final settingsRow = await Supabase.instance.client
+          .from('notification_settings')
+          .select(
+            'orders_enabled, promotions_enabled, payments_enabled, '
+            'membership_enabled, security_enabled, newsletter_enabled, '
+            'email_enabled, sms_enabled, push_enabled',
+          )
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+      if (settingsRow != null) {
+        final notificationAllowed = switch (type) {
+          'order' => settingsRow['orders_enabled'] != false,
+          'promo' => settingsRow['promotions_enabled'] != false,
+          _ => settingsRow['payments_enabled'] != false,
+        };
+        if (!notificationAllowed) return;
+      }
+
+      await Supabase.instance.client.from('notifications').insert({
+        'user_id': user.id,
+        'type': type,
+        'title': title,
+        'message': message,
+        'data': data ?? <String, dynamic>{},
+        'is_read': false,
+        'sent_at': DateTime.now().toIso8601String(),
+      });
+    } catch (_) {
+      // Keep customer flow working even if notification insert fails.
+    }
   }
 
   void _openShopCategory(String category) {
@@ -371,21 +585,23 @@ class _HomeShellState extends State<HomeShell> {
                 checkoutItems,
                 paymentMethod,
                 deliveryMethod,
+                addressId,
                 address,
                 finalTotal,
                 voucherLabel,
-              ) {
-                final order = _createOrder(
+              ) async {
+                final order = await _createOrder(
                   checkoutItems,
                   paymentMethod: paymentMethod,
                   deliveryMethod: deliveryMethod,
+                  addressId: addressId,
                   address: address,
                   finalTotal: finalTotal,
                   voucherLabel: voucherLabel,
                 );
+                if (order == null) return null;
                 setState(() {
                   _orderItems.insert(0, order);
-                  _orderProducts[order.id] = List<Product>.of(checkoutItems);
                   _decreaseStock(checkoutItems);
                   if (paymentMethod == 'Saldo MepuPoin') {
                     _mepuBalance -= finalTotal;
@@ -395,6 +611,20 @@ class _HomeShellState extends State<HomeShell> {
                 if (paymentMethod == 'Saldo MepuPoin') {
                   unawaited(_persistWalletBalance(_mepuBalance));
                 }
+                unawaited(
+                  _createNotification(
+                    type: 'order',
+                    title: 'Pesanan berhasil dibuat',
+                    message: paymentMethod == 'Saldo MepuPoin'
+                        ? 'Pesanan ${order.id} sudah dibayar dan sedang diproses.'
+                        : 'Pesanan ${order.id} menunggu pembayaran sebelum diproses.',
+                    data: {
+                      'order_no': order.id,
+                      'status': order.status,
+                    },
+                  ),
+                );
+                unawaited(_loadOrders());
                 return order;
               },
         ),
@@ -402,14 +632,128 @@ class _HomeShellState extends State<HomeShell> {
     );
   }
 
-  OrderItem _createOrder(
+  Future<OrderItem?> _createOrder(
     List<Product> items, {
     required String paymentMethod,
     required String deliveryMethod,
+    String? addressId,
     required String address,
     required int finalTotal,
     String? voucherLabel,
-  }) {
+  }) async {
+    if (_canUseSupabase) {
+      try {
+        final client = Supabase.instance.client;
+        final user = client.auth.currentUser;
+        if (user == null) return null;
+
+        final groupedItems = _summarizeProducts(items);
+        final orderType = deliveryMethod == 'Ambil di Koperasi'
+            ? 'pickup'
+            : 'delivery';
+        final paymentStatus = paymentMethod == 'Saldo MepuPoin'
+            ? 'paid'
+            : 'unpaid';
+        final orderStatus = paymentStatus == 'paid' ? 'processing' : 'pending';
+        final paymentMethodId = await _paymentMethodIdForCheckout(paymentMethod);
+        final branchContext = await _resolveCheckoutBranchContext();
+        final customerSnapshot = await _resolveCustomerOrderSnapshot(user.id);
+        final deliveryLabel = orderType == 'delivery'
+            ? _extractDeliveryLabel(address)
+            : null;
+        final deliveryAddress = orderType == 'delivery'
+            ? _extractDeliveryAddress(address)
+            : null;
+        final normalizedAddressId =
+            orderType == 'delivery' && _isValidUuid(addressId)
+            ? addressId
+            : null;
+
+        final orderRow = await client
+            .from('orders')
+            .insert({
+              'user_id': user.id,
+              'branch_id': branchContext.branchId,
+              'address_id': normalizedAddressId,
+              'payment_method_id': paymentMethodId,
+              'order_type': orderType,
+              'order_status': orderStatus,
+              'payment_status': paymentStatus,
+              'customer_name': customerSnapshot.name,
+              'customer_phone': customerSnapshot.phone,
+              'delivery_label': deliveryLabel,
+              'delivery_address': deliveryAddress,
+              'subtotal': items.fold<int>(
+                0,
+                (sum, product) => sum + product.price,
+              ),
+              'discount_total': 0,
+              'delivery_fee': orderType == 'delivery' ? 8000 : 0,
+              'grand_total': finalTotal,
+              'notes': voucherLabel == null ? null : 'Voucher: $voucherLabel',
+            })
+            .select('id, order_no, placed_at')
+            .single();
+
+        await client.from('order_items').insert(
+          items
+              .map(
+                (product) => {
+                  'order_id': orderRow['id'],
+                  'product_id': product.id,
+                  'product_name': product.name,
+                  'sku': product.id,
+                  'qty': 1,
+                  'unit_price': product.price,
+                  'discount_amount': 0,
+                  'subtotal': product.price,
+                },
+              )
+              .toList(),
+        );
+
+        final orderNo = (orderRow['order_no'] ?? '').toString();
+        return OrderItem(
+          id: orderNo,
+          title: groupedItems.length == 1
+              ? groupedItems.first
+              : '${groupedItems.first} + ${groupedItems.length - 1} produk',
+          status: _displayOrderStatus(
+            orderStatus: orderStatus,
+            paymentStatus: paymentStatus,
+            orderType: orderType,
+          ),
+          createdAt: _formatBackendOrderDate(orderRow['placed_at']),
+          total: finalTotal,
+          progressLabel: _backendProgressLabel(
+            orderNo: orderNo,
+            orderStatus: orderStatus,
+            paymentStatus: paymentStatus,
+            orderType: orderType,
+            paymentCode: _paymentMethodCodeForCheckout(paymentMethod),
+            paymentName: paymentMethod,
+          ),
+          address: orderType == 'pickup'
+              ? '${branchContext.branchName} - Pickup Counter'
+              : address,
+          items: [
+            ...groupedItems,
+            if (voucherLabel != null) 'Voucher: $voucherLabel',
+          ],
+        );
+      } catch (error) {
+        if (mounted) {
+          _showFeatureSnack(
+            context,
+            '$error',
+            title: 'Pesanan Gagal',
+            icon: Icons.error_outline_rounded,
+          );
+        }
+        return null;
+      }
+    }
+
     final orderId = _generateOrderId();
     final groupedItems = _summarizeProducts(items);
     final orderItems = [
@@ -435,6 +779,11 @@ class _HomeShellState extends State<HomeShell> {
           : address,
       items: orderItems,
     );
+  }
+
+  bool _isValidUuid(String? value) {
+    if (value == null) return false;
+    return _uuidPattern.hasMatch(value.trim());
   }
 
   String _initialOrderStatus(String paymentMethod) {
@@ -472,6 +821,417 @@ class _HomeShellState extends State<HomeShell> {
               entry.value == 1 ? entry.key : '${entry.key} x ${entry.value}',
         )
         .toList();
+  }
+
+  void _openNotifications() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const NotificationHistoryScreen(),
+      ),
+    );
+  }
+
+  Future<void> _openBranchSelector() async {
+    if (_branches.isEmpty) {
+      _showFeatureSnack(
+        context,
+        'Cabang KDMP belum tersedia dari backend.',
+        title: 'Cabang Tidak Ditemukan',
+      );
+      return;
+    }
+
+    final selected = await showModalBottomSheet<_UserBranchOption>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+            children: [
+              Text(
+                'Pilih Cabang KDMP',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Produk, stok, harga, dan pesanan akan mengikuti cabang yang dipilih.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: const Color(0xFF6D5A58),
+                    ),
+              ),
+              const SizedBox(height: 18),
+              for (final branch in _branches)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Material(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    child: InkWell(
+                      onTap: () => Navigator.of(context).pop(branch),
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: branch.id == _selectedBranchId
+                                ? const Color(0xFFD9001B)
+                                : const Color(0xFFE8BCB8),
+                            width: branch.id == _selectedBranchId ? 1.4 : 1,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFEFEF),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: const Icon(
+                                Icons.store_mall_directory_outlined,
+                                color: Color(0xFFD9001B),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    branch.name,
+                                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    branch.subtitle,
+                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                          color: const Color(0xFF6D5A58),
+                                        ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    branch.address,
+                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                          color: const Color(0xFF9A7B76),
+                                        ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (branch.id == _selectedBranchId)
+                              const Icon(
+                                Icons.check_circle_rounded,
+                                color: Color(0xFFD9001B),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (selected == null || !mounted || selected.id == _selectedBranchId) return;
+
+    setState(() {
+      _selectedBranchId = selected.id;
+      _selectedBranchName = selected.name;
+      _selectedBranchSubtitle = selected.subtitle;
+      _shopSelectedCategory = 'Semua';
+    });
+
+    await _persistSelectedBranch(selected.id);
+    await _loadCatalog();
+    if (!mounted) return;
+    _showFeatureSnack(
+      context,
+      'Sekarang kamu berbelanja di ${selected.name}.',
+      title: 'Cabang Diganti',
+      icon: Icons.store_mall_directory_outlined,
+    );
+  }
+
+  Future<void> _persistSelectedBranch(String branchId) async {
+    if (!_canUseSupabase) return;
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) return;
+      await Supabase.instance.client
+          .from('profiles')
+          .update({'default_branch_id': branchId})
+          .eq('id', user.id);
+    } catch (_) {
+      // Keep branch selection local if profile persistence fails.
+    }
+  }
+
+  OrderItem? _orderFromBackendRow(Map<String, dynamic> row) {
+    final orderNo = (row['order_no'] ?? '').toString().trim();
+    if (orderNo.isEmpty) return null;
+
+    final orderStatus = (row['order_status'] ?? '').toString().trim();
+    final paymentStatus = (row['payment_status'] ?? '').toString().trim();
+    final orderType = (row['order_type'] ?? 'delivery').toString().trim();
+    final paymentRow = row['payment_methods'] is Map<String, dynamic>
+        ? row['payment_methods'] as Map<String, dynamic>
+        : <String, dynamic>{};
+    final addressRow = row['addresses'] is Map<String, dynamic>
+        ? row['addresses'] as Map<String, dynamic>
+        : <String, dynamic>{};
+    final itemRows = row['order_items'] is List
+        ? List<Map<String, dynamic>>.from(row['order_items'] as List)
+        : const <Map<String, dynamic>>[];
+
+    final items = itemRows
+        .map((item) {
+          final productName = (item['product_name'] ?? '').toString().trim();
+          final qty = (item['qty'] as num?)?.toInt() ?? 1;
+          if (productName.isEmpty) return '';
+          return qty <= 1 ? productName : '$productName x $qty';
+        })
+        .where((item) => item.isNotEmpty)
+        .toList();
+
+    final title = items.isEmpty
+        ? 'Pesanan KDMP'
+        : items.length == 1
+        ? items.first
+        : '${items.first} + ${items.length - 1} produk';
+
+    return OrderItem(
+      id: orderNo,
+      title: title,
+      status: _displayOrderStatus(
+        orderStatus: orderStatus,
+        paymentStatus: paymentStatus,
+        orderType: orderType,
+      ),
+      createdAt: _formatBackendOrderDate(row['placed_at']),
+      total: (row['grand_total'] as num?)?.toInt() ?? 0,
+      progressLabel: _backendProgressLabel(
+        orderNo: orderNo,
+        orderStatus: orderStatus,
+        paymentStatus: paymentStatus,
+        orderType: orderType,
+        paymentCode: (paymentRow['code'] ?? '').toString(),
+        paymentName: (paymentRow['name'] ?? '').toString(),
+      ),
+      address: _backendOrderAddress(
+        orderType: orderType,
+        addressRow: addressRow,
+        row: row,
+      ),
+      items: items,
+    );
+  }
+
+  String _displayOrderStatus({
+    required String orderStatus,
+    required String paymentStatus,
+    required String orderType,
+  }) {
+    if (orderStatus == 'cancelled') return 'Cancelled';
+    if (orderStatus == 'completed') return 'Completed';
+    if (orderType == 'pickup') {
+      if (orderStatus == 'pending' && paymentStatus != 'paid') {
+        return 'Payment Pending';
+      }
+      if (orderStatus == 'ready_pickup') return 'Ready for Pickup';
+      return 'Preparing Pickup';
+    }
+    if (orderStatus == 'pending' && paymentStatus != 'paid') {
+      return 'Payment Pending';
+    }
+    if (orderStatus == 'out_for_delivery') return 'On Delivery';
+    return 'Being Prepared';
+  }
+
+  String _paymentMethodCodeForCheckout(String paymentMethod) {
+    switch (paymentMethod) {
+      case 'Transfer Bank':
+        return 'transfer_bca';
+      case 'Bayar di Koperasi':
+        return 'cash';
+      default:
+        return 'wallet';
+    }
+  }
+
+  Future<String?> _paymentMethodIdForCheckout(String paymentMethod) async {
+    final paymentCode = _paymentMethodCodeForCheckout(paymentMethod);
+    if (paymentCode == 'wallet') return null;
+
+    final row = await Supabase.instance.client
+        .from('payment_methods')
+        .select('id')
+        .eq('code', paymentCode)
+        .maybeSingle();
+    return row?['id']?.toString();
+  }
+
+  Future<_CheckoutBranchContext> _resolveCheckoutBranchContext() async {
+    final client = Supabase.instance.client;
+    final user = client.auth.currentUser;
+    const fallbackBranchName = 'KDMP Solo Banjarsari';
+
+    if ((_selectedBranchId ?? '').isNotEmpty) {
+      return _CheckoutBranchContext(
+        branchId: _selectedBranchId,
+        branchName: _selectedBranchName,
+      );
+    }
+
+    if (user == null) {
+      return const _CheckoutBranchContext(
+        branchId: null,
+        branchName: fallbackBranchName,
+      );
+    }
+
+    final profileRow = await client
+        .from('profiles')
+        .select('default_branch_id')
+        .eq('id', user.id)
+        .maybeSingle();
+    final defaultBranchId = profileRow?['default_branch_id']?.toString();
+
+    if (defaultBranchId != null && defaultBranchId.isNotEmpty) {
+      final branchRow = await client
+          .from('branches')
+          .select('id, name')
+          .eq('id', defaultBranchId)
+          .maybeSingle();
+      if (branchRow != null) {
+        return _CheckoutBranchContext(
+          branchId: branchRow['id']?.toString(),
+          branchName: (branchRow['name'] ?? fallbackBranchName).toString(),
+        );
+      }
+    }
+
+    final activeBranch = await client
+        .from('branches')
+        .select('id, name')
+        .eq('is_active', true)
+        .order('name')
+        .limit(1)
+        .maybeSingle();
+    if (activeBranch != null) {
+      return _CheckoutBranchContext(
+        branchId: activeBranch['id']?.toString(),
+        branchName: (activeBranch['name'] ?? fallbackBranchName).toString(),
+      );
+    }
+
+    return const _CheckoutBranchContext(
+      branchId: null,
+      branchName: fallbackBranchName,
+    );
+  }
+
+  Future<_CustomerOrderSnapshot> _resolveCustomerOrderSnapshot(
+    String userId,
+  ) async {
+    final row = await Supabase.instance.client
+        .from('profiles')
+        .select('full_name, phone')
+        .eq('id', userId)
+        .maybeSingle();
+
+    final fullName = (row?['full_name'] ?? _profile.name).toString().trim();
+    final phone = (row?['phone'] ?? _profile.phone).toString().trim();
+
+    return _CustomerOrderSnapshot(
+      name: fullName.isEmpty ? _profile.name : fullName,
+      phone: phone.isEmpty || phone == '-' ? null : phone,
+    );
+  }
+
+  String _extractDeliveryLabel(String rawAddress) {
+    final segments = rawAddress.split('•');
+    return segments.first.trim();
+  }
+
+  String _extractDeliveryAddress(String rawAddress) {
+    final segments = rawAddress.split('•');
+    if (segments.length <= 1) return rawAddress.trim();
+    return segments.sublist(1).join('•').trim();
+  }
+
+  String _backendProgressLabel({
+    required String orderNo,
+    required String orderStatus,
+    required String paymentStatus,
+    required String orderType,
+    required String paymentCode,
+    required String paymentName,
+  }) {
+    if (orderStatus == 'cancelled') {
+      return 'Pesanan dibatalkan.';
+    }
+    if (orderStatus == 'completed') {
+      return 'Pesanan selesai dan transaksi berhasil.';
+    }
+    if (paymentStatus != 'paid' && orderStatus == 'pending') {
+      if (paymentCode.startsWith('transfer_')) {
+        final suffix = orderNo.replaceAll(RegExp(r'[^0-9]'), '');
+        final vaSuffix = suffix.length > 8
+            ? suffix.substring(suffix.length - 8)
+            : suffix.padLeft(8, '0');
+        final bankName = paymentName.isEmpty ? 'Bank' : paymentName;
+        return 'Virtual Account $bankName 8808$vaSuffix';
+      }
+      return 'Bayar di kasir koperasi saat mengambil pesanan';
+    }
+    if (orderType == 'pickup') {
+      if (orderStatus == 'ready_pickup') {
+        return 'Pesanan siap diambil di koperasi';
+      }
+      if (orderStatus == 'confirmed') {
+        return 'Pesanan sudah dikonfirmasi dan mulai disiapkan untuk pickup';
+      }
+      return 'Pesanan sedang disiapkan untuk pickup';
+    }
+    if (orderStatus == 'out_for_delivery') {
+      return 'Kurir sedang menuju alamat pengantaran';
+    }
+    if (orderStatus == 'confirmed') {
+      return 'Pesanan sudah dikonfirmasi admin cabang';
+    }
+    return 'Pembayaran berhasil, pesanan sedang diproses';
+  }
+
+  String _backendOrderAddress({
+    required String orderType,
+    required Map<String, dynamic> addressRow,
+    required Map<String, dynamic> row,
+  }) {
+    if (orderType == 'pickup') {
+      return 'MepuPoin Sukamaju - Pickup Counter';
+    }
+    final snapshotLabel = (row['delivery_label'] ?? '').toString().trim();
+    final snapshotAddress = (row['delivery_address'] ?? '').toString().trim();
+    if (snapshotLabel.isNotEmpty && snapshotAddress.isNotEmpty) {
+      return '$snapshotLabel • $snapshotAddress';
+    }
+    if (snapshotAddress.isNotEmpty) return snapshotAddress;
+    final label = (addressRow['label'] ?? '').toString().trim();
+    final address = (addressRow['address'] ?? '').toString().trim();
+    if (label.isEmpty) return address;
+    if (address.isEmpty) return label;
+    return '$label • $address';
   }
 
   int _stockOf(Product product) => _productStocks[product.id] ?? 0;
@@ -519,14 +1279,6 @@ class _HomeShellState extends State<HomeShell> {
     }
   }
 
-  void _increaseStock(List<Product> items) {
-    final counts = _countProducts(items);
-    for (final entry in counts.entries) {
-      _productStocks[entry.key] =
-          (_productStocks[entry.key] ?? 0) + entry.value;
-    }
-  }
-
   String _generateOrderId() {
     final now = DateTime.now();
     String twoDigits(int value) => value.toString().padLeft(2, '0');
@@ -550,6 +1302,16 @@ class _HomeShellState extends State<HomeShell> {
     ];
     String twoDigits(int value) => value.toString().padLeft(2, '0');
     return '${date.day} ${months[date.month - 1]} ${date.year}, ${twoDigits(date.hour)}:${twoDigits(date.minute)}';
+  }
+
+  String _formatBackendOrderDate(dynamic rawValue) {
+    if (rawValue is String) {
+      final parsed = DateTime.tryParse(rawValue);
+      if (parsed != null) {
+        return _formatOrderDate(parsed.toLocal());
+      }
+    }
+    return _formatOrderDate(DateTime.now());
   }
 
   void _setCartItems(List<Product> items) {
@@ -630,6 +1392,19 @@ class _HomeShellState extends State<HomeShell> {
       final newBalance = (confirmRow['wallet_balance'] as num?)?.toInt() ?? _mepuBalance;
       if (!mounted) return;
       setState(() => _mepuBalance = newBalance);
+      unawaited(_loadWalletBalance());
+      unawaited(
+        _createNotification(
+          type: 'system',
+          title: 'Top Up berhasil',
+          message:
+              'Saldo bertambah ${formatRupiah(request.amount)}. Saldo sekarang ${formatRupiah(newBalance)}.',
+          data: {
+            'amount': request.amount,
+            'wallet_balance': newBalance,
+          },
+        ),
+      );
       _showFeatureSnack(
         context,
         'Sandbox sukses. Saldo bertambah ${formatRupiah(request.amount)} dan sekarang ${formatRupiah(newBalance)}.',
@@ -690,18 +1465,53 @@ class _HomeShellState extends State<HomeShell> {
       updatedOrder = OrderItem(
         id: order.id,
         title: order.title,
-        status: 'On Delivery',
+        status: order.address.contains('Pickup Counter')
+            ? 'Ready for Pickup'
+            : 'On Delivery',
         createdAt: order.createdAt,
         total: order.total,
-        progressLabel: 'Pembayaran berhasil, pesanan sedang diproses',
+        progressLabel: order.address.contains('Pickup Counter')
+            ? 'Pesanan siap diambil di koperasi'
+            : 'Pembayaran berhasil, pesanan sedang diproses',
         address: order.address,
         items: order.items,
       );
       _orderItems[index] = updatedOrder;
     });
+    if (_canUseSupabase) {
+      final nextStatus = order.address.contains('Pickup Counter')
+          ? 'ready_pickup'
+          : 'processing';
+      unawaited(
+        Supabase.instance.client
+            .from('orders')
+            .update({
+              'order_status': nextStatus,
+              'payment_status': 'paid',
+            })
+            .eq('order_no', order.id)
+            .then((_) => _loadOrders()),
+      );
+    }
     if (usesMepuBalance) {
       unawaited(_persistWalletBalance(_mepuBalance));
+      unawaited(_loadWalletBalance());
     }
+    unawaited(
+      _createNotification(
+        type: usesMepuBalance ? 'system' : 'order',
+        title: usesMepuBalance
+            ? 'Pembayaran saldo berhasil'
+            : 'Pembayaran pesanan dikonfirmasi',
+        message: usesMepuBalance
+            ? 'Pembayaran untuk pesanan ${order.id} berhasil. Saldo sekarang ${formatRupiah(_mepuBalance)}.'
+            : 'Pesanan ${order.id} berhasil dibayar dan sedang diproses.',
+        data: {
+          'order_no': order.id,
+          'wallet_balance': _mepuBalance,
+        },
+      ),
+    );
     _showFeatureSnack(
       context,
       'Pembayaran berhasil. Pesanan masuk ke Aktif.',
@@ -712,11 +1522,45 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   void _cancelOrder(OrderItem order) {
-    final cancelledItems = _orderProducts.remove(order.id) ?? const <Product>[];
-    setState(() {
-      _orderItems.removeWhere((item) => item.id == order.id);
-      _increaseStock(cancelledItems);
-    });
+    if (_canUseSupabase) {
+      setState(() {
+        final index = _orderItems.indexWhere((item) => item.id == order.id);
+        if (index != -1) {
+          _orderItems[index] = OrderItem(
+            id: order.id,
+            title: order.title,
+            status: 'Cancelled',
+            createdAt: order.createdAt,
+            total: order.total,
+            progressLabel: 'Pesanan dibatalkan.',
+            address: order.address,
+            items: order.items,
+          );
+        }
+      });
+      unawaited(
+        Supabase.instance.client
+            .from('orders')
+            .update({
+              'order_status': 'cancelled',
+              'payment_status': 'failed',
+            })
+            .eq('order_no', order.id)
+            .then((_) => _loadOrders()),
+      );
+      unawaited(
+        _createNotification(
+          type: 'order',
+          title: 'Pesanan dibatalkan',
+          message: 'Pesanan ${order.id} telah dibatalkan.',
+          data: {'order_no': order.id},
+        ),
+      );
+    } else {
+      setState(() {
+        _orderItems.removeWhere((item) => item.id == order.id);
+      });
+    }
     _showFeatureSnack(
       context,
       'Pesanan ${order.id} dibatalkan.',
@@ -1693,12 +2537,16 @@ class DashboardScreen extends StatelessWidget {
     required this.productStocks,
     required this.products,
     required this.categories,
+    required this.selectedBranchName,
+    required this.selectedBranchSubtitle,
     required this.onOpenProduct,
     required this.onChangeTab,
     required this.onOpenCart,
     required this.onAddToCart,
     required this.onTopUp,
     required this.onSelectCategory,
+    required this.onOpenNotifications,
+    required this.onSelectBranch,
   });
 
   final int cartItemCount;
@@ -1706,12 +2554,16 @@ class DashboardScreen extends StatelessWidget {
   final Map<String, int> productStocks;
   final List<Product> products;
   final List<String> categories;
+  final String selectedBranchName;
+  final String selectedBranchSubtitle;
   final ValueChanged<Product> onOpenProduct;
   final ValueChanged<int> onChangeTab;
   final VoidCallback onOpenCart;
   final ValueChanged<Product> onAddToCart;
   final VoidCallback onTopUp;
   final ValueChanged<String> onSelectCategory;
+  final VoidCallback onOpenNotifications;
+  final VoidCallback onSelectBranch;
 
   @override
   Widget build(BuildContext context) {
@@ -1723,11 +2575,22 @@ class DashboardScreen extends StatelessWidget {
             child: _HomeRedHeader(
               cartItemCount: cartItemCount,
               onOpenCart: onOpenCart,
+              onOpenNotifications: onOpenNotifications,
             ),
           ),
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: _SelectedBranchCard(
+                branchName: selectedBranchName,
+                branchSubtitle: selectedBranchSubtitle,
+                onTap: onSelectBranch,
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
               child: _MepuPoinBalanceCard(
                 balance: mepuBalance,
                 onTopUpTap: onTopUp,
@@ -1834,10 +2697,15 @@ class DashboardScreen extends StatelessWidget {
 }
 
 class _HomeRedHeader extends StatelessWidget {
-  const _HomeRedHeader({required this.cartItemCount, required this.onOpenCart});
+  const _HomeRedHeader({
+    required this.cartItemCount,
+    required this.onOpenCart,
+    required this.onOpenNotifications,
+  });
 
   final int cartItemCount;
   final VoidCallback onOpenCart;
+  final VoidCallback onOpenNotifications;
 
   @override
   Widget build(BuildContext context) {
@@ -1863,8 +2731,7 @@ class _HomeRedHeader extends StatelessWidget {
           const Spacer(),
           _MepuPoinHeaderButton(
             icon: Icons.notifications_none_rounded,
-            onTap: () =>
-                _showFeatureSnack(context, 'Notifikasi MepuPoin siap dibuka.'),
+            onTap: onOpenNotifications,
           ),
           const SizedBox(width: 8),
           _MepuPoinHeaderButton(
@@ -2641,9 +3508,11 @@ class ShopScreen extends StatefulWidget {
     required this.products,
     required this.categories,
     required this.selectedCategory,
+    required this.selectedBranchName,
     required this.onOpenProduct,
     required this.onOpenCart,
     required this.onAddToCart,
+    required this.onSelectBranch,
   });
 
   final int cartItemCount;
@@ -2651,9 +3520,11 @@ class ShopScreen extends StatefulWidget {
   final List<Product> products;
   final List<String> categories;
   final String selectedCategory;
+  final String selectedBranchName;
   final ValueChanged<Product> onOpenProduct;
   final VoidCallback onOpenCart;
   final ValueChanged<Product> onAddToCart;
+  final VoidCallback onSelectBranch;
 
   @override
   State<ShopScreen> createState() => _ShopScreenState();
@@ -2685,12 +3556,18 @@ class _ShopScreenState extends State<ShopScreen> {
             child: Row(
               children: [
                 Text(
-                  'MepuPoin',
+                  widget.selectedBranchName,
                   style: theme.textTheme.headlineMedium?.copyWith(
                     color: theme.colorScheme.primary,
+                    fontSize: 24,
                   ),
                 ),
                 const Spacer(),
+                _HeaderActionButton(
+                  icon: Icons.store_mall_directory_outlined,
+                  onTap: widget.onSelectBranch,
+                ),
+                const SizedBox(width: 10),
                 _HeaderActionButton(
                   icon: Icons.shopping_cart_outlined,
                   badgeCount: widget.cartItemCount,
@@ -3032,6 +3909,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
     final activeOrders = widget.orders
         .where(
           (order) =>
+              order.status == 'Being Prepared' ||
+              order.status == 'Preparing Pickup' ||
               order.status == 'On Delivery' ||
               order.status == 'Ready for Pickup',
         )
@@ -3039,7 +3918,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
     final historyOrders = widget.orders
         .where(
           (order) =>
-              order.status == 'Payment Pending' || order.status == 'Completed',
+              order.status == 'Payment Pending' ||
+              order.status == 'Completed' ||
+              order.status == 'Cancelled',
         )
         .toList();
 
@@ -3494,8 +4375,90 @@ int _deliveryTrackingIndex(String status) {
       return 3;
     case 'On Delivery':
       return 2;
+    case 'Being Prepared':
+      return 1;
     default:
       return 1;
+  }
+}
+
+class _SelectedBranchCard extends StatelessWidget {
+  const _SelectedBranchCard({
+    required this.branchName,
+    required this.branchSubtitle,
+    required this.onTap,
+  });
+
+  final String branchName;
+  final String branchSubtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(22),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: const Color(0xFFE8BCB8)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFEFEF),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(
+                  Icons.location_city_rounded,
+                  color: Color(0xFFD9001B),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Cabang Aktif',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: const Color(0xFF9A7B76),
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      branchName,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w900,
+                          ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      branchSubtitle,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: const Color(0xFF6D5A58),
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: Color(0xFFD9001B),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -3505,6 +4468,8 @@ int _pickupTrackingIndex(String status) {
       return 3;
     case 'Ready for Pickup':
       return 2;
+    case 'Preparing Pickup':
+      return 1;
     default:
       return 1;
   }
@@ -4508,15 +5473,15 @@ class CheckoutScreen extends StatefulWidget {
   final Map<String, int> productStocks;
   final OrderItem? Function(OrderItem order) onCompletePayment;
   final ValueChanged<OrderItem> onCancelOrder;
-  final OrderItem Function(
+  final Future<OrderItem?> Function(
     List<Product> items,
     String paymentMethod,
     String deliveryMethod,
+    String? addressId,
     String address,
     int finalTotal,
     String? voucherLabel,
-  )
-  onPlaceOrder;
+  ) onPlaceOrder;
 
   @override
   State<CheckoutScreen> createState() => _CheckoutScreenState();
@@ -4530,6 +5495,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   bool _isLoadingAddresses = true;
   List<CheckoutAddress> deliveryAddresses = [
     const CheckoutAddress(
+      id: 'fallback-home',
       label: 'Rumah',
       name: 'Budi Santoso',
       phone: '+62 812-3456-7890',
@@ -4537,6 +5503,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       icon: Icons.home_outlined,
     ),
     const CheckoutAddress(
+      id: 'fallback-work',
       label: 'Kantor',
       name: 'Budi Santoso',
       phone: '+62 812-3456-7890',
@@ -4553,6 +5520,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   CheckoutAddress get selectedAddress =>
       deliveryAddresses[selectedAddressIndex];
+
+  String? get selectedAddressId =>
+      deliveryAddresses.isEmpty ? null : deliveryAddresses[selectedAddressIndex].id;
 
   Future<void> _loadDeliveryAddresses() async {
     try {
@@ -4598,6 +5568,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   CheckoutAddress _toCheckoutAddress(SavedAddressResult address) {
     return CheckoutAddress(
+      id: address.id,
       label: address.label,
       name: address.name,
       phone: address.phone,
@@ -4838,7 +5809,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ),
               ),
               FilledButton.icon(
-                onPressed: () => _placeOrder(context),
+                onPressed: _placeOrder,
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(160, 52),
                   backgroundColor: theme.colorScheme.primary,
@@ -4856,14 +5827,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
-  void _placeOrder(BuildContext context) {
+  Future<void> _placeOrder() async {
     final groupedItems = _groupCheckoutItems(widget.items);
     for (final item in groupedItems) {
       final stock = widget.productStocks[item.product.id] ?? 0;
       if (item.quantity > stock) {
         _showFeatureSnack(
-          context,
-          'Stok ${item.product.name} tersisa $stock. Kurangi jumlah pembelian sebelum checkout.',
+        context,
+        'Stok ${item.product.name} tersisa $stock. Kurangi jumlah pembelian sebelum checkout.',
           title: 'Stok Tidak Cukup',
           icon: Icons.inventory_2_outlined,
         );
@@ -4906,14 +5877,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return;
     }
 
-    final order = widget.onPlaceOrder(
+    final destinationAddress = deliveryMethod == 'Ambil di Koperasi'
+        ? 'MepuPoin Sukamaju - Pickup Counter'
+        : selectedAddress.address;
+
+    final order = await widget.onPlaceOrder(
       widget.items,
       paymentMethod,
       deliveryMethod,
-      selectedAddress.address,
+      selectedAddressId,
+      destinationAddress,
       total,
       selectedVoucher?.code,
     );
+    if (!mounted || order == null) return;
     Navigator.of(context).pushReplacement(
       MaterialPageRoute<void>(
         builder: (_) => TransactionCompletionScreen(
@@ -6093,6 +7070,7 @@ class _EditDeliveryAddressDialogState
     if (!_formKey.currentState!.validate()) return;
     Navigator.of(context).pop(
       CheckoutAddress(
+        id: 'manual_${DateTime.now().millisecondsSinceEpoch}',
         label: _labelController.text.trim(),
         name: _nameController.text.trim(),
         phone: _phoneController.text.trim(),
@@ -8919,8 +9897,6 @@ IconData categoryIcon(String category) {
       return Icons.local_cafe_outlined;
     case 'Sembako':
       return Icons.shopping_basket_outlined;
-    case 'Alat-alat':
-      return Icons.handyman_outlined;
     case 'Olahraga':
       return Icons.sports_soccer_outlined;
     case 'Elektronik':

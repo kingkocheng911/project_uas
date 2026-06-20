@@ -153,7 +153,7 @@ final products = <Product>[
         'Power bank berkapasitas besar untuk mendukung aktivitas lapangan, perjalanan, dan operasional toko digital. Dilengkapi proteksi pengisian agar perangkat tetap aman dan siap digunakan.',
     icon: Icons.battery_charging_full_rounded,
     tone: Color(0xFF325B83),
-    categories: ['Elektronik', 'Alat-alat', 'Olahraga'],
+    categories: ['Elektronik', 'Olahraga'],
     highlights: ['Fast Charge', 'Safe Battery', 'Portable', 'Business Ready'],
     relatedIds: ['smartband', 'oil'],
   ),

@@ -186,8 +186,12 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
 
     try {
       final row = await _client
-          .from('user_settings')
-          .select('notifications')
+          .from('notification_settings')
+          .select(
+            'orders_enabled, promotions_enabled, payments_enabled, '
+            'membership_enabled, security_enabled, newsletter_enabled, '
+            'email_enabled, sms_enabled, push_enabled',
+          )
           .eq('user_id', _currentUser!.id)
           .maybeSingle();
 
@@ -215,19 +219,17 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
 
     setState(() => _isSaving = true);
     try {
-      await _client.from('user_settings').upsert({
+      await _client.from('notification_settings').upsert({
         'user_id': _currentUser!.id,
-        'notifications': {
-          'orders': _orders,
-          'promotions': _promotions,
-          'payments': _payments,
-          'membership': _membership,
-          'security': _security,
-          'newsletter': _newsletter,
-          'email': _email,
-          'sms': _sms,
-          'push': _push,
-        },
+        'orders_enabled': _orders,
+        'promotions_enabled': _promotions,
+        'payments_enabled': _payments,
+        'membership_enabled': _membership,
+        'security_enabled': _security,
+        'newsletter_enabled': _newsletter,
+        'email_enabled': _email,
+        'sms_enabled': _sms,
+        'push_enabled': _push,
       });
 
       if (!mounted) return;
@@ -244,19 +246,15 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
   }
 
   void _applySettingsRow(Map<String, dynamic> row) {
-    final notifications =
-        row['notifications'] is Map<String, dynamic>
-            ? row['notifications'] as Map<String, dynamic>
-            : <String, dynamic>{};
-    _orders = notifications['orders'] != false;
-    _promotions = notifications['promotions'] != false;
-    _payments = notifications['payments'] != false;
-    _membership = notifications['membership'] == true;
-    _security = notifications['security'] != false;
-    _newsletter = notifications['newsletter'] == true;
-    _email = notifications['email'] != false;
-    _sms = notifications['sms'] == true;
-    _push = notifications['push'] != false;
+    _orders = row['orders_enabled'] != false;
+    _promotions = row['promotions_enabled'] != false;
+    _payments = row['payments_enabled'] != false;
+    _membership = row['membership_enabled'] == true;
+    _security = row['security_enabled'] != false;
+    _newsletter = row['newsletter_enabled'] == true;
+    _email = row['email_enabled'] != false;
+    _sms = row['sms_enabled'] == true;
+    _push = row['push_enabled'] != false;
   }
 
   void _showNotice(String message) {

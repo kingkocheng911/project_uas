@@ -1,9 +1,70 @@
+insert into public.branches (
+  code,
+  name,
+  phone,
+  email,
+  address,
+  province,
+  city,
+  district,
+  postal_code,
+  latitude,
+  longitude,
+  is_active,
+  opened_at
+)
+values
+  (
+    'KDMP-SLO-01',
+    'KDMP Solo Banjarsari',
+    '+62 271 555 0101',
+    'banjarsari@kdmp.co.id',
+    'Jl. Ahmad Yani No. 178, Manahan, Banjarsari, Surakarta',
+    'Jawa Tengah',
+    'Surakarta',
+    'Banjarsari',
+    '57139',
+    -7.5561000,
+    110.8065000,
+    true,
+    date '2026-06-20'
+  ),
+  (
+    'KDMP-SLO-02',
+    'KDMP Solo Jebres',
+    '+62 271 555 0102',
+    'jebres@kdmp.co.id',
+    'Jl. Ir. Sutami No. 36, Jebres, Surakarta',
+    'Jawa Tengah',
+    'Surakarta',
+    'Jebres',
+    '57126',
+    -7.5609000,
+    110.8342000,
+    true,
+    date '2026-06-20'
+  )
+on conflict (code) do update
+set
+  name = excluded.name,
+  phone = excluded.phone,
+  email = excluded.email,
+  address = excluded.address,
+  province = excluded.province,
+  city = excluded.city,
+  district = excluded.district,
+  postal_code = excluded.postal_code,
+  latitude = excluded.latitude,
+  longitude = excluded.longitude,
+  is_active = excluded.is_active,
+  opened_at = excluded.opened_at,
+  updated_at = now();
+
 insert into public.categories (label, icon_name, sort_order)
 values
   ('Makanan', 'restaurant_outlined', 1),
   ('Minuman', 'local_cafe_outlined', 2),
   ('Sembako', 'shopping_basket_outlined', 3),
-  ('Alat-alat', 'handyman_outlined', 4),
   ('Olahraga', 'sports_soccer_outlined', 5),
   ('Elektronik', 'devices_outlined', 6),
   ('Fashion', 'checkroom_outlined', 7)
@@ -135,7 +196,7 @@ values
     'battery_charging_full_rounded',
     '#325B83',
     null,
-    array['Elektronik', 'Alat-alat', 'Olahraga'],
+    array['Elektronik', 'Olahraga'],
     array['Fast Charge', 'Safe Battery', 'Portable', 'Business Ready'],
     array['smartband', 'oil'],
     6
