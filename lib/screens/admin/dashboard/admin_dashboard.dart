@@ -4,8 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../branch_admin_repository.dart';
 import '../orders/admin_order_models.dart';
 import '../orders/order_list_screen.dart';
-import '../products/category_screen.dart';
 import '../products/product_list_screen.dart';
+import '../products/category_screen.dart';
 import '../products/stock_management_screen.dart';
 
 class AdminDashboard extends StatefulWidget {
@@ -19,10 +19,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
   final BranchAdminRepository _repository = BranchAdminRepository();
   int _currentIndex = 0;
   BranchAdminAssignment? _assignment;
-
-  static const _background = Color(0xFFF7F9FB);
-  static const _primary = Color(0xFFD9001B);
-  static const _muted = Color(0xFF6D5A58);
 
   @override
   void initState() {
@@ -75,46 +71,88 @@ class _AdminDashboardState extends State<AdminDashboard> {
     }
   }
 
+  Future<void> _openAccountSettings() async {
+    final currentUser = Supabase.instance.client.auth.currentUser;
+    if (currentUser == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sesi admin tidak ditemukan. Login ulang lalu coba lagi.')),
+      );
+      return;
+    }
+
+    final result = await showDialog<_AdminCredentialUpdateResult>(
+      context: context,
+      builder: (context) => _AdminCredentialDialog(
+        currentEmail: currentUser.email ?? '',
+      ),
+    );
+    if (result == null) return;
+
+    try {
+      final attributes = UserAttributes(
+        email: result.email != (currentUser.email ?? '') ? result.email : null,
+        password: result.password.isEmpty ? null : result.password,
+      );
+      await Supabase.instance.client.auth.updateUser(attributes);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.email != (currentUser.email ?? '')
+                ? 'Email/password berhasil diperbarui. Jika email berubah, login ulang dengan email baru.'
+                : 'Password berhasil diperbarui.',
+          ),
+        ),
+      );
+    } on AuthException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Gagal memperbarui akun login admin.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isDashboardTab = _currentIndex == 0;
+    final currentTitle = switch (_currentIndex) {
+      1 => 'Pesanan Cabang',
+      2 => 'Produk Cabang',
+      3 => 'Pelanggan Cabang',
+      _ => 'Dashboard Cabang',
+    };
 
     return Scaffold(
-      backgroundColor: _background,
+      backgroundColor: const Color(0xFFF7F9FB),
       appBar: AppBar(
         toolbarHeight: 78,
-        elevation: 0,
         backgroundColor: Colors.white,
+        elevation: 0,
         titleSpacing: 16,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              isDashboardTab ? 'Dashboard Cabang' : _tabTitle(_currentIndex),
+              currentTitle,
               style: const TextStyle(
-                color: _primary,
+                color: Color(0xFFD9001B),
                 fontWeight: FontWeight.w900,
                 fontSize: 22,
               ),
             ),
             const SizedBox(height: 4),
-            Row(
-              children: [
-                const Icon(
-                  Icons.store_mall_directory_outlined,
-                  size: 14,
-                  color: _muted,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  _assignment?.name ?? 'Cabang KDMP',
-                  style: const TextStyle(
-                    color: _muted,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
+            Text(
+              _assignment?.name ?? 'Cabang KDMP',
+              style: const TextStyle(
+                color: Color(0xFF6D5A58),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ],
         ),
@@ -141,11 +179,24 @@ class _AdminDashboardState extends State<AdminDashboard> {
           PopupMenuButton<String>(
             tooltip: 'Opsi admin',
             onSelected: (value) {
+              if (value == 'account') {
+                _openAccountSettings();
+              }
               if (value == 'logout') {
                 _handleLogout();
               }
             },
             itemBuilder: (context) => const [
+              PopupMenuItem<String>(
+                value: 'account',
+                child: Row(
+                  children: [
+                    Icon(Icons.manage_accounts_rounded, size: 20),
+                    SizedBox(width: 12),
+                    Text('Akun Login'),
+                  ],
+                ),
+              ),
               PopupMenuItem<String>(
                 value: 'logout',
                 child: Row(
@@ -166,7 +217,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 borderRadius: BorderRadius.circular(16),
               ),
               alignment: Alignment.center,
-              child: const Icon(Icons.more_vert_rounded, color: _muted),
+              child: const Icon(Icons.more_vert_rounded, color: Color(0xFF6D5A58)),
             ),
           ),
         ],
@@ -236,19 +287,130 @@ class _AdminDashboardState extends State<AdminDashboard> {
         return const SizedBox.shrink();
     }
   }
+}
 
-  String _tabTitle(int index) {
-    switch (index) {
-      case 1:
-        return 'Pesanan Cabang';
-      case 2:
-        return 'Produk Cabang';
-      case 3:
-        return 'Pelanggan Cabang';
-      default:
-        return 'Dashboard Cabang';
-    }
+class _AdminCredentialDialog extends StatefulWidget {
+  const _AdminCredentialDialog({required this.currentEmail});
+
+  final String currentEmail;
+
+  @override
+  State<_AdminCredentialDialog> createState() => _AdminCredentialDialogState();
+}
+
+class _AdminCredentialDialogState extends State<_AdminCredentialDialog> {
+  late final TextEditingController _emailController;
+  final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _confirmController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _emailController = TextEditingController(text: widget.currentEmail);
   }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    _confirmController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Ubah Email / Password'),
+      content: SizedBox(
+        width: 420,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: 'Email Login',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Password Baru',
+                  helperText: 'Kosongkan jika tidak ingin mengubah password.',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _confirmController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Konfirmasi Password Baru',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Batal'),
+        ),
+        FilledButton(
+          onPressed: _save,
+          child: const Text('Simpan'),
+        ),
+      ],
+    );
+  }
+
+  void _save() {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+    final confirm = _confirmController.text.trim();
+
+    if (email.isEmpty || !email.contains('@') || !email.contains('.')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Masukkan email yang valid.')),
+      );
+      return;
+    }
+
+    if (password.isNotEmpty && password.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password baru minimal 6 karakter.')),
+      );
+      return;
+    }
+
+    if (password != confirm) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Konfirmasi password belum cocok.')),
+      );
+      return;
+    }
+
+    Navigator.of(context).pop(
+      _AdminCredentialUpdateResult(email: email, password: password),
+    );
+  }
+}
+
+class _AdminCredentialUpdateResult {
+  const _AdminCredentialUpdateResult({
+    required this.email,
+    required this.password,
+  });
+
+  final String email;
+  final String password;
 }
 
 class _AdminDashboardHome extends StatefulWidget {

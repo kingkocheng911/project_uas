@@ -27,6 +27,9 @@ class _StatCardState extends State<StatCard> {
 
   @override
   Widget build(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    final compact = width < 720;
+
     return MouseRegion(
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
@@ -34,7 +37,7 @@ class _StatCardState extends State<StatCard> {
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOutCubic,
         transform: Matrix4.translationValues(0, _hovering ? -3 : 0, 0),
-        padding: const EdgeInsets.all(20),
+        padding: EdgeInsets.all(compact ? 16 : 20),
         decoration: BoxDecoration(
           color: AppColors.white,
           borderRadius: BorderRadius.circular(16),
@@ -48,19 +51,23 @@ class _StatCardState extends State<StatCard> {
           ],
         ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Row(
               children: [
                 Container(
-                  width: 44,
-                  height: 44,
+                  width: compact ? 40 : 44,
+                  height: compact ? 40 : 44,
                   decoration: BoxDecoration(
                     color: widget.accentColor.withValues(alpha: 0.10),
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: Icon(widget.icon, color: widget.accentColor, size: 22),
+                  child: Icon(
+                    widget.icon,
+                    color: widget.accentColor,
+                    size: compact ? 20 : 22,
+                  ),
                 ),
                 const Spacer(),
                 const Icon(
@@ -69,30 +76,31 @@ class _StatCardState extends State<StatCard> {
                 ),
               ],
             ),
-            const SizedBox(height: 18),
+            SizedBox(height: compact ? 12 : 18),
             Text(
               widget.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.textMuted,
                 fontWeight: FontWeight.w700,
-                fontSize: 13,
+                fontSize: compact ? 12 : 13,
               ),
             ),
-            const SizedBox(height: 6),
+            SizedBox(height: compact ? 4 : 6),
             Text(
               widget.value,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 24,
+              style: TextStyle(
+                fontSize: compact ? 20 : 24,
                 fontWeight: FontWeight.w900,
                 color: AppColors.textMain,
               ),
             ),
-            const SizedBox(height: 10),
+            SizedBox(height: compact ? 8 : 10),
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Icon(
                   widget.trend.startsWith('-')
@@ -101,19 +109,19 @@ class _StatCardState extends State<StatCard> {
                   color: widget.trend.startsWith('-')
                       ? const Color(0xFFE53935)
                       : const Color(0xFF16A34A),
-                  size: 16,
+                  size: compact ? 14 : 16,
                 ),
                 const SizedBox(width: 5),
                 Expanded(
                   child: Text(
                     widget.trend,
-                    maxLines: 1,
+                    maxLines: compact ? 2 : 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: widget.trend.startsWith('-')
                           ? const Color(0xFFE53935)
                           : const Color(0xFF16A34A),
-                      fontSize: 12,
+                      fontSize: compact ? 11 : 12,
                       fontWeight: FontWeight.w800,
                     ),
                   ),

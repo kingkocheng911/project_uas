@@ -19,6 +19,7 @@ const superAdminMenus = <SidebarMenuItem>[
   SidebarMenuItem(name: 'User Management', icon: Icons.people_alt_rounded),
   SidebarMenuItem(name: 'Loyalty Points Management', icon: Icons.stars_rounded),
   SidebarMenuItem(name: 'Promotions & Banners', icon: Icons.campaign_rounded),
+  SidebarMenuItem(name: 'Reports', icon: Icons.assessment_rounded),
   SidebarMenuItem(name: 'System Settings', icon: Icons.settings_rounded),
 ];
 

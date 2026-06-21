@@ -55,7 +55,7 @@ class BranchAdminRepository {
 
     final assignment = await _client
         .from('branch_admins')
-        .select('branch_id, branches(id, code, name, address, district, city)')
+        .select('branch_id')
         .eq('user_id', user.id)
         .eq('is_active', true)
         .order('is_primary', ascending: false)
@@ -67,9 +67,15 @@ class BranchAdminRepository {
       throw Exception('Akun admin ini belum terhubung ke cabang aktif.');
     }
 
+    final branchRow = await _client
+        .from('branches')
+        .select('id, code, name, address, district, city')
+        .eq('id', branchId)
+        .maybeSingle();
+
     final branch =
-        assignment?['branches'] is Map<String, dynamic>
-            ? Map<String, dynamic>.from(assignment!['branches'] as Map)
+        branchRow is Map<String, dynamic>
+            ? Map<String, dynamic>.from(branchRow)
             : const <String, dynamic>{};
 
     return BranchAdminAssignment(
