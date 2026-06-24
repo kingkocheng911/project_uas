@@ -3,10 +3,7 @@ import 'package:flutter/material.dart';
 import '../branch_admin_repository.dart';
 
 class EditProductScreen extends StatefulWidget {
-  const EditProductScreen({
-    super.key,
-    required this.product,
-  });
+  const EditProductScreen({super.key, required this.product});
 
   final BranchAdminProduct product;
 
@@ -45,7 +42,9 @@ class _EditProductScreenState extends State<EditProductScreen> {
     _descriptionController = TextEditingController(text: product.description);
     _brandController = TextEditingController(text: product.brand);
     _unitController = TextEditingController(text: product.unit);
-    _minStockController = TextEditingController(text: '${product.minStockAlert}');
+    _minStockController = TextEditingController(
+      text: '${product.minStockAlert}',
+    );
     _isActive = product.isActive;
     _isFeatured = product.isFeatured;
     _selectedCategory = product.categoryLabel;
@@ -72,7 +71,9 @@ class _EditProductScreenState extends State<EditProductScreen> {
         _categories = categories;
         if (_selectedCategory == null ||
             !_categories.any((item) => item.label == _selectedCategory)) {
-          _selectedCategory = categories.isEmpty ? null : categories.first.label;
+          _selectedCategory = categories.isEmpty
+              ? null
+              : categories.first.label;
         }
       });
     } finally {
@@ -89,7 +90,8 @@ class _EditProductScreenState extends State<EditProductScreen> {
     setState(() => _isSaving = true);
     try {
       final price = int.parse(_priceController.text.trim());
-      final originalPrice = int.tryParse(_originalPriceController.text.trim()) ?? price;
+      final originalPrice =
+          int.tryParse(_originalPriceController.text.trim()) ?? price;
       final minStock = int.tryParse(_minStockController.text.trim()) ?? 5;
 
       await _repository.updateProduct(
@@ -146,7 +148,7 @@ class _EditProductScreenState extends State<EditProductScreen> {
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
-                        value: _selectedCategory,
+                        initialValue: _selectedCategory,
                         decoration: _inputDecoration('Kategori'),
                         items: _categories
                             .map(
@@ -156,7 +158,8 @@ class _EditProductScreenState extends State<EditProductScreen> {
                               ),
                             )
                             .toList(),
-                        onChanged: (value) => setState(() => _selectedCategory = value),
+                        onChanged: (value) =>
+                            setState(() => _selectedCategory = value),
                       ),
                       const SizedBox(height: 12),
                       _buildTextField(
@@ -206,13 +209,16 @@ class _EditProductScreenState extends State<EditProductScreen> {
                         contentPadding: EdgeInsets.zero,
                         value: _isFeatured,
                         title: const Text('Produk unggulan'),
-                        onChanged: (value) => setState(() => _isFeatured = value),
+                        onChanged: (value) =>
+                            setState(() => _isFeatured = value),
                       ),
                       SwitchListTile(
                         contentPadding: EdgeInsets.zero,
                         value: _isActive,
                         title: const Text('Produk aktif di cabang'),
-                        subtitle: const Text('Nonaktifkan jika produk ingin disembunyikan dari pelanggan.'),
+                        subtitle: const Text(
+                          'Nonaktifkan jika produk ingin disembunyikan dari pelanggan.',
+                        ),
                         onChanged: (value) => setState(() => _isActive = value),
                       ),
                     ],
@@ -251,9 +257,9 @@ class _EditProductScreenState extends State<EditProductScreen> {
         children: [
           Text(
             title,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 14),
           ...children,

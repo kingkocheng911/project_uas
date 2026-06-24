@@ -4,10 +4,7 @@ import '../branch_admin_repository.dart';
 import '../orders/admin_order_models.dart';
 
 class StockManagementScreen extends StatefulWidget {
-  const StockManagementScreen({
-    super.key,
-    this.initialBranchProductId,
-  });
+  const StockManagementScreen({super.key, this.initialBranchProductId});
 
   final String? initialBranchProductId;
 
@@ -41,7 +38,9 @@ class _StockManagementScreenState extends State<StockManagementScreen> {
       setState(() => _snapshot = snapshot);
     } catch (error) {
       if (!mounted) return;
-      setState(() => _errorMessage = error.toString().replaceFirst('Exception: ', ''));
+      setState(
+        () => _errorMessage = error.toString().replaceFirst('Exception: ', ''),
+      );
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -74,17 +73,20 @@ class _StockManagementScreenState extends State<StockManagementScreen> {
                   Text(
                     'Sesuaikan Stok',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                   const SizedBox(height: 6),
                   Text(product.name),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
-                    value: selectedType,
+                    initialValue: selectedType,
                     decoration: _decoration('Jenis mutasi'),
                     items: const [
-                      DropdownMenuItem(value: 'purchase', child: Text('Restock')),
+                      DropdownMenuItem(
+                        value: 'purchase',
+                        child: Text('Restock'),
+                      ),
                       DropdownMenuItem(
                         value: 'adjustment_in',
                         child: Text('Penyesuaian masuk'),
@@ -119,7 +121,9 @@ class _StockManagementScreenState extends State<StockManagementScreen> {
                       onPressed: () async {
                         final parsed = int.tryParse(qtyController.text.trim());
                         if (parsed == null || parsed <= 0) return;
-                        final qtyChange = selectedType == 'adjustment_out' ? -parsed : parsed;
+                        final qtyChange = selectedType == 'adjustment_out'
+                            ? -parsed
+                            : parsed;
                         Navigator.of(context).pop(
                           await _submitAdjustment(
                             product: product,
@@ -174,9 +178,9 @@ class _StockManagementScreenState extends State<StockManagementScreen> {
       return true;
     } catch (error) {
       if (!mounted) return false;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Gagal memperbarui stok: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Gagal memperbarui stok: $error')));
       return false;
     } finally {
       if (mounted) {
@@ -199,8 +203,13 @@ class _StockManagementScreenState extends State<StockManagementScreen> {
         return a.name.compareTo(b.name);
       });
     }
-    final lowStockCount = products.where((product) => product.isLowStock).length;
-    final totalUnits = products.fold<int>(0, (sum, product) => sum + product.stockOnHand);
+    final lowStockCount = products
+        .where((product) => product.isLowStock)
+        .length;
+    final totalUnits = products.fold<int>(
+      0,
+      (sum, product) => sum + product.stockOnHand,
+    );
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F9FB),
@@ -213,181 +222,186 @@ class _StockManagementScreenState extends State<StockManagementScreen> {
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : _errorMessage != null
-                ? ListView(
+            ? ListView(
+                children: [
+                  const SizedBox(height: 160),
+                  Center(child: Text(_errorMessage!)),
+                ],
+              )
+            : ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  Row(
                     children: [
-                      const SizedBox(height: 160),
-                      Center(child: Text(_errorMessage!)),
-                    ],
-                  )
-                : ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _summaryCard(
-                              'Total Unit',
-                              '$totalUnits',
-                              Icons.inventory_2_rounded,
-                              const Color(0xFF1565C0),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _summaryCard(
-                              'Low Stock',
-                              '$lowStockCount',
-                              Icons.warning_amber_rounded,
-                              const Color(0xFFD9001B),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 18),
-                      Text(
-                        'Daftar Produk Cabang',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w800,
-                            ),
-                      ),
-                      const SizedBox(height: 12),
-                      ...products.map(
-                        (product) => Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(22),
-                              border: Border.all(color: const Color(0xFFE8BCB8)),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            product.name,
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .titleMedium
-                                                ?.copyWith(fontWeight: FontWeight.w800),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(product.categoryLabel),
-                                        ],
-                                      ),
-                                    ),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 6,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: product.isLowStock
-                                            ? const Color(0xFFFFE9E6)
-                                            : const Color(0xFFDFF5E8),
-                                        borderRadius: BorderRadius.circular(999),
-                                      ),
-                                      child: Text(
-                                        product.isLowStock ? 'Low Stock' : 'Aman',
-                                        style: TextStyle(
-                                          color: product.isLowStock
-                                              ? const Color(0xFFD9001B)
-                                              : const Color(0xFF1A7F42),
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: _stockMeta(
-                                        'Stok',
-                                        '${product.stockOnHand} ${product.unit}',
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child: _stockMeta(
-                                        'Minimum',
-                                        '${product.effectiveMinStockAlert}',
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child: _stockMeta(
-                                        'Harga',
-                                        formatCurrency(product.sellingPrice),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 14),
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: OutlinedButton.icon(
-                                    onPressed: _isSaving
-                                        ? null
-                                        : () => _openAdjustStock(product),
-                                    icon: const Icon(Icons.sync_alt_rounded),
-                                    label: const Text('Sesuaikan Stok'),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                      Expanded(
+                        child: _summaryCard(
+                          'Total Unit',
+                          '$totalUnits',
+                          Icons.inventory_2_rounded,
+                          const Color(0xFF1565C0),
                         ),
                       ),
-                      const SizedBox(height: 18),
-                      Text(
-                        'Riwayat Mutasi',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w800,
-                            ),
-                      ),
-                      const SizedBox(height: 12),
-                      ...?snapshot?.movements.map(
-                        (movement) => Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: ListTile(
-                            tileColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
-                              side: const BorderSide(color: Color(0xFFE8BCB8)),
-                            ),
-                            leading: CircleAvatar(
-                              backgroundColor: movement.tone.withValues(alpha: 0.12),
-                              child: Text(
-                                movement.qtyChange >= 0
-                                    ? '+${movement.qtyChange}'
-                                    : '${movement.qtyChange}',
-                                style: TextStyle(
-                                  color: movement.tone,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ),
-                            title: Text(movement.productName),
-                            subtitle: Text(
-                              '${movement.label} • ${formatShortDate(movement.createdAt)}'
-                              '${movement.notes == null ? '' : '\n${movement.notes}'}',
-                            ),
-                            trailing: Text(
-                              '${movement.qtyBefore} -> ${movement.qtyAfter}',
-                              style: const TextStyle(fontWeight: FontWeight.w800),
-                            ),
-                          ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _summaryCard(
+                          'Low Stock',
+                          '$lowStockCount',
+                          Icons.warning_amber_rounded,
+                          const Color(0xFFD9001B),
                         ),
                       ),
                     ],
                   ),
+                  const SizedBox(height: 18),
+                  Text(
+                    'Daftar Produk Cabang',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ...products.map(
+                    (product) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(color: const Color(0xFFE8BCB8)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        product.name,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleMedium
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(product.categoryLabel),
+                                    ],
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: product.isLowStock
+                                        ? const Color(0xFFFFE9E6)
+                                        : const Color(0xFFDFF5E8),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Text(
+                                    product.isLowStock ? 'Low Stock' : 'Aman',
+                                    style: TextStyle(
+                                      color: product.isLowStock
+                                          ? const Color(0xFFD9001B)
+                                          : const Color(0xFF1A7F42),
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _stockMeta(
+                                    'Stok',
+                                    '${product.stockOnHand} ${product.unit}',
+                                  ),
+                                ),
+                                Expanded(
+                                  child: _stockMeta(
+                                    'Minimum',
+                                    '${product.effectiveMinStockAlert}',
+                                  ),
+                                ),
+                                Expanded(
+                                  child: _stockMeta(
+                                    'Harga',
+                                    formatCurrency(product.sellingPrice),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 14),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: _isSaving
+                                    ? null
+                                    : () => _openAdjustStock(product),
+                                icon: const Icon(Icons.sync_alt_rounded),
+                                label: const Text('Sesuaikan Stok'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    'Riwayat Mutasi',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ...?snapshot?.movements.map(
+                    (movement) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: ListTile(
+                        tileColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          side: const BorderSide(color: Color(0xFFE8BCB8)),
+                        ),
+                        leading: CircleAvatar(
+                          backgroundColor: movement.tone.withValues(
+                            alpha: 0.12,
+                          ),
+                          child: Text(
+                            movement.qtyChange >= 0
+                                ? '+${movement.qtyChange}'
+                                : '${movement.qtyChange}',
+                            style: TextStyle(
+                              color: movement.tone,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                        title: Text(movement.productName),
+                        subtitle: Text(
+                          '${movement.label} • ${formatShortDate(movement.createdAt)}'
+                          '${movement.notes == null ? '' : '\n${movement.notes}'}',
+                        ),
+                        trailing: Text(
+                          '${movement.qtyBefore} -> ${movement.qtyAfter}',
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
       ),
     );
   }
@@ -435,15 +449,9 @@ class _StockManagementScreenState extends State<StockManagementScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: const TextStyle(color: Color(0xFF6D5A58)),
-        ),
+        Text(label, style: const TextStyle(color: Color(0xFF6D5A58))),
         const SizedBox(height: 4),
-        Text(
-          value,
-          style: const TextStyle(fontWeight: FontWeight.w800),
-        ),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
       ],
     );
   }

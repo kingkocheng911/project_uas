@@ -73,7 +73,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
     setState(() => _isSaving = true);
     try {
       final price = int.parse(_priceController.text.trim());
-      final originalPrice = int.tryParse(_originalPriceController.text.trim()) ?? price;
+      final originalPrice =
+          int.tryParse(_originalPriceController.text.trim()) ?? price;
       final stock = int.tryParse(_stockController.text.trim()) ?? 0;
       final minStock = int.tryParse(_minStockController.text.trim()) ?? 5;
 
@@ -94,9 +95,9 @@ class _AddProductScreenState extends State<AddProductScreen> {
       Navigator.of(context).pop(true);
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Gagal menambah produk: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Gagal menambah produk: $error')));
     } finally {
       if (mounted) {
         setState(() => _isSaving = false);
@@ -130,7 +131,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
-                        value: _selectedCategory,
+                        initialValue: _selectedCategory,
                         decoration: _inputDecoration('Kategori'),
                         items: _categories
                             .map(
@@ -140,7 +141,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
                               ),
                             )
                             .toList(),
-                        onChanged: (value) => setState(() => _selectedCategory = value),
+                        onChanged: (value) =>
+                            setState(() => _selectedCategory = value),
                       ),
                       const SizedBox(height: 12),
                       _buildTextField(
@@ -197,8 +199,11 @@ class _AddProductScreenState extends State<AddProductScreen> {
                         contentPadding: EdgeInsets.zero,
                         value: _isFeatured,
                         title: const Text('Tampilkan sebagai produk unggulan'),
-                        subtitle: const Text('Produk unggulan akan tampil lebih atas.'),
-                        onChanged: (value) => setState(() => _isFeatured = value),
+                        subtitle: const Text(
+                          'Produk unggulan akan tampil lebih atas.',
+                        ),
+                        onChanged: (value) =>
+                            setState(() => _isFeatured = value),
                       ),
                     ],
                   ),
@@ -236,9 +241,9 @@ class _AddProductScreenState extends State<AddProductScreen> {
         children: [
           Text(
             title,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 14),
           ...children,
@@ -292,6 +297,5 @@ class _AddProductScreenState extends State<AddProductScreen> {
     return null;
   }
 }
-
 
 // uyi6yy5u6u5u
