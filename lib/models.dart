@@ -91,6 +91,8 @@ class OrderItem {
     this.providerBank,
     this.providerQrUrl,
     this.paymentExpiresAt,
+    this.courierName,
+    this.courierPhone,
   });
 
   final String id;
@@ -107,6 +109,8 @@ class OrderItem {
   final String? providerBank;
   final String? providerQrUrl;
   final DateTime? paymentExpiresAt;
+  final String? courierName;
+  final String? courierPhone;
 }
 
 class ActivityEntry {

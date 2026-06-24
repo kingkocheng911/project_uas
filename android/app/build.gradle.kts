@@ -6,6 +6,7 @@ plugins {
 }
 
 import java.util.Properties
+import java.util.Base64
 
 val localProperties = Properties()
 val localPropertiesFile = rootProject.file("local.properties")
@@ -13,9 +14,32 @@ if (localPropertiesFile.exists()) {
     localPropertiesFile.reader(Charsets.UTF_8).use { localProperties.load(it) }
 }
 
+fun decodeDartDefine(name: String): String? {
+    val encodedDefines = System.getenv("DART_DEFINES") ?: return null
+    return encodedDefines
+        .split(",")
+        .asSequence()
+        .mapNotNull { encoded ->
+            runCatching {
+                String(Base64.getDecoder().decode(encoded), Charsets.UTF_8)
+            }.getOrNull()
+        }
+        .mapNotNull { entry ->
+            val separatorIndex = entry.indexOf("=")
+            if (separatorIndex <= 0) {
+                null
+            } else {
+                entry.substring(0, separatorIndex) to entry.substring(separatorIndex + 1)
+            }
+        }
+        .firstOrNull { (key, _) -> key == name }
+        ?.second
+}
+
 val googleMapsApiKey =
     localProperties.getProperty("GOOGLE_MAPS_API_KEY")
         ?: System.getenv("GOOGLE_MAPS_API_KEY")
+        ?: decodeDartDefine("GOOGLE_MAPS_API_KEY")
         ?: ""
 
 android {

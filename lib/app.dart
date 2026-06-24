@@ -372,11 +372,13 @@ class _KdmpAppState extends State<KdmpApp> {
         final client = Supabase.instance.client;
         final user = client.auth.currentUser;
         if (user != null) {
+          final role = _profileRoleValue(updatedProfile.role);
           await client.from('profiles').upsert({
             'id': user.id,
             'full_name': updatedProfile.name,
             'phone': updatedProfile.phone == '-' ? null : updatedProfile.phone,
             'avatar_url': updatedProfile.avatarUrl,
+            'role': role,
             'role_type': _profileRoleType(updatedProfile.role),
             'is_active': true,
           });
@@ -389,6 +391,7 @@ class _KdmpAppState extends State<KdmpApp> {
                     ? null
                     : updatedProfile.phone,
                 'avatar_url': updatedProfile.avatarUrl,
+                'role': role,
                 'role_type': _profileRoleType(updatedProfile.role),
               },
             ),
@@ -531,6 +534,17 @@ class _KdmpAppState extends State<KdmpApp> {
     }
   }
 
+  String _profileRoleValue(String role) {
+    switch (role.toLowerCase()) {
+      case 'superadmin':
+        return 'superadmin';
+      case 'admin':
+        return 'admin';
+      default:
+        return 'user';
+    }
+  }
+
   Future<void> _ensureUserData(
     User user, {
     String? fallbackName,
@@ -538,6 +552,11 @@ class _KdmpAppState extends State<KdmpApp> {
   }) async {
     final client = Supabase.instance.client;
     final metadata = user.userMetadata ?? <String, dynamic>{};
+    final existingProfile = await client
+        .from('profiles')
+        .select('role, role_type')
+        .eq('id', user.id)
+        .maybeSingle();
     final profileName =
         (metadata['full_name'] ?? metadata['name'] ?? fallbackName ?? '')
             .toString()
@@ -548,7 +567,26 @@ class _KdmpAppState extends State<KdmpApp> {
     final avatarUrl = (metadata['avatar_url'] ?? '__initials__')
         .toString()
         .trim();
-    final roleType = _profileRoleType(_roleFromMetadata(metadata));
+    final metadataRole = _roleFromMetadata(metadata);
+    final existingRole = (existingProfile?['role'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
+    final existingRoleType = (existingProfile?['role_type'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
+
+    final resolvedRole = existingRole == 'superadmin' ||
+            existingRole == 'super_admin' ||
+            existingRoleType == 'superadmin' ||
+            existingRoleType == 'super_admin'
+        ? 'superadmin'
+        : existingRole == 'admin' || existingRoleType == 'admin'
+        ? 'admin'
+        : metadataRole;
+    final roleType = _profileRoleType(resolvedRole);
+    final role = _profileRoleValue(resolvedRole);
 
     await client.from('profiles').upsert({
       'id': user.id,
@@ -557,6 +595,7 @@ class _KdmpAppState extends State<KdmpApp> {
           : profileName,
       'phone': profilePhone.isEmpty ? null : profilePhone,
       'avatar_url': avatarUrl.isEmpty ? '__initials__' : avatarUrl,
+      'role': role,
       'role_type': roleType,
       'is_active': true,
     });
@@ -641,6 +680,9 @@ class _AuthScreenState extends State<AuthScreen> {
   String? _signUpError;
   bool _submittingLogin = false;
   bool _submittingSignUp = false;
+  bool _obscureLoginPassword = true;
+  bool _obscureSignUpPassword = true;
+  bool _obscureSignUpConfirm = true;
 
   @override
   void initState() {
@@ -668,41 +710,47 @@ class _AuthScreenState extends State<AuthScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF7F8FA),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
           children: [
             Container(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(28),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [Color(0xFFD9001B), Color(0xFF8B0011)],
+                  colors: [Color(0xFFD9001B), Color(0xFF9E1123)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: BorderRadius.circular(30),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x1AD9001B),
+                    blurRadius: 28,
+                    offset: Offset(0, 14),
+                  ),
+                ],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
-                    width: 58,
-                    height: 58,
+                    width: 62,
+                    height: 62,
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.16),
-                      borderRadius: BorderRadius.circular(18),
+                      color: Colors.white.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(20),
                     ),
                     child: const Icon(
-                      Icons.storefront_rounded,
+                      Icons.shopping_bag_rounded,
                       color: Colors.white,
                       size: 30,
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 22),
                   Text(
-                    widget.usingSupabase
-                        ? 'Masuk dengan Supabase Auth'
-                        : 'Masuk ke akun MepuPoin',
+                    'Selamat Datang di MepuPoin',
                     style: theme.textTheme.headlineMedium?.copyWith(
                       color: Colors.white,
                       fontWeight: FontWeight.w900,
@@ -710,12 +758,30 @@ class _AuthScreenState extends State<AuthScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    widget.usingSupabase
-                        ? 'Akun, sesi login, dan perubahan profil akan disimpan melalui Supabase.'
-                        : 'Belanja kebutuhan koperasi, kelola pesanan, dan pantau transaksi dalam satu aplikasi.',
+                    'Masuk atau buat akun untuk belanja kebutuhan koperasi, memantau pesanan, dan mengelola transaksi dengan lebih mudah.',
                     style: theme.textTheme.bodyLarge?.copyWith(
                       color: Colors.white.withValues(alpha: 0.92),
+                      height: 1.45,
                     ),
+                  ),
+                  const SizedBox(height: 18),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: const [
+                      _AuthHeroChip(
+                        icon: Icons.inventory_2_outlined,
+                        label: 'Produk Harian',
+                      ),
+                      _AuthHeroChip(
+                        icon: Icons.local_shipping_outlined,
+                        label: 'Lacak Pesanan',
+                      ),
+                      _AuthHeroChip(
+                        icon: Icons.account_balance_wallet_outlined,
+                        label: 'Pembayaran Mudah',
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -752,8 +818,8 @@ class _AuthScreenState extends State<AuthScreen> {
   Widget _buildLoginCard(BuildContext context) {
     return _AuthCard(
       key: const ValueKey('login-card'),
-      title: 'Login Akun',
-      subtitle: 'Masukkan email dan kata sandi untuk melanjutkan.',
+      title: 'Masuk ke Akun',
+      subtitle: 'Gunakan email dan kata sandi yang sudah terdaftar.',
       child: Form(
         key: _loginFormKey,
         child: Column(
@@ -770,10 +836,20 @@ class _AuthScreenState extends State<AuthScreen> {
             const SizedBox(height: 14),
             TextFormField(
               controller: _loginPasswordController,
-              obscureText: true,
-              decoration: const InputDecoration(
+              obscureText: _obscureLoginPassword,
+              decoration: InputDecoration(
                 labelText: 'Kata Sandi',
-                prefixIcon: Icon(Icons.lock_outline_rounded),
+                prefixIcon: const Icon(Icons.lock_outline_rounded),
+                suffixIcon: IconButton(
+                  onPressed: () => setState(
+                    () => _obscureLoginPassword = !_obscureLoginPassword,
+                  ),
+                  icon: Icon(
+                    _obscureLoginPassword
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
+                  ),
+                ),
               ),
               validator: _validatePassword,
             ),
@@ -789,13 +865,13 @@ class _AuthScreenState extends State<AuthScreen> {
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(56),
                 ),
-                child: Text(_submittingLogin ? 'Memproses...' : 'Login'),
+                child: Text(_submittingLogin ? 'Memproses...' : 'Masuk'),
               ),
             ),
             if (!widget.usingSupabase) ...[
               const SizedBox(height: 12),
               Text(
-                'Akun demo: budi.santoso@email.com / mepupoin123',
+                'Akun uji coba: budi.santoso@email.com / mepupoin123',
                 style: Theme.of(
                   context,
                 ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
@@ -810,8 +886,9 @@ class _AuthScreenState extends State<AuthScreen> {
   Widget _buildSignUpCard(BuildContext context) {
     return _AuthCard(
       key: const ValueKey('signup-card'),
-      title: 'Buat Akun Baru',
-      subtitle: 'Daftarkan akun untuk mulai belanja dan menyimpan pesanan.',
+      title: 'Daftar Akun Baru',
+      subtitle:
+          'Lengkapi data berikut untuk mulai berbelanja dan memantau pesanan.',
       child: Form(
         key: _signUpFormKey,
         child: Column(
@@ -857,20 +934,40 @@ class _AuthScreenState extends State<AuthScreen> {
             const SizedBox(height: 14),
             TextFormField(
               controller: _signUpPasswordController,
-              obscureText: true,
-              decoration: const InputDecoration(
+              obscureText: _obscureSignUpPassword,
+              decoration: InputDecoration(
                 labelText: 'Kata Sandi',
-                prefixIcon: Icon(Icons.lock_outline_rounded),
+                prefixIcon: const Icon(Icons.lock_outline_rounded),
+                suffixIcon: IconButton(
+                  onPressed: () => setState(
+                    () => _obscureSignUpPassword = !_obscureSignUpPassword,
+                  ),
+                  icon: Icon(
+                    _obscureSignUpPassword
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
+                  ),
+                ),
               ),
               validator: _validatePassword,
             ),
             const SizedBox(height: 14),
             TextFormField(
               controller: _signUpConfirmController,
-              obscureText: true,
-              decoration: const InputDecoration(
+              obscureText: _obscureSignUpConfirm,
+              decoration: InputDecoration(
                 labelText: 'Konfirmasi Kata Sandi',
-                prefixIcon: Icon(Icons.verified_user_outlined),
+                prefixIcon: const Icon(Icons.verified_user_outlined),
+                suffixIcon: IconButton(
+                  onPressed: () => setState(
+                    () => _obscureSignUpConfirm = !_obscureSignUpConfirm,
+                  ),
+                  icon: Icon(
+                    _obscureSignUpConfirm
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
+                  ),
+                ),
               ),
               validator: (value) {
                 if (value != _signUpPasswordController.text) {
@@ -891,7 +988,7 @@ class _AuthScreenState extends State<AuthScreen> {
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(56),
                 ),
-                child: Text(_submittingSignUp ? 'Memproses...' : 'Sign Up'),
+                child: Text(_submittingSignUp ? 'Memproses...' : 'Daftar'),
               ),
             ),
           ],
@@ -969,21 +1066,34 @@ class _AuthCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: const Color(0xFFE7EAF0)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A0F172A),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: theme.textTheme.headlineMedium),
+          Text(
+            title,
+            style: theme.textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.w900,
+            ),
+          ),
           const SizedBox(height: 6),
           Text(
             subtitle,
             style: theme.textTheme.bodyLarge?.copyWith(
               color: const Color(0xFF64748B),
+              height: 1.4,
             ),
           ),
           const SizedBox(height: 18),
@@ -1006,12 +1116,12 @@ class _AuthSegmentedTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    const labels = ['Login', 'Sign Up'];
+    const labels = ['Masuk', 'Daftar'];
 
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: const Color(0xFFECEEF0),
+        color: const Color(0xFFEFF2F5),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
@@ -1106,6 +1216,39 @@ class _SetupHintCard extends StatelessWidget {
             style: Theme.of(
               context,
             ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF7A5A00)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AuthHeroChip extends StatelessWidget {
+  const _AuthHeroChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: Colors.white),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ],
       ),

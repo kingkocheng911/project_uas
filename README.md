@@ -9,7 +9,7 @@ Kredensial Supabase tidak lagi disimpan hardcoded di source code, tetapi dikirim
 lewat `dart-define`.
 
 1. Salin `dart_defines.example.json` menjadi `dart_defines.json`
-2. Isi nilai Supabase Anda
+2. Isi nilai Supabase dan Google Maps Anda
 3. Jalankan aplikasi:
 
 ```bash
@@ -20,6 +20,15 @@ Alternatif tanpa file:
 
 ```bash
 flutter run --dart-define=SUPABASE_URL=YOUR_SUPABASE_URL --dart-define=SUPABASE_PUBLISHABLE_KEY=YOUR_SUPABASE_PUBLISHABLE_KEY
+```
+
+Jika Anda memakai fitur peta/alamat, tambahkan juga:
+
+```bash
+flutter run \
+  --dart-define=SUPABASE_URL=YOUR_SUPABASE_URL \
+  --dart-define=SUPABASE_PUBLISHABLE_KEY=YOUR_SUPABASE_PUBLISHABLE_KEY \
+  --dart-define=GOOGLE_MAPS_API_KEY=YOUR_GOOGLE_MAPS_API_KEY
 ```
 
 Jika credential belum diisi, aplikasi tetap berjalan dalam mode demo lokal.

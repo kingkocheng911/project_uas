@@ -59,10 +59,10 @@ class OrderCard extends StatelessWidget {
 
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(.06),
+            color: Colors.black.withValues(alpha: 0.06),
             blurRadius: 15,
             offset: const Offset(0, 4),
-          )
+          ),
         ],
       ),
 
@@ -71,30 +71,24 @@ class OrderCard extends StatelessWidget {
 
         child: Column(
           children: [
-
             /// HEADER
             Row(
               children: [
-
                 CircleAvatar(
                   radius: 25,
-                  backgroundColor:
-                      const Color(0xffE60012).withOpacity(.1),
+                  backgroundColor: const Color(
+                    0xffE60012,
+                  ).withValues(alpha: 0.1),
 
-                  child: const Icon(
-                    Icons.person,
-                    color: Color(0xffE60012),
-                  ),
+                  child: const Icon(Icons.person, color: Color(0xffE60012)),
                 ),
 
                 const SizedBox(width: 12),
 
                 Expanded(
                   child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-
                       Text(
                         customerName,
                         style: const TextStyle(
@@ -123,21 +117,14 @@ class OrderCard extends StatelessWidget {
                   ),
 
                   decoration: BoxDecoration(
-                    color:
-                        getStatusColor().withOpacity(.12),
-                    borderRadius:
-                        BorderRadius.circular(30),
+                    color: getStatusColor().withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(30),
                   ),
 
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-
-                      Icon(
-                        getStatusIcon(),
-                        size: 14,
-                        color: getStatusColor(),
-                      ),
+                      Icon(getStatusIcon(), size: 14, color: getStatusColor()),
 
                       const SizedBox(width: 5),
 
@@ -157,28 +144,20 @@ class OrderCard extends StatelessWidget {
 
             const SizedBox(height: 18),
 
-            Divider(
-              color: Colors.grey.shade200,
-            ),
+            Divider(color: Colors.grey.shade200),
 
             const SizedBox(height: 12),
 
             /// INFO ORDER
             Row(
-              mainAxisAlignment:
-                  MainAxisAlignment.spaceBetween,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-
                 Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-
                     Text(
                       "Jumlah Item",
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                      ),
+                      style: TextStyle(color: Colors.grey.shade600),
                     ),
 
                     const SizedBox(height: 4),
@@ -194,15 +173,11 @@ class OrderCard extends StatelessWidget {
                 ),
 
                 Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.end,
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-
                     Text(
                       "Total Belanja",
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                      ),
+                      style: TextStyle(color: Colors.grey.shade600),
                     ),
 
                     const SizedBox(height: 4),
@@ -225,31 +200,21 @@ class OrderCard extends StatelessWidget {
             /// ACTION BUTTON
             Row(
               children: [
-
                 Expanded(
                   child: OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
-                      minimumSize:
-                          const Size.fromHeight(45),
+                      minimumSize: const Size.fromHeight(45),
 
-                      shape:
-                          RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.circular(
-                          14,
-                        ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
                       ),
                     ),
 
                     onPressed: () {},
 
-                    icon: const Icon(
-                      Icons.visibility,
-                    ),
+                    icon: const Icon(Icons.visibility),
 
-                    label: const Text(
-                      "Detail",
-                    ),
+                    label: const Text("Detail"),
                   ),
                 ),
 
@@ -258,33 +223,22 @@ class OrderCard extends StatelessWidget {
                 Expanded(
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      minimumSize:
-                          const Size.fromHeight(45),
+                      minimumSize: const Size.fromHeight(45),
 
-                      backgroundColor:
-                          const Color(0xffE60012),
+                      backgroundColor: const Color(0xffE60012),
 
-                      shape:
-                          RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.circular(
-                          14,
-                        ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
                       ),
                     ),
 
                     onPressed: () {},
 
-                    icon: const Icon(
-                      Icons.local_shipping,
-                      color: Colors.white,
-                    ),
+                    icon: const Icon(Icons.local_shipping, color: Colors.white),
 
                     label: const Text(
                       "Assign",
-                      style: TextStyle(
-                        color: Colors.white,
-                      ),
+                      style: TextStyle(color: Colors.white),
                     ),
                   ),
                 ),

@@ -6,10 +6,7 @@ import 'edit_product_screen.dart';
 import 'stock_management_screen.dart';
 
 class ProductDetailScreen extends StatefulWidget {
-  const ProductDetailScreen({
-    super.key,
-    required this.product,
-  });
+  const ProductDetailScreen({super.key, required this.product});
 
   final BranchAdminProduct product;
 
@@ -19,14 +16,12 @@ class ProductDetailScreen extends StatefulWidget {
 
 class _ProductDetailScreenState extends State<ProductDetailScreen> {
   final BranchAdminRepository _repository = BranchAdminRepository();
-  late BranchAdminProduct _product = widget.product;
+  late final BranchAdminProduct _product = widget.product;
   bool _isArchiving = false;
 
   Future<void> _editProduct() async {
     final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => EditProductScreen(product: _product),
-      ),
+      MaterialPageRoute(builder: (_) => EditProductScreen(product: _product)),
     );
     if (changed == true && mounted) {
       Navigator.of(context).pop(true);
@@ -110,6 +105,22 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: AspectRatio(
+              aspectRatio: 16 / 10,
+              child: _product.imageUrl != null
+                  ? Image.network(
+                      _product.imageUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return _imagePlaceholder();
+                      },
+                    )
+                  : _imagePlaceholder(),
+            ),
+          ),
+          const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(20),
             decoration: _boxDecoration(),
@@ -119,16 +130,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 Text(
                   _product.name,
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w900,
-                      ),
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   formatCurrency(_product.sellingPrice),
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        color: const Color(0xFFD9001B),
-                        fontWeight: FontWeight.w900,
-                      ),
+                    color: const Color(0xFFD9001B),
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
                 if (_product.originalPrice > _product.sellingPrice) ...[
                   const SizedBox(height: 4),
@@ -146,8 +157,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   runSpacing: 10,
                   children: [
                     _pill(_product.categoryLabel, Icons.category_outlined),
-                    _pill('${_product.stockOnHand} ${_product.unit}', Icons.inventory_2_outlined),
-                    _pill(_product.isActive ? 'Aktif' : 'Nonaktif', Icons.visibility_outlined),
+                    _pill(
+                      '${_product.stockOnHand} ${_product.unit}',
+                      Icons.inventory_2_outlined,
+                    ),
+                    _pill(
+                      _product.isActive ? 'Aktif' : 'Nonaktif',
+                      Icons.visibility_outlined,
+                    ),
                     if (_product.isFeatured)
                       _pill('Unggulan', Icons.star_rounded),
                   ],
@@ -165,8 +182,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 Text(
                   'Ringkasan Operasional',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 const SizedBox(height: 14),
                 Row(
@@ -189,10 +206,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   ],
                 ),
                 const SizedBox(height: 14),
-                _infoRow('Brand', _product.brand.isEmpty ? '-' : _product.brand),
+                _infoRow(
+                  'Brand',
+                  _product.brand.isEmpty ? '-' : _product.brand,
+                ),
                 _infoRow('Satuan', _product.unit),
-                _infoRow('Badge', _product.badge.isEmpty ? '-' : _product.badge),
-                _infoRow('Terakhir diperbarui', formatShortDate(_product.updatedAt)),
+                _infoRow(
+                  'Badge',
+                  _product.badge.isEmpty ? '-' : _product.badge,
+                ),
+                _infoRow(
+                  'Terakhir diperbarui',
+                  formatShortDate(_product.updatedAt),
+                ),
               ],
             ),
           ),
@@ -206,15 +232,17 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 Text(
                   'Deskripsi',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Text(
                   _product.description.isEmpty
                       ? 'Belum ada deskripsi produk.'
                       : _product.description,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.45),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(height: 1.45),
                 ),
               ],
             ),
@@ -261,6 +289,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
+  Widget _imagePlaceholder() {
+    return Container(
+      color: const Color(0xFFFFF4F5),
+      child: const Center(
+        child: Icon(
+          Icons.inventory_2_outlined,
+          size: 56,
+          color: Color(0xFFD9001B),
+        ),
+      ),
+    );
+  }
+
   Widget _pill(String text, IconData icon) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -273,10 +314,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         children: [
           Icon(icon, size: 16, color: const Color(0xFFD9001B)),
           const SizedBox(width: 6),
-          Text(
-            text,
-            style: const TextStyle(fontWeight: FontWeight.w700),
-          ),
+          Text(text, style: const TextStyle(fontWeight: FontWeight.w700)),
         ],
       ),
     );

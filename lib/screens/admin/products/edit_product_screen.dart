@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../branch_admin_repository.dart';
+import 'product_image_picker_card.dart';
 
 class EditProductScreen extends StatefulWidget {
-  const EditProductScreen({
-    super.key,
-    required this.product,
-  });
+  const EditProductScreen({super.key, required this.product});
 
   final BranchAdminProduct product;
 
@@ -17,6 +16,7 @@ class EditProductScreen extends StatefulWidget {
 class _EditProductScreenState extends State<EditProductScreen> {
   final BranchAdminRepository _repository = BranchAdminRepository();
   final _formKey = GlobalKey<FormState>();
+  final ImagePicker _imagePicker = ImagePicker();
 
   late final TextEditingController _nameController;
   late final TextEditingController _priceController;
@@ -32,6 +32,9 @@ class _EditProductScreenState extends State<EditProductScreen> {
   bool _isFeatured = false;
   String? _selectedCategory;
   List<BranchAdminCategory> _categories = const [];
+  XFile? _selectedImage;
+  String? _currentImageUrl;
+  bool _removeCurrentImage = false;
 
   @override
   void initState() {
@@ -45,10 +48,13 @@ class _EditProductScreenState extends State<EditProductScreen> {
     _descriptionController = TextEditingController(text: product.description);
     _brandController = TextEditingController(text: product.brand);
     _unitController = TextEditingController(text: product.unit);
-    _minStockController = TextEditingController(text: '${product.minStockAlert}');
+    _minStockController = TextEditingController(
+      text: '${product.minStockAlert}',
+    );
     _isActive = product.isActive;
     _isFeatured = product.isFeatured;
     _selectedCategory = product.categoryLabel;
+    _currentImageUrl = product.imageUrl;
     _loadCategories();
   }
 
@@ -72,7 +78,9 @@ class _EditProductScreenState extends State<EditProductScreen> {
         _categories = categories;
         if (_selectedCategory == null ||
             !_categories.any((item) => item.label == _selectedCategory)) {
-          _selectedCategory = categories.isEmpty ? null : categories.first.label;
+          _selectedCategory = categories.isEmpty
+              ? null
+              : categories.first.label;
         }
       });
     } finally {
@@ -89,8 +97,12 @@ class _EditProductScreenState extends State<EditProductScreen> {
     setState(() => _isSaving = true);
     try {
       final price = int.parse(_priceController.text.trim());
-      final originalPrice = int.tryParse(_originalPriceController.text.trim()) ?? price;
+      final originalPrice =
+          int.tryParse(_originalPriceController.text.trim()) ?? price;
       final minStock = int.tryParse(_minStockController.text.trim()) ?? 5;
+      final imageUrl = _selectedImage != null
+          ? await _repository.uploadProductImage(_selectedImage!)
+          : (_removeCurrentImage ? '' : _currentImageUrl);
 
       await _repository.updateProduct(
         branchProductId: widget.product.branchProductId,
@@ -104,6 +116,7 @@ class _EditProductScreenState extends State<EditProductScreen> {
         minStockAlert: minStock,
         isFeatured: _isFeatured,
         isActive: _isActive,
+        imageUrl: imageUrl,
       );
 
       if (!mounted) return;
@@ -118,6 +131,19 @@ class _EditProductScreenState extends State<EditProductScreen> {
         setState(() => _isSaving = false);
       }
     }
+  }
+
+  Future<void> _pickImage() async {
+    final image = await _imagePicker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+      maxWidth: 1600,
+    );
+    if (image == null || !mounted) return;
+    setState(() {
+      _selectedImage = image;
+      _removeCurrentImage = false;
+    });
   }
 
   @override
@@ -137,6 +163,28 @@ class _EditProductScreenState extends State<EditProductScreen> {
                 children: [
                   _buildSection(
                     context,
+                    title: 'Foto Produk',
+                    children: [
+                      ProductImagePickerCard(
+                        localImagePath: _selectedImage?.path,
+                        imageUrl: _removeCurrentImage ? null : _currentImageUrl,
+                        onPickImage: _pickImage,
+                        onRemoveImage:
+                            (_selectedImage == null &&
+                                (_currentImageUrl == null ||
+                                    _currentImageUrl!.trim().isEmpty))
+                            ? null
+                            : () => setState(() {
+                                _selectedImage = null;
+                                _currentImageUrl = null;
+                                _removeCurrentImage = true;
+                              }),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _buildSection(
+                    context,
                     title: 'Informasi Produk',
                     children: [
                       _buildTextField(
@@ -146,7 +194,7 @@ class _EditProductScreenState extends State<EditProductScreen> {
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
-                        value: _selectedCategory,
+                        initialValue: _selectedCategory,
                         decoration: _inputDecoration('Kategori'),
                         items: _categories
                             .map(
@@ -156,7 +204,8 @@ class _EditProductScreenState extends State<EditProductScreen> {
                               ),
                             )
                             .toList(),
-                        onChanged: (value) => setState(() => _selectedCategory = value),
+                        onChanged: (value) =>
+                            setState(() => _selectedCategory = value),
                       ),
                       const SizedBox(height: 12),
                       _buildTextField(
@@ -206,13 +255,16 @@ class _EditProductScreenState extends State<EditProductScreen> {
                         contentPadding: EdgeInsets.zero,
                         value: _isFeatured,
                         title: const Text('Produk unggulan'),
-                        onChanged: (value) => setState(() => _isFeatured = value),
+                        onChanged: (value) =>
+                            setState(() => _isFeatured = value),
                       ),
                       SwitchListTile(
                         contentPadding: EdgeInsets.zero,
                         value: _isActive,
                         title: const Text('Produk aktif di cabang'),
-                        subtitle: const Text('Nonaktifkan jika produk ingin disembunyikan dari pelanggan.'),
+                        subtitle: const Text(
+                          'Nonaktifkan jika produk ingin disembunyikan dari pelanggan.',
+                        ),
                         onChanged: (value) => setState(() => _isActive = value),
                       ),
                     ],
@@ -251,9 +303,9 @@ class _EditProductScreenState extends State<EditProductScreen> {
         children: [
           Text(
             title,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 14),
           ...children,

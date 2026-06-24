@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../catalog_repository.dart';
 import '../mock_data.dart';
 import '../models.dart';
@@ -661,6 +662,7 @@ class _HomeShellState extends State<HomeShell> {
         if (user == null) return null;
 
         final groupedItems = _summarizeProducts(items);
+        final groupedCounts = _countProducts(items);
         final orderType = deliveryMethod == 'Ambil di Koperasi'
             ? 'pickup'
             : 'delivery';
@@ -683,6 +685,18 @@ class _HomeShellState extends State<HomeShell> {
             orderType == 'delivery' && _isValidUuid(addressId)
             ? addressId
             : null;
+        final branchProductRows =
+            branchContext.branchId == null || groupedCounts.isEmpty
+            ? const <Map<String, dynamic>>[]
+            : await client
+                  .from('branch_products')
+                  .select('id, product_id')
+                  .eq('branch_id', branchContext.branchId!)
+                  .inFilter('product_id', groupedCounts.keys.toList());
+        final branchProductIds = <String, String>{
+          for (final row in branchProductRows)
+            (row['product_id'] ?? '').toString(): (row['id'] ?? '').toString(),
+        };
 
         final orderRow = await client
             .from('orders')
@@ -713,21 +727,30 @@ class _HomeShellState extends State<HomeShell> {
         await client
             .from('order_items')
             .insert(
-              items
-                  .map(
-                    (product) => {
-                      'order_id': orderRow['id'],
-                      'product_id': product.id,
-                      'product_name': product.name,
-                      'sku': product.id,
-                      'qty': 1,
-                      'unit_price': product.price,
-                      'discount_amount': 0,
-                      'subtotal': product.price,
-                    },
-                  )
-                  .toList(),
+              groupedCounts.entries.map((entry) {
+                final product = items.firstWhere(
+                  (item) => item.id == entry.key,
+                );
+                return {
+                  'order_id': orderRow['id'],
+                  'product_id': product.id,
+                  'branch_product_id': branchProductIds[product.id],
+                  'product_name': product.name,
+                  'sku': product.id,
+                  'qty': entry.value,
+                  'unit_price': product.price,
+                  'discount_amount': 0,
+                  'subtotal': product.price * entry.value,
+                };
+              }).toList(),
             );
+
+        if (paymentStatus == 'paid') {
+          await _applyOrderInventoryById(
+            (orderRow['id'] ?? '').toString(),
+            action: 'deduct',
+          );
+        }
 
         final orderNo = (orderRow['order_no'] ?? '').toString();
         SandboxOrderPaymentSummary? paymentSummary;
@@ -1087,6 +1110,12 @@ class _HomeShellState extends State<HomeShell> {
       paymentExpiresAt: DateTime.tryParse(
         (row['payment_expires_at'] ?? '').toString(),
       )?.toLocal(),
+      courierName: (row['courier_name'] ?? '').toString().trim().isEmpty
+          ? null
+          : (row['courier_name'] ?? '').toString().trim(),
+      courierPhone: (row['courier_phone'] ?? '').toString().trim().isEmpty
+          ? null
+          : (row['courier_phone'] ?? '').toString().trim(),
     );
   }
 
@@ -1309,6 +1338,42 @@ class _HomeShellState extends State<HomeShell> {
       counts[item.id] = (counts[item.id] ?? 0) + 1;
     }
     return counts;
+  }
+
+  Future<bool> _applyOrderInventoryById(
+    String orderId, {
+    required String action,
+  }) async {
+    if (!_canUseSupabase || orderId.trim().isEmpty) return false;
+    try {
+      await Supabase.instance.client.rpc(
+        'apply_order_inventory',
+        params: {'p_order_id': orderId, 'p_action': action},
+      );
+      return true;
+    } on PostgrestException catch (error) {
+      final message = error.message.toLowerCase();
+      if (message.contains('apply_order_inventory') ||
+          message.contains('function public.apply_order_inventory')) {
+        return false;
+      }
+      rethrow;
+    }
+  }
+
+  Future<bool> _applyOrderInventoryByOrderNo(
+    String orderNo, {
+    required String action,
+  }) async {
+    if (!_canUseSupabase || orderNo.trim().isEmpty) return false;
+    final orderRow = await Supabase.instance.client
+        .from('orders')
+        .select('id')
+        .eq('order_no', orderNo)
+        .maybeSingle();
+    final orderId = orderRow?['id']?.toString();
+    if (orderId == null || orderId.isEmpty) return false;
+    return _applyOrderInventoryById(orderId, action: action);
   }
 
   bool _hasAvailableStock(
@@ -1579,6 +1644,8 @@ class _HomeShellState extends State<HomeShell> {
             : 'Pembayaran berhasil, pesanan sedang diproses',
         address: order.address,
         items: order.items,
+        courierName: order.courierName,
+        courierPhone: order.courierPhone,
       );
       _orderItems[index] = updatedOrder;
     });
@@ -1591,6 +1658,9 @@ class _HomeShellState extends State<HomeShell> {
             .from('orders')
             .update({'order_status': nextStatus, 'payment_status': 'paid'})
             .eq('order_no', order.id)
+            .then(
+              (_) => _applyOrderInventoryByOrderNo(order.id, action: 'deduct'),
+            )
             .then((_) => _loadOrders()),
       );
     }
@@ -1656,6 +1726,8 @@ class _HomeShellState extends State<HomeShell> {
       providerBank: summary.providerBank,
       providerQrUrl: summary.providerQrUrl,
       paymentExpiresAt: summary.paymentExpiresAt,
+      courierName: order.courierName,
+      courierPhone: order.courierPhone,
     );
   }
 
@@ -1673,6 +1745,8 @@ class _HomeShellState extends State<HomeShell> {
             progressLabel: 'Pesanan dibatalkan.',
             address: order.address,
             items: order.items,
+            courierName: order.courierName,
+            courierPhone: order.courierPhone,
           );
         }
       });
@@ -1681,6 +1755,9 @@ class _HomeShellState extends State<HomeShell> {
             .from('orders')
             .update({'order_status': 'cancelled', 'payment_status': 'failed'})
             .eq('order_no', order.id)
+            .then(
+              (_) => _applyOrderInventoryByOrderNo(order.id, action: 'restore'),
+            )
             .then((_) => _loadOrders()),
       );
       unawaited(
@@ -5339,194 +5416,321 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         .where((item) => product.relatedIds.contains(item.id))
         .toList();
     final theme = Theme.of(context);
+    final discount = discountPercent(product);
+    final categories = productCategoriesFor(product);
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF4F5F7),
       body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: CustomScrollView(
-                slivers: [
-                  SliverToBoxAdapter(
-                    child: Stack(
+        child: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: Container(
+                color: Colors.white,
+                child: Stack(
+                  children: [
+                    Column(
                       children: [
                         Container(
-                          height: 420,
+                          height: 360,
+                          width: double.infinity,
+                          padding: const EdgeInsets.fromLTRB(24, 72, 24, 32),
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               colors: [
-                                product.tone.withValues(alpha: 0.95),
-                                const Color(0xFF201F1F),
-                                product.tone.withValues(alpha: 0.7),
+                                const Color(0xFFFFF5F6),
+                                product.tone.withValues(alpha: 0.12),
+                                Colors.white,
                               ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
                             ),
                           ),
-                          child: Center(
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(
-                                28,
-                                68,
-                                28,
-                                24,
-                              ),
-                              child: ProductMedia(
-                                product: product,
-                                borderRadius: BorderRadius.circular(28),
-                                fit: BoxFit.contain,
-                                iconSize: 132,
-                              ),
-                            ),
+                          child: ProductMedia(
+                            product: product,
+                            borderRadius: BorderRadius.circular(24),
+                            fit: BoxFit.contain,
+                            iconSize: 120,
                           ),
                         ),
-                        Positioned(
-                          top: 18,
-                          left: 18,
-                          child: _CircleActionButton(
-                            icon: Icons.arrow_back_rounded,
-                            onTap: () => Navigator.of(context).pop(),
-                          ),
-                        ),
-                        Positioned(
-                          top: 18,
-                          right: 86,
-                          child: _CircleActionButton(
-                            icon: Icons.share_outlined,
-                            onTap: () => _showFeatureSnack(
-                              context,
-                              'Link produk siap dibagikan.',
-                            ),
-                          ),
-                        ),
-                        Positioned(
-                          top: 18,
-                          right: 18,
-                          child: _CircleActionButton(
-                            icon: Icons.shopping_cart_outlined,
-                            badgeCount: widget.cartItemCount,
-                            onTap: widget.onOpenCart,
-                          ),
-                        ),
-                        Positioned(
-                          left: 24,
-                          bottom: 20,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 10,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFC9A900),
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                            child: Text(
-                              product.badge,
-                              style: theme.textTheme.labelLarge?.copyWith(
-                                color: const Color(0xFF221B00),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  SliverToBoxAdapter(
-                    child: Container(
-                      padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFF8F9FA),
-                        borderRadius: BorderRadius.vertical(
-                          top: Radius.circular(28),
-                        ),
-                      ),
-                      transform: Matrix4.translationValues(0, -18, 0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            product.name,
-                            style: theme.textTheme.headlineLarge?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              height: 1.1,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                          child: Row(
                             children: [
-                              Text(
-                                formatRupiah(product.price),
-                                style: theme.textTheme.displayLarge?.copyWith(
-                                  fontSize: 32,
-                                  color: theme.colorScheme.primary,
+                              Expanded(
+                                child: Container(
+                                  height: 4,
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.primary,
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
                                 ),
                               ),
-                              const SizedBox(width: 18),
-                              Text(
-                                formatRupiah(product.originalPrice),
-                                style: theme.textTheme.titleLarge?.copyWith(
-                                  decoration: TextDecoration.lineThrough,
-                                  color: const Color(0xFF7F6B67),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Container(
+                                  height: 4,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFFD5DA),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Container(
+                                  height: 4,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFFD5DA),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 18),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
+                        ),
+                      ],
+                    ),
+                    Positioned(
+                      top: 16,
+                      left: 16,
+                      child: _CircleActionButton(
+                        icon: Icons.arrow_back_rounded,
+                        onTap: () => Navigator.of(context).pop(),
+                      ),
+                    ),
+                    Positioned(
+                      top: 16,
+                      right: 84,
+                      child: _CircleActionButton(
+                        icon: Icons.share_outlined,
+                        onTap: () => _showFeatureSnack(
+                          context,
+                          'Link produk siap dibagikan.',
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 16,
+                      right: 16,
+                      child: _CircleActionButton(
+                        icon: Icons.shopping_cart_outlined,
+                        badgeCount: widget.cartItemCount,
+                        onTap: widget.onOpenCart,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
+                child: Column(
+                  children: [
+                    _marketSection(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFFE4E7),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  product.badge,
+                                  style: theme.textTheme.labelLarge?.copyWith(
+                                    color: theme.colorScheme.primary,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                              for (final category in categories.take(2))
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF5F5F5),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Text(
+                                    category,
+                                    style: theme.textTheme.labelMedium
+                                        ?.copyWith(
+                                          color: const Color(0xFF5F6368),
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          Text(
+                            product.name,
+                            style: theme.textTheme.headlineMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              height: 1.2,
                             ),
+                          ),
+                          const SizedBox(height: 14),
+                          Text(
+                            formatRupiah(product.price),
+                            style: theme.textTheme.displaySmall?.copyWith(
+                              color: theme.colorScheme.primary,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 10,
+                            runSpacing: 8,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Text(
+                                formatRupiah(product.originalPrice),
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  color: const Color(0xFF8C8C8C),
+                                  decoration: TextDecoration.lineThrough,
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFD9001B),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  '$discount% OFF',
+                                  style: theme.textTheme.labelLarge?.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Wrap(
+                            spacing: 12,
+                            runSpacing: 12,
+                            children: [
+                              _metricChip(
+                                icon: Icons.inventory_2_outlined,
+                                label: stock > 0 ? 'Stok $stock' : 'Stok habis',
+                                foreground: stock > 0
+                                    ? const Color(0xFF116C46)
+                                    : theme.colorScheme.error,
+                                background: stock > 0
+                                    ? const Color(0xFFDFF5E8)
+                                    : const Color(0xFFFFE4E6),
+                              ),
+                              _metricChip(
+                                icon: Icons.workspace_premium_outlined,
+                                label: '${product.rewardPoints} poin',
+                                foreground: const Color(0xFF9A3412),
+                                background: const Color(0xFFFFEDD5),
+                              ),
+                              _metricChip(
+                                icon: Icons.local_fire_department_outlined,
+                                label: '${product.claimedPercent}% terjual',
+                                foreground: theme.colorScheme.primary,
+                                background: const Color(0xFFFFE4E7),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _marketSection(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 52,
+                            height: 52,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFFFDD61),
+                              color: const Color(0xFFFFE4E7),
                               borderRadius: BorderRadius.circular(16),
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
+                            child: Icon(
+                              Icons.storefront_outlined,
+                              color: theme.colorScheme.primary,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Icon(
-                                  Icons.stars_rounded,
-                                  color: Color(0xFF221B00),
-                                ),
-                                const SizedBox(width: 10),
                                 Text(
-                                  'Get ${product.rewardPoints} Points',
+                                  'Toko Koperasi KDMP',
                                   style: theme.textTheme.titleMedium?.copyWith(
-                                    color: const Color(0xFF221B00),
-                                    fontWeight: FontWeight.w700,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Produk dikelola langsung oleh jaringan koperasi dengan harga anggota dan stok yang diperbarui berkala.',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: const Color(0xFF64748B),
+                                    height: 1.5,
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                          const SizedBox(height: 14),
-                          StatusPill(
-                            label: stock > 0
-                                ? 'Stok tersedia: $stock'
-                                : 'Stok habis',
-                            foreground: stock > 0
-                                ? const Color(0xFF116C46)
-                                : theme.colorScheme.error,
-                            background: stock > 0
-                                ? const Color(0xFFDFF5E8)
-                                : const Color(0xFFFFE4E6),
-                          ),
-                          const SizedBox(height: 26),
-                          const Divider(color: Color(0xFFE9C7C3)),
-                          const SizedBox(height: 22),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _marketSection(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                           Text(
-                            'Deskripsi Produk',
-                            style: theme.textTheme.headlineMedium,
+                            'Detail Produk',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                           const SizedBox(height: 14),
                           Text(
                             product.description,
                             style: theme.textTheme.bodyLarge?.copyWith(
                               height: 1.7,
-                              color: const Color(0xFF5F4A45),
+                              color: const Color(0xFF50555C),
                             ),
                           ),
-                          const SizedBox(height: 26),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _marketSection(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Keunggulan Produk',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
                           GridView.builder(
                             itemCount: product.highlights.length,
                             shrinkWrap: true,
@@ -5534,28 +5738,72 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                             gridDelegate:
                                 const SliverGridDelegateWithFixedCrossAxisCount(
                                   crossAxisCount: 2,
-                                  mainAxisExtent: 110,
-                                  mainAxisSpacing: 16,
-                                  crossAxisSpacing: 16,
+                                  mainAxisExtent: 96,
+                                  mainAxisSpacing: 12,
+                                  crossAxisSpacing: 12,
                                 ),
-                            itemBuilder: (context, index) => FeatureCard(
-                              label: product.highlights[index],
-                              icon: _featureIcon(index),
+                            itemBuilder: (context, index) => Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFF7F8),
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(
+                                  color: const Color(0xFFFFD5DA),
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(
+                                    _featureIcon(index),
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                  const Spacer(),
+                                  Text(
+                                    product.highlights[index],
+                                    style: theme.textTheme.labelLarge?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      height: 1.3,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                          const SizedBox(height: 28),
-                          Text(
-                            'Produk Terkait',
-                            style: theme.textTheme.headlineMedium,
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _marketSection(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'Produk Terkait',
+                                  style: theme.textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                '${related.length} item',
+                                style: theme.textTheme.labelLarge?.copyWith(
+                                  color: const Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 18),
+                          const SizedBox(height: 16),
                           SizedBox(
                             height: 256,
                             child: ListView.separated(
                               scrollDirection: Axis.horizontal,
                               itemCount: related.length,
                               separatorBuilder: (_, _) =>
-                                  const SizedBox(width: 16),
+                                  const SizedBox(width: 14),
                               itemBuilder: (context, index) => SizedBox(
                                 width: 220,
                                 child: ProductCard(
@@ -5592,98 +5840,172 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         ],
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-            Container(
-              padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                border: Border(top: BorderSide(color: Color(0xFFE8BCB8))),
-              ),
-              child: Column(
+          ],
+        ),
+      ),
+      bottomNavigationBar: Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 18),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: Color(0xFFE9E9E9))),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
                 children: [
                   Container(
-                    height: 64,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF1F2F3),
-                      borderRadius: BorderRadius.circular(20),
+                      color: const Color(0xFFF4F5F7),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFE3E5E8)),
                     ),
                     child: Row(
                       children: [
-                        Expanded(
-                          child: IconButton(
-                            onPressed: quantity > 1
-                                ? () => setState(() => quantity--)
-                                : null,
-                            icon: const Icon(Icons.remove_rounded),
+                        IconButton(
+                          onPressed: quantity > 1
+                              ? () => setState(() => quantity--)
+                              : null,
+                          icon: const Icon(Icons.remove_rounded),
+                        ),
+                        SizedBox(
+                          width: 28,
+                          child: Center(
+                            child: Text(
+                              '$quantity',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
                           ),
                         ),
-                        Text(
-                          '$quantity',
-                          style: theme.textTheme.headlineMedium,
+                        IconButton(
+                          onPressed: quantity < stock
+                              ? () => setState(() => quantity++)
+                              : null,
+                          icon: const Icon(Icons.add_rounded),
                         ),
-                        Expanded(
-                          child: IconButton(
-                            onPressed: quantity < stock
-                                ? () => setState(() => quantity++)
-                                : null,
-                            icon: const Icon(Icons.add_rounded),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Total Harga',
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            color: const Color(0xFF64748B),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          formatRupiah(product.price * quantity),
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.w900,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 18),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: stock > 0
-                              ? () => widget.onAddItemsToCart(
-                                  List<Product>.filled(quantity, product),
-                                )
-                              : null,
-                          style: OutlinedButton.styleFrom(
-                            minimumSize: const Size.fromHeight(62),
-                            side: BorderSide(
-                              color: theme.colorScheme.primary,
-                              width: 2,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                          ),
-                          child: const Text('Tambah ke Keranjang'),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: stock > 0
+                          ? () => widget.onAddItemsToCart(
+                              List<Product>.filled(quantity, product),
+                            )
+                          : null,
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(56),
+                        side: BorderSide(
+                          color: theme.colorScheme.primary,
+                          width: 1.8,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
                         ),
                       ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed: stock > 0
-                              ? () => widget.onBuyNow(
-                                  List<Product>.filled(quantity, product),
-                                )
-                              : null,
-                          style: FilledButton.styleFrom(
-                            minimumSize: const Size.fromHeight(62),
-                            backgroundColor: theme.colorScheme.primary,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                          ),
-                          icon: const Icon(Icons.shopping_bag_outlined),
-                          label: const Text('Beli Sekarang'),
+                      child: const Text('Masukkan Keranjang'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: stock > 0
+                          ? () => widget.onBuyNow(
+                              List<Product>.filled(quantity, product),
+                            )
+                          : null,
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(56),
+                        backgroundColor: theme.colorScheme.primary,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
                         ),
                       ),
-                    ],
+                      child: const Text('Beli Sekarang'),
+                    ),
                   ),
                 ],
               ),
-            ),
-          ],
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _marketSection({required Widget child}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE9E9E9)),
+      ),
+      child: child,
+    );
+  }
+
+  Widget _metricChip({
+    required IconData icon,
+    required String label,
+    required Color foreground,
+    required Color background,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: foreground),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: foreground,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -7807,11 +8129,282 @@ class OrderDetailScreen extends StatelessWidget {
 
   final OrderItem order;
 
+  List<String> _buildCondensedItems() {
+    final counts = <String, int>{};
+    final extras = <String>[];
+    final quantityPattern = RegExp(r'^(.*?)(?:\s+x\s+(\d+))$');
+
+    for (final rawItem in order.items) {
+      final item = rawItem.trim();
+      if (item.isEmpty) continue;
+      if (item.toLowerCase().startsWith('voucher:')) {
+        extras.add(item);
+        continue;
+      }
+
+      final match = quantityPattern.firstMatch(item);
+      final baseName = (match?.group(1) ?? item).trim();
+      final qty = int.tryParse(match?.group(2) ?? '') ?? 1;
+      counts[baseName] = (counts[baseName] ?? 0) + qty;
+    }
+
+    return [
+      ...counts.entries.map(
+        (entry) =>
+            entry.value <= 1 ? entry.key : '${entry.key} x ${entry.value}',
+      ),
+      ...extras,
+    ];
+  }
+
+  String _courierInitials() {
+    final name = (order.courierName ?? '').trim();
+    if (name.isEmpty) return 'KR';
+    final words = name.split(RegExp(r'\s+')).where((word) => word.isNotEmpty);
+    return words.take(2).map((word) => word[0].toUpperCase()).join();
+  }
+
+  String? _normalizedWhatsappPhone() {
+    final rawPhone = (order.courierPhone ?? '').trim();
+    if (rawPhone.isEmpty) return null;
+
+    var normalized = rawPhone.replaceAll(RegExp(r'[^0-9+]'), '');
+    if (normalized.startsWith('+')) {
+      normalized = normalized.substring(1);
+    } else if (normalized.startsWith('0')) {
+      normalized = '62${normalized.substring(1)}';
+    }
+
+    final digitsOnly = normalized.replaceAll(RegExp(r'[^0-9]'), '');
+    return digitsOnly.isEmpty ? null : digitsOnly;
+  }
+
+  Future<void> _openCourierWhatsapp(BuildContext context) async {
+    final phone = _normalizedWhatsappPhone();
+    if (phone == null) {
+      _showFeatureSnack(
+        context,
+        'Nomor WhatsApp kurir belum tersedia.',
+        title: 'WhatsApp Belum Tersedia',
+        icon: Icons.info_outline_rounded,
+      );
+      return;
+    }
+
+    final message =
+        'Halo ${order.courierName ?? 'kurir'}, saya ingin menanyakan pesanan ${order.id}.';
+    final uri = Uri.parse(
+      'https://wa.me/$phone?text=${Uri.encodeComponent(message)}',
+    );
+
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (!context.mounted) return;
+      _showFeatureSnack(
+        context,
+        'WhatsApp tidak dapat dibuka di perangkat ini.',
+        title: 'Gagal Membuka WhatsApp',
+        icon: Icons.error_outline_rounded,
+      );
+    }
+  }
+
+  Widget _buildInfoChips(ThemeData theme, bool isPickupOrder) {
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: [
+        _OrderDetailChip(
+          icon: Icons.receipt_long_outlined,
+          label: order.id,
+          tone: Colors.white,
+        ),
+        _OrderDetailChip(
+          icon: isPickupOrder
+              ? Icons.storefront_outlined
+              : Icons.local_shipping_outlined,
+          label: isPickupOrder ? 'Pickup' : 'Delivery',
+          tone: Colors.white,
+        ),
+        _OrderDetailChip(
+          icon: Icons.payments_outlined,
+          label: formatRupiah(order.total),
+          tone: Colors.white,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCourierCard(ThemeData theme) {
+    final courierName = (order.courierName ?? '').trim();
+    final courierPhone = (order.courierPhone ?? '').trim();
+    final hasCourier = courierName.isNotEmpty || courierPhone.isNotEmpty;
+    final canContactCourier = _normalizedWhatsappPhone() != null;
+
+    return Builder(
+      builder: (context) {
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: hasCourier && canContactCourier
+                ? () => _openCourierWhatsapp(context)
+                : null,
+            borderRadius: BorderRadius.circular(22),
+            child: Ink(
+              width: double.infinity,
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFFFF7F7), Color(0xFFFFFCFC)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: const Color(0xFFF3C7CC)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 56,
+                        height: 56,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFE3E7),
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          _courierInitials(),
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    'Identitas Kurir',
+                                    style: theme.textTheme.titleMedium
+                                        ?.copyWith(fontWeight: FontWeight.w800),
+                                  ),
+                                ),
+                                if (hasCourier && canContactCourier)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFE8FFF1),
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(
+                                          Icons.chat_bubble_outline_rounded,
+                                          size: 14,
+                                          color: Color(0xFF15803D),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          'WhatsApp',
+                                          style: theme.textTheme.labelMedium
+                                              ?.copyWith(
+                                                color: const Color(0xFF15803D),
+                                                fontWeight: FontWeight.w800,
+                                              ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            if (hasCourier) ...[
+                              _CourierInfoRow(
+                                icon: Icons.badge_outlined,
+                                label: 'Nama Kurir',
+                                value: courierName.isEmpty ? '-' : courierName,
+                              ),
+                              const SizedBox(height: 8),
+                              _CourierInfoRow(
+                                icon: Icons.phone_outlined,
+                                label: 'Nomor Telepon',
+                                value: courierPhone.isEmpty
+                                    ? '-'
+                                    : courierPhone,
+                              ),
+                              if (canContactCourier) ...[
+                                const SizedBox(height: 14),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: OutlinedButton.icon(
+                                    onPressed: () =>
+                                        _openCourierWhatsapp(context),
+                                    icon: const Icon(Icons.open_in_new_rounded),
+                                    label: const Text('Hubungi lewat WhatsApp'),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: const Color(0xFF15803D),
+                                      side: const BorderSide(
+                                        color: Color(0xFF86EFAC),
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 12,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(16),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ] else
+                              Text(
+                                'Data kurir akan muncul setelah admin cabang menugaskan pengantaran.',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: const Color(0xFF6D5A58),
+                                  height: 1.4,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (hasCourier && canContactCourier) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      'Ketuk kartu ini atau tombol di atas untuk langsung membuka WhatsApp kurir.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFF6D5A58),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tracking = _buildTrackingView(order);
     final isPickupOrder = _isPickupOrder(order);
+    final condensedItems = _buildCondensedItems();
 
     return Scaffold(
       appBar: AppBar(title: const Text('Detail Pesanan')),
@@ -7835,15 +8428,18 @@ class OrderDetailScreen extends StatelessWidget {
                   order.status,
                   style: theme.textTheme.titleLarge?.copyWith(
                     color: Colors.white,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  order.id,
+                  tracking.referenceLabel,
                   style: theme.textTheme.bodyLarge?.copyWith(
                     color: Colors.white.withValues(alpha: 0.9),
                   ),
                 ),
+                const SizedBox(height: 16),
+                _buildInfoChips(theme, isPickupOrder),
                 const SizedBox(height: 20),
                 Row(
                   children: [
@@ -7882,10 +8478,10 @@ class OrderDetailScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                InfoRow(label: 'Items', value: order.items.join(', ')),
+                InfoRow(label: 'Pesanan', value: condensedItems.join(', ')),
                 InfoRow(label: 'Created', value: order.createdAt),
                 InfoRow(label: 'Total', value: formatRupiah(order.total)),
-                InfoRow(label: 'Status note', value: order.progressLabel),
+                InfoRow(label: 'Catatan Status', value: order.progressLabel),
               ],
             ),
           ),
@@ -7895,16 +8491,21 @@ class OrderDetailScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(order.address, style: theme.textTheme.bodyLarge),
+                Text(
+                  order.address,
+                  style: theme.textTheme.bodyLarge?.copyWith(height: 1.4),
+                ),
                 const SizedBox(height: 14),
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF3F4F5),
+                    color: const Color(0xFFF8FAFC),
                     borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
                   ),
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Container(
                         width: 50,
@@ -7926,12 +8527,17 @@ class OrderDetailScreen extends StatelessWidget {
                           order.progressLabel,
                           style: theme.textTheme.bodyLarge?.copyWith(
                             fontWeight: FontWeight.w600,
+                            height: 1.35,
                           ),
                         ),
                       ),
                     ],
                   ),
                 ),
+                if (!isPickupOrder) ...[
+                  const SizedBox(height: 16),
+                  _buildCourierCard(theme),
+                ],
                 const SizedBox(height: 18),
                 Container(
                   width: double.infinity,
@@ -7945,9 +8551,10 @@ class OrderDetailScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        tracking.referenceLabel,
+                        'Resi: ${tracking.referenceLabel}',
                         style: theme.textTheme.titleMedium?.copyWith(
                           color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.w900,
                         ),
                       ),
                       const SizedBox(height: 14),
@@ -8065,6 +8672,91 @@ class _TrackingTimelineTile extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _OrderDetailChip extends StatelessWidget {
+  const _OrderDetailChip({
+    required this.icon,
+    required this.label,
+    required this.tone,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color tone;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: tone),
+          const SizedBox(width: 8),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 190),
+            child: Text(
+              label,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: tone,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CourierInfoRow extends StatelessWidget {
+  const _CourierInfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: const Color(0xFFD9001B)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF6D5A58)),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ],
           ),
         ),
       ],

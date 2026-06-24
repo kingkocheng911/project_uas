@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'orders/admin_order_models.dart';
@@ -73,10 +76,9 @@ class BranchAdminRepository {
         .eq('id', branchId)
         .maybeSingle();
 
-    final branch =
-        branchRow is Map<String, dynamic>
-            ? Map<String, dynamic>.from(branchRow)
-            : const <String, dynamic>{};
+    final branch = branchRow is Map<String, dynamic>
+        ? Map<String, dynamic>.from(branchRow)
+        : const <String, dynamic>{};
 
     return BranchAdminAssignment(
       branchId: branchId,
@@ -95,73 +97,69 @@ class BranchAdminRepository {
         .select(
           'id, product_id, selling_price, original_price, stock_on_hand, '
           'min_stock_alert, is_active, is_featured, updated_at, '
-          'products(name, description, unit, brand, badge, category_labels)',
+          'products(name, description, unit, brand, badge, image_url, category_labels)',
         )
         .eq('branch_id', assignment.branchId)
         .order('updated_at', ascending: false);
 
     final orderRows = await loadBranchOrders(assignment.branchId, limit: 50);
 
-    final products =
-        productRows
-            .map<BranchAdminProduct>(
-              (row) => BranchAdminProduct.fromRow(
-                Map<String, dynamic>.from(row),
-                branchId: assignment.branchId,
-              ),
-            )
-            .toList(growable: false);
+    final products = productRows
+        .map<BranchAdminProduct>(
+          (row) => BranchAdminProduct.fromRow(
+            Map<String, dynamic>.from(row),
+            branchId: assignment.branchId,
+          ),
+        )
+        .toList(growable: false);
 
-    final orders =
-        orderRows
-            .map<AdminOrder>(
-              (row) => AdminOrder.fromRow(Map<String, dynamic>.from(row)),
-            )
-            .toList(growable: false);
+    final orders = orderRows
+        .map<AdminOrder>(
+          (row) => AdminOrder.fromRow(Map<String, dynamic>.from(row)),
+        )
+        .toList(growable: false);
 
     final now = DateTime.now();
-    final todayOrders =
-        orders
-            .where(
-              (order) =>
-                  order.placedAt.year == now.year &&
-                  order.placedAt.month == now.month &&
-                  order.placedAt.day == now.day,
-            )
-            .toList(growable: false);
+    final todayOrders = orders
+        .where(
+          (order) =>
+              order.placedAt.year == now.year &&
+              order.placedAt.month == now.month &&
+              order.placedAt.day == now.day,
+        )
+        .toList(growable: false);
 
     final completedTodayRevenue = todayOrders
         .where((order) => order.orderStatus == 'completed')
         .fold<int>(0, (sum, order) => sum + order.grandTotal);
 
-    final pendingOrders =
-        orders.where((order) => order.orderStatus == 'pending').length;
-    final processingOrders =
-        orders
-            .where(
-              (order) =>
-                  order.orderStatus == 'confirmed' ||
-                  order.orderStatus == 'processing',
-            )
-            .length;
-    final deliveryOrders =
-        orders
-            .where(
-              (order) =>
-                  order.orderStatus == 'out_for_delivery' ||
-                  order.orderStatus == 'ready_pickup',
-            )
-            .length;
-    final completedOrders =
-        orders.where((order) => order.orderStatus == 'completed').length;
-    final lowStockProducts =
-        products
-            .where(
-              (product) =>
-                  product.isActive &&
-                  product.stockOnHand <= product.effectiveMinStockAlert,
-            )
-            .length;
+    final pendingOrders = orders
+        .where((order) => order.orderStatus == 'pending')
+        .length;
+    final processingOrders = orders
+        .where(
+          (order) =>
+              order.orderStatus == 'confirmed' ||
+              order.orderStatus == 'processing',
+        )
+        .length;
+    final deliveryOrders = orders
+        .where(
+          (order) =>
+              order.orderStatus == 'out_for_delivery' ||
+              order.orderStatus == 'ready_pickup',
+        )
+        .length;
+    final completedOrders = orders
+        .where((order) => order.orderStatus == 'completed')
+        .length;
+    final lowStockProducts = products
+        .where(
+          (product) =>
+              product.isActive &&
+              product.stockOnHand <= product.effectiveMinStockAlert,
+        )
+        .length;
 
     return BranchAdminDashboardData(
       assignment: assignment,
@@ -207,7 +205,7 @@ class BranchAdminRepository {
         .select(
           'id, product_id, selling_price, original_price, stock_on_hand, '
           'min_stock_alert, is_active, is_featured, updated_at, '
-          'products(name, description, unit, brand, badge, category_labels)',
+          'products(name, description, unit, brand, badge, image_url, category_labels)',
         )
         .eq('branch_id', assignment.branchId)
         .order('updated_at', ascending: false);
@@ -233,6 +231,7 @@ class BranchAdminRepository {
     required String brand,
     required int minStockAlert,
     required bool isFeatured,
+    String? imageUrl,
   }) async {
     final assignment = await loadAssignment();
     await _client.rpc(
@@ -249,6 +248,7 @@ class BranchAdminRepository {
         'p_brand': brand,
         'p_min_stock_alert': minStockAlert,
         'p_is_featured': isFeatured,
+        'p_image_url': imageUrl,
       },
     );
   }
@@ -265,6 +265,7 @@ class BranchAdminRepository {
     required int minStockAlert,
     required bool isFeatured,
     required bool isActive,
+    String? imageUrl,
   }) async {
     await _client.rpc(
       'branch_admin_update_product',
@@ -280,8 +281,35 @@ class BranchAdminRepository {
         'p_min_stock_alert': minStockAlert,
         'p_is_featured': isFeatured,
         'p_is_active': isActive,
+        'p_image_url': imageUrl,
       },
     );
+  }
+
+  Future<String> uploadProductImage(XFile file) async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      throw Exception('Admin belum login ke Supabase.');
+    }
+
+    final assignment = await loadAssignment();
+    final extension = file.path.split('.').last.trim().toLowerCase();
+    final sanitizedExtension = extension.isEmpty || extension.length > 5
+        ? 'jpg'
+        : extension;
+    final fileName =
+        '${DateTime.now().millisecondsSinceEpoch}.$sanitizedExtension';
+    final storagePath = '${user.id}/${assignment.branchId}/products/$fileName';
+
+    await _client.storage
+        .from('product-images')
+        .upload(
+          storagePath,
+          File(file.path),
+          fileOptions: const FileOptions(cacheControl: '3600', upsert: true),
+        );
+
+    return _client.storage.from('product-images').getPublicUrl(storagePath);
   }
 
   Future<void> archiveProduct(String branchProductId) async {
@@ -305,12 +333,11 @@ class BranchAdminRepository {
         .order('created_at', ascending: false)
         .limit(40);
 
-    final movements =
-        movementRows
-            .map<StockMovementEntry>(
-              (row) => StockMovementEntry.fromRow(Map<String, dynamic>.from(row)),
-            )
-            .toList(growable: false);
+    final movements = movementRows
+        .map<StockMovementEntry>(
+          (row) => StockMovementEntry.fromRow(Map<String, dynamic>.from(row)),
+        )
+        .toList(growable: false);
 
     return BranchStockSnapshot(
       assignment: assignment,
@@ -340,7 +367,9 @@ class BranchAdminRepository {
     final assignment = await loadAssignment();
     final rows = await _client
         .from('orders')
-        .select('customer_name, customer_phone, grand_total, placed_at, order_status')
+        .select(
+          'customer_name, customer_phone, grand_total, placed_at, order_status',
+        )
         .eq('branch_id', assignment.branchId)
         .order('placed_at', ascending: false);
 
@@ -353,7 +382,8 @@ class BranchAdminRepository {
       final key = '${name.toLowerCase()}|$phone';
       final total = (map['grand_total'] as num?)?.toInt() ?? 0;
       final placedAt =
-          DateTime.tryParse((map['placed_at'] ?? '').toString()) ?? DateTime.now();
+          DateTime.tryParse((map['placed_at'] ?? '').toString()) ??
+          DateTime.now();
       final isCompleted = (map['order_status'] ?? '').toString() == 'completed';
 
       final current = summaries[key];
@@ -361,7 +391,8 @@ class BranchAdminRepository {
         name: name.isEmpty ? 'Pelanggan KDMP' : name,
         phone: phone,
         totalOrders: (current?.totalOrders ?? 0) + 1,
-        completedOrders: (current?.completedOrders ?? 0) + (isCompleted ? 1 : 0),
+        completedOrders:
+            (current?.completedOrders ?? 0) + (isCompleted ? 1 : 0),
         totalSpent: (current?.totalSpent ?? 0) + (isCompleted ? total : 0),
         lastOrderAt: current == null || placedAt.isAfter(current.lastOrderAt)
             ? placedAt
@@ -388,7 +419,9 @@ class BranchAdminRepository {
         query = query.limit(limit);
       }
       final rows = await query;
-      return rows.map<Map<String, dynamic>>((row) => Map<String, dynamic>.from(row)).toList();
+      return rows
+          .map<Map<String, dynamic>>((row) => Map<String, dynamic>.from(row))
+          .toList();
     }
 
     try {
@@ -426,17 +459,19 @@ class BranchAdminAssignment {
   final String city;
 
   String get shortLocation {
-    final parts = [district, city].where((part) => part.trim().isNotEmpty).toList();
+    final parts = [
+      district,
+      city,
+    ].where((part) => part.trim().isNotEmpty).toList();
     return parts.isEmpty ? address : parts.join(', ');
   }
 
   String get initials {
-    final words =
-        name
-            .split(RegExp(r'\s+'))
-            .where((word) => word.isNotEmpty && word.toLowerCase() != 'kdmp')
-            .take(2)
-            .toList();
+    final words = name
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty && word.toLowerCase() != 'kdmp')
+        .take(2)
+        .toList();
     if (words.isEmpty) return 'AD';
     return words.map((word) => word[0].toUpperCase()).join();
   }
@@ -499,6 +534,7 @@ class BranchAdminProduct {
     required this.unit,
     required this.brand,
     required this.badge,
+    required this.imageUrl,
     required this.updatedAt,
   });
 
@@ -506,17 +542,15 @@ class BranchAdminProduct {
     Map<String, dynamic> row, {
     required String branchId,
   }) {
-    final product =
-        row['products'] is Map<String, dynamic>
-            ? Map<String, dynamic>.from(row['products'] as Map)
-            : const <String, dynamic>{};
-    final labels =
-        product['category_labels'] is List
-            ? (product['category_labels'] as List)
-                .map((item) => item.toString())
-                .where((item) => item.isNotEmpty)
-                .toList()
-            : const <String>[];
+    final product = row['products'] is Map<String, dynamic>
+        ? Map<String, dynamic>.from(row['products'] as Map)
+        : const <String, dynamic>{};
+    final labels = product['category_labels'] is List
+        ? (product['category_labels'] as List)
+              .map((item) => item.toString())
+              .where((item) => item.isNotEmpty)
+              .toList()
+        : const <String>[];
 
     return BranchAdminProduct(
       branchProductId: (row['id'] ?? '').toString(),
@@ -534,8 +568,12 @@ class BranchAdminProduct {
       unit: (product['unit'] ?? 'pcs').toString(),
       brand: (product['brand'] ?? '').toString(),
       badge: (product['badge'] ?? '').toString(),
+      imageUrl: (product['image_url'] ?? '').toString().trim().isEmpty
+          ? null
+          : (product['image_url'] ?? '').toString().trim(),
       updatedAt:
-          DateTime.tryParse((row['updated_at'] ?? '').toString()) ?? DateTime.now(),
+          DateTime.tryParse((row['updated_at'] ?? '').toString()) ??
+          DateTime.now(),
     );
   }
 
@@ -554,6 +592,7 @@ class BranchAdminProduct {
   final String unit;
   final String brand;
   final String badge;
+  final String? imageUrl;
   final DateTime updatedAt;
 
   bool get isLowStock => stockOnHand <= effectiveMinStockAlert;
@@ -588,10 +627,9 @@ class StockMovementEntry {
   });
 
   factory StockMovementEntry.fromRow(Map<String, dynamic> row) {
-    final product =
-        row['products'] is Map<String, dynamic>
-            ? Map<String, dynamic>.from(row['products'] as Map)
-            : const <String, dynamic>{};
+    final product = row['products'] is Map<String, dynamic>
+        ? Map<String, dynamic>.from(row['products'] as Map)
+        : const <String, dynamic>{};
     return StockMovementEntry(
       id: (row['id'] ?? '').toString(),
       branchProductId: (row['branch_product_id'] ?? '').toString(),
@@ -603,7 +641,8 @@ class StockMovementEntry {
       qtyAfter: (row['qty_after'] as num?)?.toInt() ?? 0,
       referenceType: (row['reference_type'] ?? '').toString(),
       createdAt:
-          DateTime.tryParse((row['created_at'] ?? '').toString()) ?? DateTime.now(),
+          DateTime.tryParse((row['created_at'] ?? '').toString()) ??
+          DateTime.now(),
       notes: (row['notes'] ?? '').toString().trim().isEmpty
           ? null
           : (row['notes'] ?? '').toString().trim(),

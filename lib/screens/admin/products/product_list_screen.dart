@@ -45,7 +45,9 @@ class _ProductListScreenState extends State<ProductListScreen> {
       setState(() => _products = products);
     } catch (error) {
       if (!mounted) return;
-      setState(() => _errorMessage = error.toString().replaceFirst('Exception: ', ''));
+      setState(
+        () => _errorMessage = error.toString().replaceFirst('Exception: ', ''),
+      );
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -55,38 +57,40 @@ class _ProductListScreenState extends State<ProductListScreen> {
 
   List<BranchAdminProduct> get _filteredProducts {
     final query = _searchController.text.trim().toLowerCase();
-    return _products.where((product) {
-      final matchesQuery =
-          query.isEmpty ||
-          product.name.toLowerCase().contains(query) ||
-          product.categoryLabel.toLowerCase().contains(query);
+    return _products
+        .where((product) {
+          final matchesQuery =
+              query.isEmpty ||
+              product.name.toLowerCase().contains(query) ||
+              product.categoryLabel.toLowerCase().contains(query);
 
-      bool matchesFilter;
-      switch (_selectedFilter) {
-        case 'active':
-          matchesFilter = product.isActive;
-          break;
-        case 'inactive':
-          matchesFilter = !product.isActive;
-          break;
-        case 'low_stock':
-          matchesFilter = product.isLowStock;
-          break;
-        case 'featured':
-          matchesFilter = product.isFeatured;
-          break;
-        default:
-          matchesFilter = true;
-      }
+          bool matchesFilter;
+          switch (_selectedFilter) {
+            case 'active':
+              matchesFilter = product.isActive;
+              break;
+            case 'inactive':
+              matchesFilter = !product.isActive;
+              break;
+            case 'low_stock':
+              matchesFilter = product.isLowStock;
+              break;
+            case 'featured':
+              matchesFilter = product.isFeatured;
+              break;
+            default:
+              matchesFilter = true;
+          }
 
-      return matchesQuery && matchesFilter;
-    }).toList(growable: false);
+          return matchesQuery && matchesFilter;
+        })
+        .toList(growable: false);
   }
 
   Future<void> _openAddProduct() async {
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const AddProductScreen()),
-    );
+    final changed = await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute(builder: (_) => const AddProductScreen()));
     if (changed == true) {
       await _loadProducts();
     }
@@ -94,9 +98,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
 
   Future<void> _openDetail(BranchAdminProduct product) async {
     final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => ProductDetailScreen(product: product),
-      ),
+      MaterialPageRoute(builder: (_) => ProductDetailScreen(product: product)),
     );
     if (changed == true) {
       await _loadProducts();
@@ -107,7 +109,9 @@ class _ProductListScreenState extends State<ProductListScreen> {
   Widget build(BuildContext context) {
     final filteredProducts = _filteredProducts;
     final activeCount = _products.where((product) => product.isActive).length;
-    final lowStockCount = _products.where((product) => product.isLowStock).length;
+    final lowStockCount = _products
+        .where((product) => product.isLowStock)
+        .length;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F9FB),
@@ -133,16 +137,15 @@ class _ProductListScreenState extends State<ProductListScreen> {
                     children: [
                       Text(
                         'Kelola Produk Cabang',
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.w900,
-                            ),
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(fontWeight: FontWeight.w900),
                       ),
                       const SizedBox(height: 6),
                       Text(
                         'Semua perubahan produk di sini langsung memengaruhi katalog pelanggan pada cabang yang sama.',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: const Color(0xFF6D5A58),
-                            ),
+                          color: const Color(0xFF6D5A58),
+                        ),
                       ),
                       const SizedBox(height: 16),
                       TextField(
@@ -217,22 +220,20 @@ class _ProductListScreenState extends State<ProductListScreen> {
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
                   sliver: SliverGrid(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final product = filteredProducts[index];
-                        return _ProductCard(
-                          product: product,
-                          onTap: () => _openDetail(product),
-                        );
-                      },
-                      childCount: filteredProducts.length,
-                    ),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                      mainAxisExtent: 246,
-                    ),
+                    delegate: SliverChildBuilderDelegate((context, index) {
+                      final product = filteredProducts[index];
+                      return _ProductCard(
+                        product: product,
+                        onTap: () => _openDetail(product),
+                      );
+                    }, childCount: filteredProducts.length),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                          mainAxisExtent: 276,
+                        ),
                   ),
                 ),
             ],
@@ -296,10 +297,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
 }
 
 class _ProductCard extends StatelessWidget {
-  const _ProductCard({
-    required this.product,
-    required this.onTap,
-  });
+  const _ProductCard({required this.product, required this.onTap});
 
   final BranchAdminProduct product;
   final VoidCallback onTap;
@@ -317,7 +315,7 @@ class _ProductCard extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(24),
         child: Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(24),
             border: Border.all(color: const Color(0xFFE8BCB8)),
@@ -327,59 +325,74 @@ class _ProductCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFE9E6),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: const Icon(
-                      Icons.inventory_2_outlined,
-                      color: Color(0xFFD9001B),
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(18),
+                      child: AspectRatio(
+                        aspectRatio: 1.3,
+                        child: product.imageUrl != null
+                            ? Image.network(
+                                product.imageUrl!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return _ProductImagePlaceholder(
+                                    isFeatured: product.isFeatured,
+                                  );
+                                },
+                              )
+                            : _ProductImagePlaceholder(
+                                isFeatured: product.isFeatured,
+                              ),
+                      ),
                     ),
                   ),
-                  const Spacer(),
-                  if (product.isFeatured)
-                    const Icon(Icons.star_rounded, color: Color(0xFFFFB300)),
                 ],
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 10),
               Text(
                 product.name,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 4),
               Text(
                 product.categoryLabel,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF6D5A58),
-                    ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF6D5A58)),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               Text(
                 formatCurrency(product.sellingPrice),
                 style: const TextStyle(
                   color: Color(0xFFD9001B),
                   fontWeight: FontWeight.w900,
-                  fontSize: 18,
+                  fontSize: 16,
                 ),
               ),
-              const Spacer(),
-              Row(
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Expanded(
-                    child: Text(
-                      'Stok ${product.stockOnHand}',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                  Text(
+                    'Stok ${product.stockOnHand}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 9,
+                      vertical: 5,
+                    ),
                     decoration: BoxDecoration(
                       color: statusColor.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(999),
@@ -389,7 +402,7 @@ class _ProductCard extends StatelessWidget {
                       style: TextStyle(
                         color: statusColor,
                         fontWeight: FontWeight.w800,
-                        fontSize: 11,
+                        fontSize: 10,
                       ),
                     ),
                   ),
@@ -398,6 +411,39 @@ class _ProductCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ProductImagePlaceholder extends StatelessWidget {
+  const _ProductImagePlaceholder({required this.isFeatured});
+
+  final bool isFeatured;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFE9E6),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (isFeatured)
+            const Icon(Icons.star_rounded, color: Color(0xFFFFB300)),
+          const Spacer(),
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Icon(
+              Icons.inventory_2_outlined,
+              size: 36,
+              color: Color(0xFFD9001B),
+            ),
+          ),
+        ],
       ),
     );
   }

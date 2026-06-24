@@ -57,36 +57,28 @@ class _OrderListScreenState extends State<OrderListScreen> {
         throw Exception('Admin belum login ke Supabase.');
       }
 
-      final assignment = await _client
-          .from('branch_admins')
-          .select('branch_id, branches(name)')
-          .eq('user_id', user.id)
-          .eq('is_active', true)
-          .limit(1)
-          .maybeSingle();
+      final assignment = await _repository.loadAssignment().timeout(
+        const Duration(seconds: 12),
+        onTimeout: () =>
+            throw Exception('Waktu memuat data cabang habis. Coba muat ulang.'),
+      );
 
-      final branchId = assignment?['branch_id']?.toString();
-      if (branchId == null || branchId.isEmpty) {
-        throw Exception('Akun ini belum terhubung ke cabang aktif.');
-      }
-
-      final branchRelation = assignment?['branches'];
-      final branchName = branchRelation is Map<String, dynamic>
-          ? (branchRelation['name'] ?? '').toString()
-          : 'Cabang KDMP';
-
-      final rows = await _repository.loadBranchOrders(branchId);
+      final rows = await _repository
+          .loadBranchOrders(assignment.branchId)
+          .timeout(
+            const Duration(seconds: 15),
+            onTimeout: () =>
+                throw Exception('Waktu memuat pesanan habis. Coba muat ulang.'),
+          );
 
       final orders = rows
-          .map<AdminOrder>(
-            (row) => AdminOrder.fromRow(row),
-          )
+          .map<AdminOrder>((row) => AdminOrder.fromRow(row))
           .toList(growable: false);
 
       if (!mounted) return;
       setState(() {
         _orders = orders;
-        _branchName = branchName;
+        _branchName = assignment.name;
       });
     } catch (error) {
       if (!mounted) return;
@@ -94,19 +86,18 @@ class _OrderListScreenState extends State<OrderListScreen> {
         _errorMessage = error.toString().replaceFirst('Exception: ', '');
       });
     } finally {
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-        _isRefreshing = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isRefreshing = false;
+        });
+      }
     }
   }
 
   Future<void> _openOrderDetail(AdminOrder order) async {
     final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => OrderDetailScreen(order: order),
-      ),
+      MaterialPageRoute(builder: (_) => OrderDetailScreen(order: order)),
     );
     if (changed == true) {
       await _loadOrders(refresh: true);
@@ -115,23 +106,26 @@ class _OrderListScreenState extends State<OrderListScreen> {
 
   List<AdminOrder> get _filteredOrders {
     final query = _searchController.text.trim().toLowerCase();
-    return _orders.where((order) {
-      final matchesFilter = _matchesFilter(order);
-      final haystack = [
-        order.orderNo,
-        order.customerName,
-        order.customerPhone,
-        order.statusLabel,
-      ].join(' ').toLowerCase();
-      final matchesQuery = query.isEmpty || haystack.contains(query);
-      return matchesFilter && matchesQuery;
-    }).toList(growable: false);
+    return _orders
+        .where((order) {
+          final matchesFilter = _matchesFilter(order);
+          final haystack = [
+            order.orderNo,
+            order.customerName,
+            order.customerPhone,
+            order.statusLabel,
+          ].join(' ').toLowerCase();
+          final matchesQuery = query.isEmpty || haystack.contains(query);
+          return matchesFilter && matchesQuery;
+        })
+        .toList(growable: false);
   }
 
   bool _matchesFilter(AdminOrder order) {
     switch (_selectedFilter) {
       case 'processing':
-        return order.orderStatus == 'confirmed' || order.orderStatus == 'processing';
+        return order.orderStatus == 'confirmed' ||
+            order.orderStatus == 'processing';
       case 'semua':
         return true;
       default:
@@ -142,18 +136,26 @@ class _OrderListScreenState extends State<OrderListScreen> {
   @override
   Widget build(BuildContext context) {
     final filteredOrders = _filteredOrders;
-    final pendingCount = _orders.where((order) => order.orderStatus == 'pending').length;
+    final pendingCount = _orders
+        .where((order) => order.orderStatus == 'pending')
+        .length;
     final processingCount = _orders
-        .where((order) =>
-            order.orderStatus == 'confirmed' || order.orderStatus == 'processing')
+        .where(
+          (order) =>
+              order.orderStatus == 'confirmed' ||
+              order.orderStatus == 'processing',
+        )
         .length;
     final shippingCount = _orders
-        .where((order) =>
-            order.orderStatus == 'out_for_delivery' ||
-            order.orderStatus == 'ready_pickup')
+        .where(
+          (order) =>
+              order.orderStatus == 'out_for_delivery' ||
+              order.orderStatus == 'ready_pickup',
+        )
         .length;
-    final completedCount =
-        _orders.where((order) => order.orderStatus == 'completed').length;
+    final completedCount = _orders
+        .where((order) => order.orderStatus == 'completed')
+        .length;
 
     return Scaffold(
       backgroundColor: _background,
@@ -170,18 +172,17 @@ class _OrderListScreenState extends State<OrderListScreen> {
                     children: [
                       Text(
                         'Pesanan Cabang',
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.w900,
-                            ),
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(fontWeight: FontWeight.w900),
                       ),
                       const SizedBox(height: 6),
                       Text(
                         _branchName == null
                             ? 'Kelola order pelanggan yang masuk ke cabang.'
                             : 'Pantau order pelanggan untuk $_branchName.',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: _muted,
-                            ),
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodyMedium?.copyWith(color: _muted),
                       ),
                       const SizedBox(height: 16),
                       TextField(
@@ -239,22 +240,27 @@ class _OrderListScreenState extends State<OrderListScreen> {
                           _FilterChip(
                             label: 'Semua',
                             selected: _selectedFilter == 'semua',
-                            onTap: () => setState(() => _selectedFilter = 'semua'),
+                            onTap: () =>
+                                setState(() => _selectedFilter = 'semua'),
                           ),
                           _FilterChip(
                             label: 'Pending',
                             selected: _selectedFilter == 'pending',
-                            onTap: () => setState(() => _selectedFilter = 'pending'),
+                            onTap: () =>
+                                setState(() => _selectedFilter = 'pending'),
                           ),
                           _FilterChip(
                             label: 'Diproses',
                             selected: _selectedFilter == 'processing',
-                            onTap: () => setState(() => _selectedFilter = 'processing'),
+                            onTap: () =>
+                                setState(() => _selectedFilter = 'processing'),
                           ),
                           _FilterChip(
                             label: 'Pickup',
                             selected: _selectedFilter == 'ready_pickup',
-                            onTap: () => setState(() => _selectedFilter = 'ready_pickup'),
+                            onTap: () => setState(
+                              () => _selectedFilter = 'ready_pickup',
+                            ),
                           ),
                           _FilterChip(
                             label: 'Dikirim',
@@ -266,7 +272,8 @@ class _OrderListScreenState extends State<OrderListScreen> {
                           _FilterChip(
                             label: 'Selesai',
                             selected: _selectedFilter == 'completed',
-                            onTap: () => setState(() => _selectedFilter = 'completed'),
+                            onTap: () =>
+                                setState(() => _selectedFilter = 'completed'),
                           ),
                         ],
                       ),
@@ -292,7 +299,8 @@ class _OrderListScreenState extends State<OrderListScreen> {
                 SliverFillRemaining(
                   hasScrollBody: false,
                   child: _EmptyState(
-                    isSearching: _searchController.text.trim().isNotEmpty ||
+                    isSearching:
+                        _searchController.text.trim().isNotEmpty ||
                         _selectedFilter != 'semua',
                   ),
                 )
@@ -372,17 +380,17 @@ class _SummaryCard extends StatelessWidget {
           Text(
             value,
             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                ),
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+            ),
           ),
           const SizedBox(height: 4),
           Text(
             title,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.white.withValues(alpha: 0.88),
-                  fontWeight: FontWeight.w600,
-                ),
+              color: Colors.white.withValues(alpha: 0.88),
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),
@@ -428,10 +436,7 @@ class _FilterChip extends StatelessWidget {
 }
 
 class _OrderListCard extends StatelessWidget {
-  const _OrderListCard({
-    required this.order,
-    required this.onTap,
-  });
+  const _OrderListCard({required this.order, required this.onTap});
 
   final AdminOrder order;
   final VoidCallback onTap;
@@ -484,16 +489,14 @@ class _OrderListCard extends StatelessWidget {
                       children: [
                         Text(
                           order.customerName,
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w800,
-                              ),
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w800),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           order.orderNo,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: const Color(0xFF6D5A58),
-                              ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: const Color(0xFF6D5A58)),
                         ),
                       ],
                     ),
@@ -523,7 +526,10 @@ class _OrderListCard extends StatelessWidget {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  _MetaPill(icon: Icons.shopping_bag_outlined, label: order.typeLabel),
+                  _MetaPill(
+                    icon: Icons.shopping_bag_outlined,
+                    label: order.typeLabel,
+                  ),
                   _MetaPill(
                     icon: Icons.schedule_outlined,
                     label: formatShortDate(order.placedAt),
@@ -559,19 +565,20 @@ class _OrderListCard extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF6D5A58),
-                        height: 1.35,
-                      ),
+                    color: const Color(0xFF6D5A58),
+                    height: 1.35,
+                  ),
                 ),
               ],
-              if (order.courierName != null && order.courierName!.isNotEmpty) ...[
+              if (order.courierName != null &&
+                  order.courierName!.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Text(
                   'Kurir: ${order.courierName} ${order.courierPhone == null ? '' : '(${order.courierPhone})'}',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF2E7D32),
-                        fontWeight: FontWeight.w700,
-                      ),
+                    color: const Color(0xFF2E7D32),
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ],
               const SizedBox(height: 14),
@@ -599,10 +606,7 @@ class _OrderListCard extends StatelessWidget {
 }
 
 class _MetaPill extends StatelessWidget {
-  const _MetaPill({
-    required this.icon,
-    required this.label,
-  });
+  const _MetaPill({required this.icon, required this.label});
 
   final IconData icon;
   final String label;
@@ -623,9 +627,9 @@ class _MetaPill extends StatelessWidget {
           Text(
             label,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: const Color(0xFF6D5A58),
-                  fontWeight: FontWeight.w700,
-                ),
+              color: const Color(0xFF6D5A58),
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ],
       ),
@@ -651,17 +655,17 @@ class _InfoBlock extends StatelessWidget {
       children: [
         Text(
           label,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF6D5A58),
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: const Color(0xFF6D5A58)),
         ),
         const SizedBox(height: 4),
         Text(
           value,
           style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                color: highlight ? const Color(0xFFD9001B) : null,
-                fontWeight: FontWeight.w900,
-              ),
+            color: highlight ? const Color(0xFFD9001B) : null,
+            fontWeight: FontWeight.w900,
+          ),
         ),
       ],
     );
@@ -669,10 +673,7 @@ class _InfoBlock extends StatelessWidget {
 }
 
 class _ErrorState extends StatelessWidget {
-  const _ErrorState({
-    required this.message,
-    required this.onRetry,
-  });
+  const _ErrorState({required this.message, required this.onRetry});
 
   final String message;
   final Future<void> Function() onRetry;
@@ -685,21 +686,25 @@ class _ErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline_rounded, size: 56, color: Color(0xFFD9001B)),
+            const Icon(
+              Icons.error_outline_rounded,
+              size: 56,
+              color: Color(0xFFD9001B),
+            ),
             const SizedBox(height: 12),
             Text(
               'Pesanan belum bisa dimuat',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
             Text(
               message,
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF6D5A58),
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF6D5A58)),
             ),
             const SizedBox(height: 16),
             ElevatedButton(
@@ -730,13 +735,19 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.inbox_outlined, size: 58, color: Color(0xFFD9001B)),
+            const Icon(
+              Icons.inbox_outlined,
+              size: 58,
+              color: Color(0xFFD9001B),
+            ),
             const SizedBox(height: 14),
             Text(
-              isSearching ? 'Pesanan tidak ditemukan' : 'Belum ada pesanan masuk',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+              isSearching
+                  ? 'Pesanan tidak ditemukan'
+                  : 'Belum ada pesanan masuk',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
             Text(
@@ -744,9 +755,9 @@ class _EmptyState extends StatelessWidget {
                   ? 'Coba ubah pencarian atau filter status.'
                   : 'Begitu pelanggan checkout, order cabang akan muncul di sini.',
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF6D5A58),
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF6D5A58)),
             ),
           ],
         ),
