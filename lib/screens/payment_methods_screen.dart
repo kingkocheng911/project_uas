@@ -46,8 +46,8 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
         _methods = methodRows.isEmpty
             ? _fallbackMethods
             : methodRows
-                .map<_PaymentMethodViewModel>(_mapMethodRow)
-                .toList(growable: false);
+                  .map<_PaymentMethodViewModel>(_mapMethodRow)
+                  .toList(growable: false);
         _isLoading = false;
       });
     } catch (_) {
@@ -70,7 +70,8 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
       case 'qris':
         return _PaymentMethodViewModel(
           title: name.isEmpty ? 'QRIS' : name,
-          subtitle: 'Bayar melalui mobile banking atau e-wallet yang mendukung QRIS.',
+          subtitle:
+              'Bayar melalui mobile banking atau e-wallet yang mendukung QRIS.',
           icon: Icons.qr_code_2_rounded,
           iconColor: const Color(0xFF0F766E),
           iconBg: const Color(0xFFCCFBF1),
@@ -82,7 +83,8 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
       case 'ewallet':
         return _PaymentMethodViewModel(
           title: name,
-          subtitle: 'Pembayaran instan dari akun e-wallet yang sudah Anda miliki.',
+          subtitle:
+              'Pembayaran instan dari akun e-wallet yang sudah Anda miliki.',
           icon: Icons.account_balance_wallet_outlined,
           iconColor: const Color(0xFF1D4ED8),
           iconBg: const Color(0xFFDBEAFE),
@@ -94,7 +96,8 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
       case 'cod':
         return _PaymentMethodViewModel(
           title: name.isEmpty ? 'Bayar di Tempat' : name,
-          subtitle: 'Tersedia untuk area layanan tertentu dan pesanan yang memenuhi syarat.',
+          subtitle:
+              'Tersedia untuk area layanan tertentu dan pesanan yang memenuhi syarat.',
           icon: Icons.local_shipping_outlined,
           iconColor: const Color(0xFF92400E),
           iconBg: const Color(0xFFFEF3C7),
@@ -106,7 +109,8 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
       case 'cash':
         return _PaymentMethodViewModel(
           title: name.isEmpty ? 'Tunai di Kasir' : name,
-          subtitle: 'Digunakan saat ambil pesanan di cabang atau loket koperasi.',
+          subtitle:
+              'Digunakan saat ambil pesanan di cabang atau loket koperasi.',
           icon: Icons.payments_outlined,
           iconColor: const Color(0xFF7C2D12),
           iconBg: const Color(0xFFFED7AA),
@@ -182,19 +186,22 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
                   const _OperationalNote(
                     icon: Icons.info_outline_rounded,
                     title: 'Virtual Account dibuat saat checkout',
-                    subtitle: 'Nomor pembayaran tidak disimpan permanen. Sistem membuat nomor VA unik untuk setiap transaksi.',
+                    subtitle:
+                        'Nomor pembayaran tidak disimpan permanen. Sistem membuat nomor VA unik untuk setiap transaksi.',
                   ),
                   const SizedBox(height: 10),
                   const _OperationalNote(
                     icon: Icons.qr_code_2_rounded,
                     title: 'QRIS cocok untuk pembayaran cepat',
-                    subtitle: 'Pelanggan dapat membayar dari aplikasi bank atau e-wallet yang mendukung QRIS nasional.',
+                    subtitle:
+                        'Pelanggan dapat membayar dari aplikasi bank atau e-wallet yang mendukung QRIS nasional.',
                   ),
                   const SizedBox(height: 10),
                   const _OperationalNote(
                     icon: Icons.account_balance_wallet_outlined,
                     title: 'Saldo MepuPoin dipakai dari akun pelanggan',
-                    subtitle: 'Saldo tersimpan di backend dan hanya bertambah setelah top up sandbox dinyatakan berhasil.',
+                    subtitle:
+                        'Saldo tersimpan di backend dan hanya bertambah setelah top up sandbox dinyatakan berhasil.',
                   ),
                   const SizedBox(height: 32),
                 ],
@@ -275,7 +282,7 @@ class _WalletSummaryCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Text(
-              'Sandbox Ready',
+              'Siap Digunakan',
               style: TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.w700,

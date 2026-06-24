@@ -80,28 +80,48 @@ class SuperadminRepository {
   }
 
   Future<String> saveBranch(SuperadminBranchDraft draft, {String? branchId}) async {
-    final payload = draft.toDatabaseMap();
     if (branchId == null) {
-      final inserted = await _client
-          .from('branches')
-          .insert(payload)
-          .select('id')
-          .single();
+      if (draft.shouldCreateAdminCredentials) {
+        final rows = await _client.rpc(
+          'superadmin_create_branch_with_admin',
+          params: {
+            'p_code': draft.code.trim(),
+            'p_name': draft.name.trim(),
+            'p_phone': draft._nullable(draft.phone),
+            'p_email': draft._nullable(draft.email),
+            'p_address': draft.address.trim(),
+            'p_province': draft._nullable(draft.province),
+            'p_city': draft._nullable(draft.city),
+            'p_district': draft._nullable(draft.district),
+            'p_postal_code': draft._nullable(draft.postalCode),
+            'p_is_active': draft.isActive,
+            'p_admin_full_name': draft.resolvedAdminLoginName,
+            'p_admin_email': draft.adminLoginEmail.trim(),
+            'p_admin_password': draft.adminLoginPassword.trim(),
+            'p_admin_phone': draft.resolvedAdminLoginPhone,
+          },
+        );
+
+        if (rows is! List || rows.isEmpty) {
+          throw Exception('Backend tidak mengembalikan hasil pembuatan cabang.');
+        }
+        final createdRow = Map<String, dynamic>.from(rows.first as Map);
+        final createdBranchId = (createdRow['branch_id'] ?? '').toString();
+        if (createdBranchId.isEmpty) {
+          throw Exception('ID cabang baru tidak ditemukan setelah proses simpan.');
+        }
+        return createdBranchId;
+      }
+
+      final payload = draft.toDatabaseMap();
+      final inserted = await _client.from('branches').insert(payload).select('id').single();
       final createdBranchId = (inserted['id'] ?? '').toString();
       if (createdBranchId.isEmpty) {
         throw Exception('ID cabang baru tidak ditemukan setelah proses simpan.');
       }
-      if (draft.shouldCreateAdminCredentials) {
-        await upsertBranchAdminCredentials(
-          branchId: createdBranchId,
-          email: draft.adminLoginEmail.trim(),
-          password: draft.adminLoginPassword.trim(),
-          fullName: draft.resolvedAdminLoginName,
-          phone: draft.resolvedAdminLoginPhone,
-        );
-      }
       return createdBranchId;
     }
+    final payload = draft.toDatabaseMap();
     await _client.from('branches').update(payload).eq('id', branchId);
     if (draft.shouldCreateAdminCredentials) {
       await upsertBranchAdminCredentials(
