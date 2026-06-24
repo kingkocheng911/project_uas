@@ -85,6 +85,12 @@ class OrderItem {
     required this.progressLabel,
     required this.address,
     required this.items,
+    this.paymentMethodCode,
+    this.paymentMethodName,
+    this.providerVaNumber,
+    this.providerBank,
+    this.providerQrUrl,
+    this.paymentExpiresAt,
   });
 
   final String id;
@@ -95,6 +101,12 @@ class OrderItem {
   final String progressLabel;
   final String address;
   final List<String> items;
+  final String? paymentMethodCode;
+  final String? paymentMethodName;
+  final String? providerVaNumber;
+  final String? providerBank;
+  final String? providerQrUrl;
+  final DateTime? paymentExpiresAt;
 }
 
 class ActivityEntry {
