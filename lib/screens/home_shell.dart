@@ -7,6 +7,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../catalog_repository.dart';
 import '../mock_data.dart';
 import '../models.dart';
+import '../services/sandbox_order_payment_service.dart';
+import '../services/sandbox_topup_service.dart';
 import 'manage_addresses_screen.dart';
 import 'notification_history_screen.dart';
 import 'notification_settings_screen.dart';
@@ -86,10 +88,7 @@ class _CheckoutBranchContext {
 }
 
 class _CustomerOrderSnapshot {
-  const _CustomerOrderSnapshot({
-    required this.name,
-    required this.phone,
-  });
+  const _CustomerOrderSnapshot({required this.name, required this.phone});
 
   final String name;
   final String? phone;
@@ -190,6 +189,7 @@ class _HomeShellState extends State<HomeShell> {
   String? _selectedBranchId;
   String _selectedBranchName = 'Pilih Cabang';
   String _selectedBranchSubtitle = 'Pilih cabang KDMP terdekat';
+  String? _branchLoadError;
 
   @override
   void initState() {
@@ -279,6 +279,10 @@ class _HomeShellState extends State<HomeShell> {
 
   Future<void> _loadBranches() async {
     try {
+      if (!_canUseSupabase) {
+        throw Exception('Sesi login Supabase belum aktif.');
+      }
+
       final rows = await Supabase.instance.client
           .from('branches')
           .select('id, code, name, address, district, city')
@@ -316,38 +320,51 @@ class _HomeShellState extends State<HomeShell> {
 
       final selectedBranch = branches.firstWhere(
         (branch) => branch.id == preferredBranchId,
-        orElse: () => branches.isNotEmpty ? branches.first : const _UserBranchOption(
-          id: '',
-          code: '',
-          name: 'Pilih Cabang',
-          address: '',
-          district: '',
-          city: '',
-        ),
+        orElse: () => branches.isNotEmpty
+            ? branches.first
+            : const _UserBranchOption(
+                id: '',
+                code: '',
+                name: 'Pilih Cabang',
+                address: '',
+                district: '',
+                city: '',
+              ),
       );
 
       setState(() {
         _branches = branches;
-        _selectedBranchId = selectedBranch.id.isEmpty ? null : selectedBranch.id;
+        _selectedBranchId = selectedBranch.id.isEmpty
+            ? null
+            : selectedBranch.id;
         _selectedBranchName = selectedBranch.name;
         _selectedBranchSubtitle = selectedBranch.id.isEmpty
             ? 'Pilih cabang KDMP terdekat'
             : selectedBranch.subtitle;
+        _branchLoadError = null;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       setState(() {
         _branches = const [];
         _selectedBranchId = null;
         _selectedBranchName = 'Pilih Cabang';
-        _selectedBranchSubtitle = 'Pilih cabang KDMP terdekat';
+        _selectedBranchSubtitle = 'Cabang KDMP belum tersedia dari backend.';
+        _branchLoadError = error.toString();
       });
+      _showFeatureSnack(
+        context,
+        'Gagal memuat cabang dari backend: $error',
+        title: 'Cabang Gagal Dimuat',
+      );
     }
   }
 
   Future<void> _loadCatalog() async {
     try {
-      final snapshot = await _catalogRepository.load(branchId: _selectedBranchId);
+      final snapshot = await _catalogRepository.load(
+        branchId: _selectedBranchId,
+      );
       final loadedCategories = List<CategoryItem>.of(snapshot.categories);
       final loadedProducts = List<Product>.of(snapshot.products);
       if (!mounted) return;
@@ -407,6 +424,7 @@ class _HomeShellState extends State<HomeShell> {
           .select(
             'order_no, order_status, payment_status, grand_total, placed_at, '
             'order_type, delivery_label, delivery_address, courier_name, courier_phone, '
+            'provider_va_number, provider_bank, provider_qr_url, payment_expires_at, '
             'payment_methods(code, name), addresses(label, address), order_items(product_name, qty)',
           )
           .eq('user_id', user.id)
@@ -437,9 +455,7 @@ class _HomeShellState extends State<HomeShell> {
       if (user == null) return false;
       await Supabase.instance.client
           .from('profiles')
-          .update({
-            'wallet_balance': newBalance.clamp(0, 2147483647),
-          })
+          .update({'wallet_balance': newBalance.clamp(0, 2147483647)})
           .eq('id', user.id);
       return true;
     } catch (_) {
@@ -618,10 +634,7 @@ class _HomeShellState extends State<HomeShell> {
                     message: paymentMethod == 'Saldo MepuPoin'
                         ? 'Pesanan ${order.id} sudah dibayar dan sedang diproses.'
                         : 'Pesanan ${order.id} menunggu pembayaran sebelum diproses.',
-                    data: {
-                      'order_no': order.id,
-                      'status': order.status,
-                    },
+                    data: {'order_no': order.id, 'status': order.status},
                   ),
                 );
                 unawaited(_loadOrders());
@@ -655,7 +668,9 @@ class _HomeShellState extends State<HomeShell> {
             ? 'paid'
             : 'unpaid';
         final orderStatus = paymentStatus == 'paid' ? 'processing' : 'pending';
-        final paymentMethodId = await _paymentMethodIdForCheckout(paymentMethod);
+        final paymentMethodId = await _paymentMethodIdForCheckout(
+          paymentMethod,
+        );
         final branchContext = await _resolveCheckoutBranchContext();
         final customerSnapshot = await _resolveCustomerOrderSnapshot(user.id);
         final deliveryLabel = orderType == 'delivery'
@@ -695,24 +710,32 @@ class _HomeShellState extends State<HomeShell> {
             .select('id, order_no, placed_at')
             .single();
 
-        await client.from('order_items').insert(
-          items
-              .map(
-                (product) => {
-                  'order_id': orderRow['id'],
-                  'product_id': product.id,
-                  'product_name': product.name,
-                  'sku': product.id,
-                  'qty': 1,
-                  'unit_price': product.price,
-                  'discount_amount': 0,
-                  'subtotal': product.price,
-                },
-              )
-              .toList(),
-        );
+        await client
+            .from('order_items')
+            .insert(
+              items
+                  .map(
+                    (product) => {
+                      'order_id': orderRow['id'],
+                      'product_id': product.id,
+                      'product_name': product.name,
+                      'sku': product.id,
+                      'qty': 1,
+                      'unit_price': product.price,
+                      'discount_amount': 0,
+                      'subtotal': product.price,
+                    },
+                  )
+                  .toList(),
+            );
 
         final orderNo = (orderRow['order_no'] ?? '').toString();
+        SandboxOrderPaymentSummary? paymentSummary;
+        if (paymentMethod == 'Transfer Bank' || paymentMethod == 'QRIS') {
+          paymentSummary = await const SandboxOrderPaymentService()
+              .createPayment(orderNo: orderNo);
+        }
+
         return OrderItem(
           id: orderNo,
           title: groupedItems.length == 1
@@ -732,6 +755,8 @@ class _HomeShellState extends State<HomeShell> {
             orderType: orderType,
             paymentCode: _paymentMethodCodeForCheckout(paymentMethod),
             paymentName: paymentMethod,
+            providerVaNumber: paymentSummary?.providerVaNumber ?? '',
+            providerBank: paymentSummary?.providerBank ?? '',
           ),
           address: orderType == 'pickup'
               ? '${branchContext.branchName} - Pickup Counter'
@@ -740,6 +765,14 @@ class _HomeShellState extends State<HomeShell> {
             ...groupedItems,
             if (voucherLabel != null) 'Voucher: $voucherLabel',
           ],
+          paymentMethodCode:
+              paymentSummary?.paymentMethodCode ??
+              _paymentMethodCodeForCheckout(paymentMethod),
+          paymentMethodName: paymentSummary?.paymentMethodName ?? paymentMethod,
+          providerVaNumber: paymentSummary?.providerVaNumber,
+          providerBank: paymentSummary?.providerBank,
+          providerQrUrl: paymentSummary?.providerQrUrl,
+          paymentExpiresAt: paymentSummary?.paymentExpiresAt,
         );
       } catch (error) {
         if (mounted) {
@@ -807,6 +840,9 @@ class _HomeShellState extends State<HomeShell> {
           : codeSuffix.padLeft(8, '0');
       return 'Virtual Account BNI 8808$vaSuffix • bayar sebelum 23:14';
     }
+    if (paymentMethod == 'QRIS') {
+      return 'QRIS pembayaran menunggu dipindai dan dibayar';
+    }
     return 'Bayar di kasir koperasi saat mengambil pesanan';
   }
 
@@ -835,7 +871,9 @@ class _HomeShellState extends State<HomeShell> {
     if (_branches.isEmpty) {
       _showFeatureSnack(
         context,
-        'Cabang KDMP belum tersedia dari backend.',
+        _branchLoadError == null
+            ? 'Cabang KDMP belum tersedia dari backend.'
+            : 'Cabang KDMP belum tersedia dari backend. Detail: $_branchLoadError',
         title: 'Cabang Tidak Ditemukan',
       );
       return;
@@ -852,16 +890,16 @@ class _HomeShellState extends State<HomeShell> {
             children: [
               Text(
                 'Pilih Cabang KDMP',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: 6),
               Text(
                 'Produk, stok, harga, dan pesanan akan mengikuti cabang yang dipilih.',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: const Color(0xFF6D5A58),
-                    ),
+                  color: const Color(0xFF6D5A58),
+                ),
               ),
               const SizedBox(height: 18),
               for (final branch in _branches)
@@ -905,21 +943,24 @@ class _HomeShellState extends State<HomeShell> {
                                 children: [
                                   Text(
                                     branch.name,
-                                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                          fontWeight: FontWeight.w800,
-                                        ),
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium
+                                        ?.copyWith(fontWeight: FontWeight.w800),
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
                                     branch.subtitle,
-                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    style: Theme.of(context).textTheme.bodySmall
+                                        ?.copyWith(
                                           color: const Color(0xFF6D5A58),
                                         ),
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
                                     branch.address,
-                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    style: Theme.of(context).textTheme.bodySmall
+                                        ?.copyWith(
                                           color: const Color(0xFF9A7B76),
                                         ),
                                   ),
@@ -943,7 +984,9 @@ class _HomeShellState extends State<HomeShell> {
       },
     );
 
-    if (selected == null || !mounted || selected.id == _selectedBranchId) return;
+    if (selected == null || !mounted || selected.id == _selectedBranchId) {
+      return;
+    }
 
     setState(() {
       _selectedBranchId = selected.id;
@@ -1027,6 +1070,8 @@ class _HomeShellState extends State<HomeShell> {
         orderType: orderType,
         paymentCode: (paymentRow['code'] ?? '').toString(),
         paymentName: (paymentRow['name'] ?? '').toString(),
+        providerVaNumber: (row['provider_va_number'] ?? '').toString(),
+        providerBank: (row['provider_bank'] ?? '').toString(),
       ),
       address: _backendOrderAddress(
         orderType: orderType,
@@ -1034,6 +1079,14 @@ class _HomeShellState extends State<HomeShell> {
         row: row,
       ),
       items: items,
+      paymentMethodCode: (paymentRow['code'] ?? '').toString(),
+      paymentMethodName: (paymentRow['name'] ?? '').toString(),
+      providerVaNumber: (row['provider_va_number'] ?? '').toString(),
+      providerBank: (row['provider_bank'] ?? '').toString(),
+      providerQrUrl: (row['provider_qr_url'] ?? '').toString(),
+      paymentExpiresAt: DateTime.tryParse(
+        (row['payment_expires_at'] ?? '').toString(),
+      )?.toLocal(),
     );
   }
 
@@ -1062,6 +1115,8 @@ class _HomeShellState extends State<HomeShell> {
     switch (paymentMethod) {
       case 'Transfer Bank':
         return 'transfer_bca';
+      case 'QRIS':
+        return 'qris';
       case 'Bayar di Koperasi':
         return 'cash';
       default:
@@ -1177,6 +1232,8 @@ class _HomeShellState extends State<HomeShell> {
     required String orderType,
     required String paymentCode,
     required String paymentName,
+    String providerVaNumber = '',
+    String providerBank = '',
   }) {
     if (orderStatus == 'cancelled') {
       return 'Pesanan dibatalkan.';
@@ -1186,12 +1243,22 @@ class _HomeShellState extends State<HomeShell> {
     }
     if (paymentStatus != 'paid' && orderStatus == 'pending') {
       if (paymentCode.startsWith('transfer_')) {
+        final bankName = providerBank.isNotEmpty
+            ? providerBank.toUpperCase()
+            : paymentName.isEmpty
+            ? 'Bank'
+            : paymentName;
+        if (providerVaNumber.isNotEmpty) {
+          return 'Virtual Account $bankName $providerVaNumber';
+        }
         final suffix = orderNo.replaceAll(RegExp(r'[^0-9]'), '');
         final vaSuffix = suffix.length > 8
             ? suffix.substring(suffix.length - 8)
             : suffix.padLeft(8, '0');
-        final bankName = paymentName.isEmpty ? 'Bank' : paymentName;
         return 'Virtual Account $bankName 8808$vaSuffix';
+      }
+      if (paymentCode == 'qris') {
+        return 'QRIS pembayaran menunggu dipindai dan dibayar';
       }
       return 'Bayar di kasir koperasi saat mengambil pesanan';
     }
@@ -1345,51 +1412,37 @@ class _HomeShellState extends State<HomeShell> {
     }
 
     try {
-      final createdResult = await Supabase.instance.client.rpc(
-        'create_wallet_topup',
-        params: {
-          'p_amount': request.amount,
-          'p_payment_method': _walletPaymentMethodCode(request.method),
-        },
+      final createdSummary = await const SandboxTopUpService().createTopUp(
+        amount: request.amount,
+        method: _walletPaymentMethodCode(request.method),
       );
-      final createdRow = _rpcRow(createdResult);
-      if (createdRow == null) {
-        throw Exception('Transaksi top up sandbox tidak dapat dibuat.');
-      }
 
       if (!mounted) return;
 
-      final confirmed = await showDialog<bool>(
+      final latestSummary = await showDialog<SandboxTopUpSummary>(
         context: context,
         barrierDismissible: false,
         builder: (_) => _SandboxPaymentDialog(
-          summary: _SandboxTopUpSummary.fromRow(createdRow),
+          initialSummary: createdSummary,
+          onCheckStatus: () =>
+              const SandboxTopUpService().syncTopUp(createdSummary.topupId),
         ),
       );
       if (!mounted) return;
 
-      if (confirmed != true) {
+      if (latestSummary == null || !latestSummary.isPaid) {
         _showFeatureSnack(
           context,
-          'Transaksi sandbox disimpan sebagai pending. Anda bisa lanjutkan lagi nanti.',
+          'Transaksi masih menunggu pembayaran. Anda bisa cek status lagi nanti.',
           title: 'Menunggu Pembayaran',
           icon: Icons.schedule_outlined,
         );
         return;
       }
 
-      final confirmResult = await Supabase.instance.client.rpc(
-        'confirm_wallet_topup',
-        params: {
-          'p_topup_id': createdRow['topup_id'],
-        },
-      );
-      final confirmRow = _rpcRow(confirmResult);
-      if (confirmRow == null) {
-        throw Exception('Konfirmasi pembayaran sandbox gagal.');
-      }
-
-      final newBalance = (confirmRow['wallet_balance'] as num?)?.toInt() ?? _mepuBalance;
+      final newBalance = latestSummary.walletBalance > 0
+          ? latestSummary.walletBalance
+          : _mepuBalance + request.amount;
       if (!mounted) return;
       setState(() => _mepuBalance = newBalance);
       unawaited(_loadWalletBalance());
@@ -1399,23 +1452,22 @@ class _HomeShellState extends State<HomeShell> {
           title: 'Top Up berhasil',
           message:
               'Saldo bertambah ${formatRupiah(request.amount)}. Saldo sekarang ${formatRupiah(newBalance)}.',
-          data: {
-            'amount': request.amount,
-            'wallet_balance': newBalance,
-          },
+          data: {'amount': request.amount, 'wallet_balance': newBalance},
         ),
       );
       _showFeatureSnack(
         context,
-        'Sandbox sukses. Saldo bertambah ${formatRupiah(request.amount)} dan sekarang ${formatRupiah(newBalance)}.',
+        'Pembayaran sandbox sukses. Saldo bertambah ${formatRupiah(request.amount)} dan sekarang ${formatRupiah(newBalance)}.',
         title: 'Top Up Berhasil',
         icon: Icons.account_balance_wallet_outlined,
       );
-    } on PostgrestException catch (error) {
+    } on FunctionException catch (error) {
       if (!mounted) return;
       _showFeatureSnack(
         context,
-        error.message,
+        error.details?.toString() ??
+            error.reasonPhrase ??
+            'Top up sandbox gagal.',
         title: 'Top Up Gagal',
         icon: Icons.error_outline_rounded,
       );
@@ -1430,22 +1482,74 @@ class _HomeShellState extends State<HomeShell> {
     }
   }
 
-  Map<String, dynamic>? _rpcRow(dynamic result) {
-    if (result is Map<String, dynamic>) return result;
-    if (result is List && result.isNotEmpty && result.first is Map<String, dynamic>) {
-      return result.first as Map<String, dynamic>;
-    }
-    return null;
-  }
-
   String _walletPaymentMethodCode(String method) {
     return method == 'QRIS' ? 'qris' : 'virtual_account';
   }
 
-  OrderItem? _payOrder(OrderItem order) {
+  Future<OrderItem?> _payOrder(OrderItem order) async {
     final index = _orderItems.indexWhere((item) => item.id == order.id);
     if (index == -1) return null;
+    final isSandboxPayment =
+        (order.paymentMethodCode ?? '') == 'qris' ||
+        (order.paymentMethodCode ?? '').startsWith('transfer_') ||
+        order.progressLabel.contains('Virtual Account') ||
+        order.progressLabel.contains('QRIS');
     final usesMepuBalance = order.progressLabel.contains('Saldo MepuPoin');
+    if (isSandboxPayment) {
+      try {
+        final paymentSummary = await const SandboxOrderPaymentService()
+            .syncPayment(orderNo: order.id);
+        final updatedOrder = _mergeOrderWithPaymentSummary(
+          order,
+          paymentSummary,
+        );
+        if (!mounted) return updatedOrder;
+        setState(() => _orderItems[index] = updatedOrder);
+        unawaited(_loadOrders());
+        if (paymentSummary.isPaid) {
+          unawaited(
+            _createNotification(
+              type: 'order',
+              title: 'Pembayaran pesanan berhasil',
+              message:
+                  'Pesanan ${order.id} sudah dibayar melalui sandbox dan sedang diproses.',
+              data: {'order_no': order.id},
+            ),
+          );
+          _showFeatureSnack(
+            context,
+            'Pembayaran sandbox sudah terverifikasi. Pesanan masuk ke proses berikutnya.',
+            title: 'Pembayaran Berhasil',
+            icon: Icons.verified_rounded,
+          );
+        } else if (paymentSummary.isFailed) {
+          _showFeatureSnack(
+            context,
+            'Pembayaran pesanan belum berhasil atau sudah kedaluwarsa.',
+            title: 'Pembayaran Gagal',
+            icon: Icons.error_outline_rounded,
+          );
+        } else {
+          _showFeatureSnack(
+            context,
+            'Sandbox masih menunggu pembayaran untuk pesanan ini.',
+            title: 'Masih Pending',
+            icon: Icons.schedule_outlined,
+          );
+        }
+        return updatedOrder;
+      } catch (error) {
+        if (mounted) {
+          _showFeatureSnack(
+            context,
+            '$error',
+            title: 'Cek Status Gagal',
+            icon: Icons.error_outline_rounded,
+          );
+        }
+        return null;
+      }
+    }
     if (usesMepuBalance && _mepuBalance < order.total) {
       _showFeatureSnack(
         context,
@@ -1485,10 +1589,7 @@ class _HomeShellState extends State<HomeShell> {
       unawaited(
         Supabase.instance.client
             .from('orders')
-            .update({
-              'order_status': nextStatus,
-              'payment_status': 'paid',
-            })
+            .update({'order_status': nextStatus, 'payment_status': 'paid'})
             .eq('order_no', order.id)
             .then((_) => _loadOrders()),
       );
@@ -1506,10 +1607,7 @@ class _HomeShellState extends State<HomeShell> {
         message: usesMepuBalance
             ? 'Pembayaran untuk pesanan ${order.id} berhasil. Saldo sekarang ${formatRupiah(_mepuBalance)}.'
             : 'Pesanan ${order.id} berhasil dibayar dan sedang diproses.',
-        data: {
-          'order_no': order.id,
-          'wallet_balance': _mepuBalance,
-        },
+        data: {'order_no': order.id, 'wallet_balance': _mepuBalance},
       ),
     );
     _showFeatureSnack(
@@ -1519,6 +1617,46 @@ class _HomeShellState extends State<HomeShell> {
       icon: Icons.verified_rounded,
     );
     return updatedOrder;
+  }
+
+  OrderItem _mergeOrderWithPaymentSummary(
+    OrderItem order,
+    SandboxOrderPaymentSummary summary,
+  ) {
+    final isPickup = order.address.contains('Pickup Counter');
+    final nextStatus = summary.paymentStatus == 'paid'
+        ? (isPickup ? 'Preparing Pickup' : 'On Delivery')
+        : summary.isFailed
+        ? 'Cancelled'
+        : 'Payment Pending';
+
+    final nextProgressLabel = _backendProgressLabel(
+      orderNo: summary.orderNo,
+      orderStatus: summary.orderStatus,
+      paymentStatus: summary.paymentStatus,
+      orderType: isPickup ? 'pickup' : 'delivery',
+      paymentCode: summary.paymentMethodCode,
+      paymentName: summary.paymentMethodName,
+      providerVaNumber: summary.providerVaNumber,
+      providerBank: summary.providerBank,
+    );
+
+    return OrderItem(
+      id: order.id,
+      title: order.title,
+      status: nextStatus,
+      createdAt: order.createdAt,
+      total: order.total,
+      progressLabel: nextProgressLabel,
+      address: order.address,
+      items: order.items,
+      paymentMethodCode: summary.paymentMethodCode,
+      paymentMethodName: summary.paymentMethodName,
+      providerVaNumber: summary.providerVaNumber,
+      providerBank: summary.providerBank,
+      providerQrUrl: summary.providerQrUrl,
+      paymentExpiresAt: summary.paymentExpiresAt,
+    );
   }
 
   void _cancelOrder(OrderItem order) {
@@ -1541,10 +1679,7 @@ class _HomeShellState extends State<HomeShell> {
       unawaited(
         Supabase.instance.client
             .from('orders')
-            .update({
-              'order_status': 'cancelled',
-              'payment_status': 'failed',
-            })
+            .update({'order_status': 'cancelled', 'payment_status': 'failed'})
             .eq('order_no', order.id)
             .then((_) => _loadOrders()),
       );
@@ -1632,9 +1767,7 @@ class _HomeShellState extends State<HomeShell> {
 }
 
 Map<String, int> _createStocks(List<Product> items) {
-  return {
-    for (final product in items) product.id: product.stock,
-  };
+  return {for (final product in items) product.id: product.stock};
 }
 
 Future<void> _showFeatureSnack(
@@ -2157,193 +2290,277 @@ class _TopUpDialogState extends State<_TopUpDialog> {
 }
 
 class _TopUpRequest {
-  const _TopUpRequest({
-    required this.amount,
-    required this.method,
-  });
+  const _TopUpRequest({required this.amount, required this.method});
 
   final int amount;
   final String method;
 }
 
-class _SandboxTopUpSummary {
-  const _SandboxTopUpSummary({
-    required this.topupId,
-    required this.amount,
-    required this.adminFee,
-    required this.totalPayment,
-    required this.paymentMethod,
-    required this.status,
-    required this.reference,
-    required this.instruction,
-    required this.expiresAt,
+class _SandboxPaymentDialog extends StatefulWidget {
+  const _SandboxPaymentDialog({
+    required this.initialSummary,
+    required this.onCheckStatus,
   });
 
-  factory _SandboxTopUpSummary.fromRow(Map<String, dynamic> row) {
-    return _SandboxTopUpSummary(
-      topupId: (row['topup_id'] ?? '').toString(),
-      amount: (row['amount'] as num?)?.toInt() ?? 0,
-      adminFee: (row['admin_fee'] as num?)?.toInt() ?? 0,
-      totalPayment: (row['total_payment'] as num?)?.toInt() ?? 0,
-      paymentMethod: (row['payment_method'] ?? '').toString(),
-      status: (row['status'] ?? '').toString(),
-      reference: (row['sandbox_reference'] ?? '').toString(),
-      instruction: (row['payment_instruction'] ?? '').toString(),
-      expiresAt: DateTime.tryParse((row['expires_at'] ?? '').toString()),
-    );
-  }
+  final SandboxTopUpSummary initialSummary;
+  final Future<SandboxTopUpSummary> Function() onCheckStatus;
 
-  final String topupId;
-  final int amount;
-  final int adminFee;
-  final int totalPayment;
-  final String paymentMethod;
-  final String status;
-  final String reference;
-  final String instruction;
-  final DateTime? expiresAt;
-
-  String get paymentMethodLabel {
-    if (paymentMethod == 'qris') return 'QRIS Sandbox';
-    return 'Virtual Account Sandbox';
-  }
+  @override
+  State<_SandboxPaymentDialog> createState() => _SandboxPaymentDialogState();
 }
 
-class _SandboxPaymentDialog extends StatelessWidget {
-  const _SandboxPaymentDialog({required this.summary});
-
-  final _SandboxTopUpSummary summary;
+class _SandboxPaymentDialogState extends State<_SandboxPaymentDialog> {
+  late SandboxTopUpSummary _summary = widget.initialSummary;
+  bool _isChecking = false;
+  String? _errorText;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final expiresAt = summary.expiresAt;
+    final expiresAt = _summary.expiresAt;
     final expiresLabel = expiresAt == null
         ? '-'
         : '${expiresAt.day.toString().padLeft(2, '0')}/${expiresAt.month.toString().padLeft(2, '0')}/${expiresAt.year} '
-            '${expiresAt.hour.toString().padLeft(2, '0')}:${expiresAt.minute.toString().padLeft(2, '0')}';
+              '${expiresAt.hour.toString().padLeft(2, '0')}:${expiresAt.minute.toString().padLeft(2, '0')}';
 
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      child: Padding(
-        padding: const EdgeInsets.all(22),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primary.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Icon(
-                    Icons.account_balance_wallet_outlined,
-                    color: theme.colorScheme.primary,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Pembayaran Sandbox',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w900,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 460),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(22),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Icon(
+                      Icons.account_balance_wallet_outlined,
+                      color: theme.colorScheme.primary,
                     ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            Text(
-              'Transaksi top up sudah dibuat sebagai sandbox. Simulasikan pembayaran berhasil untuk menambah saldo ke akun Anda.',
-              style: theme.textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 18),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: Column(
-                children: [
-                  _TopUpSummaryRow(
-                    label: 'Reference',
-                    value: summary.reference,
-                  ),
-                  const SizedBox(height: 10),
-                  _TopUpSummaryRow(
-                    label: 'Metode',
-                    value: summary.paymentMethodLabel,
-                  ),
-                  const SizedBox(height: 10),
-                  _TopUpSummaryRow(
-                    label: 'Saldo masuk',
-                    value: formatRupiah(summary.amount),
-                  ),
-                  const SizedBox(height: 10),
-                  _TopUpSummaryRow(
-                    label: 'Biaya admin',
-                    value: formatRupiah(summary.adminFee),
-                  ),
-                  const Divider(height: 24),
-                  _TopUpSummaryRow(
-                    label: 'Total bayar',
-                    value: formatRupiah(summary.totalPayment),
-                    emphasized: true,
-                  ),
-                  const SizedBox(height: 10),
-                  _TopUpSummaryRow(
-                    label: 'Berlaku sampai',
-                    value: expiresLabel,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Pembayaran',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF7ED),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFFED7AA)),
-              ),
-              child: Text(
-                summary.instruction,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: const Color(0xFF9A3412),
+              const SizedBox(height: 18),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: Column(
+                  children: [
+                    _TopUpSummaryRow(
+                      label: 'Reference',
+                      value: _summary.reference,
+                    ),
+                    const SizedBox(height: 10),
+                    _TopUpSummaryRow(
+                      label: 'Metode',
+                      value: _summary.paymentMethodLabel,
+                    ),
+                    const SizedBox(height: 10),
+                    _TopUpSummaryRow(
+                      label: 'Status',
+                      value: _statusLabel(_summary.status),
+                    ),
+                    const SizedBox(height: 10),
+                    _TopUpSummaryRow(
+                      label: 'Saldo masuk',
+                      value: formatRupiah(_summary.amount),
+                    ),
+                    const SizedBox(height: 10),
+                    _TopUpSummaryRow(
+                      label: 'Biaya admin',
+                      value: formatRupiah(_summary.adminFee),
+                    ),
+                    const Divider(height: 24),
+                    _TopUpSummaryRow(
+                      label: 'Total bayar',
+                      value: formatRupiah(_summary.totalPayment),
+                      emphasized: true,
+                    ),
+                    const SizedBox(height: 10),
+                    _TopUpSummaryRow(
+                      label: 'Berlaku sampai',
+                      value: expiresLabel,
+                    ),
+                  ],
                 ),
               ),
-            ),
-            const SizedBox(height: 18),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.of(context).pop(false),
-                    child: const Text('Nanti Saja'),
+              const SizedBox(height: 16),
+              if (_summary.paymentMethod == 'qris' &&
+                  _summary.providerQrUrl.isNotEmpty) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        'Scan QRIS',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: Image.network(
+                          _summary.providerQrUrl,
+                          height: 220,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) =>
+                              Container(
+                                height: 180,
+                                alignment: Alignment.center,
+                                child: const Text('QR gagal dimuat'),
+                              ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: () => Navigator.of(context).pop(true),
-                    child: const Text('Simulasikan Berhasil'),
+                const SizedBox(height: 16),
+              ],
+              if (_summary.paymentMethod == 'virtual_account') ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Column(
+                    children: [
+                      _TopUpSummaryRow(
+                        label: 'Bank',
+                        value: _summary.providerBank.isEmpty
+                            ? 'BCA'
+                            : _summary.providerBank.toUpperCase(),
+                      ),
+                      const SizedBox(height: 10),
+                      _TopUpSummaryRow(
+                        label: 'Virtual Account',
+                        value: _summary.providerVaNumber.isEmpty
+                            ? '-'
+                            : _summary.providerVaNumber,
+                        emphasized: true,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              if (_errorText != null) ...[
+                const SizedBox(height: 14),
+                Text(
+                  _errorText!,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFFB42318),
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
-            ),
-          ],
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _isChecking
+                          ? null
+                          : () => Navigator.of(
+                              context,
+                            ).pop(_summary.isPaid ? _summary : null),
+                      child: Text(_summary.isPaid ? 'Selesai' : 'Tutup'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _isChecking || _summary.isPaid
+                          ? null
+                          : _checkStatus,
+                      icon: _isChecking
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.sync_rounded),
+                      label: Text(_summary.isPaid ? 'Lunas' : 'Cek Status'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  Future<void> _checkStatus() async {
+    setState(() {
+      _isChecking = true;
+      _errorText = null;
+    });
+
+    try {
+      final latest = await widget.onCheckStatus();
+      if (!mounted) return;
+      setState(() => _summary = latest);
+      if (latest.isPaid) {
+        Navigator.of(context).pop(latest);
+      }
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _errorText = '$error');
+    } finally {
+      if (mounted) {
+        setState(() => _isChecking = false);
+      }
+    }
+  }
+
+  String _statusLabel(String status) {
+    switch (status) {
+      case 'paid':
+        return 'Berhasil';
+      case 'expired':
+        return 'Kedaluwarsa';
+      case 'failed':
+        return 'Gagal';
+      case 'cancelled':
+        return 'Dibatalkan';
+      default:
+        return 'Menunggu Pembayaran';
+    }
   }
 }
 
@@ -4116,7 +4333,12 @@ class _PendingPaymentCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isTransferBank = order.progressLabel.contains('Virtual Account');
+    final isQris =
+        (order.paymentMethodCode ?? '') == 'qris' ||
+        order.progressLabel.contains('QRIS');
+    final isTransferBank =
+        (order.paymentMethodCode ?? '').startsWith('transfer_') ||
+        order.progressLabel.contains('Virtual Account');
     final isPayAtCoop = order.progressLabel.contains('kasir koperasi');
 
     return Container(
@@ -4151,7 +4373,7 @@ class _PendingPaymentCard extends StatelessWidget {
                     Text(order.id, style: theme.textTheme.titleMedium),
                     const SizedBox(height: 4),
                     Text(
-                      isTransferBank
+                      isTransferBank || isQris
                           ? 'Batas bayar: 23:14:59'
                           : isPayAtCoop
                           ? 'Bayar saat ambil pesanan di koperasi'
@@ -4429,23 +4651,23 @@ class _SelectedBranchCard extends StatelessWidget {
                     Text(
                       'Cabang Aktif',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: const Color(0xFF9A7B76),
-                            fontWeight: FontWeight.w700,
-                          ),
+                        color: const Color(0xFF9A7B76),
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       branchName,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w900,
-                          ),
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       branchSubtitle,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: const Color(0xFF6D5A58),
-                          ),
+                        color: const Color(0xFF6D5A58),
+                      ),
                     ),
                   ],
                 ),
@@ -5471,7 +5693,7 @@ class CheckoutScreen extends StatefulWidget {
   final List<Product> items;
   final int mepuBalance;
   final Map<String, int> productStocks;
-  final OrderItem? Function(OrderItem order) onCompletePayment;
+  final Future<OrderItem?> Function(OrderItem order) onCompletePayment;
   final ValueChanged<OrderItem> onCancelOrder;
   final Future<OrderItem?> Function(
     List<Product> items,
@@ -5481,7 +5703,8 @@ class CheckoutScreen extends StatefulWidget {
     String address,
     int finalTotal,
     String? voucherLabel,
-  ) onPlaceOrder;
+  )
+  onPlaceOrder;
 
   @override
   State<CheckoutScreen> createState() => _CheckoutScreenState();
@@ -5521,8 +5744,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   CheckoutAddress get selectedAddress =>
       deliveryAddresses[selectedAddressIndex];
 
-  String? get selectedAddressId =>
-      deliveryAddresses.isEmpty ? null : deliveryAddresses[selectedAddressIndex].id;
+  String? get selectedAddressId => deliveryAddresses.isEmpty
+      ? null
+      : deliveryAddresses[selectedAddressIndex].id;
 
   Future<void> _loadDeliveryAddresses() async {
     try {
@@ -5544,10 +5768,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final loadedAddresses = rows
           .map<CheckoutAddress>(
             (row) => _toCheckoutAddress(
-              SavedAddressResult.fromMap(
-                row,
-                fallbackUserId: user.id,
-              ),
+              SavedAddressResult.fromMap(row, fallbackUserId: user.id),
             ),
           )
           .toList();
@@ -5746,6 +5967,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   onTap: () => setState(() => paymentMethod = 'Transfer Bank'),
                 ),
                 _CheckoutOption(
+                  title: const Text('QRIS'),
+                  subtitle: const Text(
+                    'Bayar dengan scan QRIS dari e-wallet atau mobile banking',
+                  ),
+                  selected: paymentMethod == 'QRIS',
+                  onTap: () => setState(() => paymentMethod = 'QRIS'),
+                ),
+                _CheckoutOption(
                   title: const Text('Bayar di Koperasi'),
                   subtitle: Text(
                     deliveryMethod == 'Kirim ke Rumah'
@@ -5833,8 +6062,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final stock = widget.productStocks[item.product.id] ?? 0;
       if (item.quantity > stock) {
         _showFeatureSnack(
-        context,
-        'Stok ${item.product.name} tersisa $stock. Kurangi jumlah pembelian sebelum checkout.',
+          context,
+          'Stok ${item.product.name} tersisa $stock. Kurangi jumlah pembelian sebelum checkout.',
           title: 'Stok Tidak Cukup',
           icon: Icons.inventory_2_outlined,
         );
@@ -5960,7 +6189,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     await _loadDeliveryAddresses();
     if (!mounted) return;
     final newIndex = deliveryAddresses.indexWhere(
-      (address) => address.address == selected.address && address.label == selected.label,
+      (address) =>
+          address.address == selected.address &&
+          address.label == selected.label,
     );
     if (newIndex >= 0) {
       setState(() => selectedAddressIndex = newIndex);
@@ -5984,7 +6215,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     await _loadDeliveryAddresses();
     if (!mounted) return;
     final newIndex = deliveryAddresses.indexWhere(
-      (address) => address.address == selected.address && address.label == selected.label,
+      (address) =>
+          address.address == selected.address &&
+          address.label == selected.label,
     );
     if (newIndex >= 0) {
       setState(() => selectedAddressIndex = newIndex);
@@ -6014,7 +6247,7 @@ class TransactionCompletionScreen extends StatefulWidget {
   });
 
   final OrderItem initialOrder;
-  final OrderItem? Function(OrderItem order) onCompletePayment;
+  final Future<OrderItem?> Function(OrderItem order) onCompletePayment;
   final ValueChanged<OrderItem> onCancelOrder;
 
   @override
@@ -6025,9 +6258,14 @@ class TransactionCompletionScreen extends StatefulWidget {
 class _TransactionCompletionScreenState
     extends State<TransactionCompletionScreen> {
   late OrderItem currentOrder = widget.initialOrder;
+  bool _isSubmitting = false;
 
   bool get _isPending => currentOrder.status == 'Payment Pending';
+  bool get _isQris =>
+      (currentOrder.paymentMethodCode ?? '') == 'qris' ||
+      currentOrder.progressLabel.contains('QRIS');
   bool get _isTransferBank =>
+      ((currentOrder.paymentMethodCode ?? '').startsWith('transfer_')) ||
       currentOrder.progressLabel.contains('Virtual Account');
   bool get _isPayAtCoop =>
       currentOrder.progressLabel.contains('kasir koperasi');
@@ -6211,7 +6449,7 @@ class _TransactionCompletionScreenState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Bank tujuan: BNI Virtual Account',
+                    'Bank tujuan: ${((currentOrder.providerBank ?? '').trim().isEmpty ? 'BCA' : (currentOrder.providerBank ?? '').toUpperCase())} Virtual Account',
                     style: theme.textTheme.titleMedium,
                   ),
                   const SizedBox(height: 8),
@@ -6251,12 +6489,77 @@ class _TransactionCompletionScreenState
                     ),
                   ),
                   const SizedBox(height: 10),
+                  if (currentOrder.paymentExpiresAt != null) ...[
+                    Text(
+                      'Berlaku sampai ${_formatPaymentExpiry(currentOrder.paymentExpiresAt!)}',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: const Color(0xFF64748B),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
                   Text(
                     'Lakukan transfer tepat sesuai nominal agar sistem memverifikasi pembayaran secara otomatis.',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: const Color(0xFF64748B),
                     ),
                   ),
+                ],
+              ),
+            ),
+          ],
+          if (_isQris) ...[
+            const SizedBox(height: 18),
+            _CheckoutSection(
+              title: 'Pembayaran QRIS',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Scan QRIS berikut untuk menyelesaikan pembayaran pesanan.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  if ((currentOrder.providerQrUrl ?? '').isNotEmpty)
+                    Center(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(18),
+                        child: Image.network(
+                          currentOrder.providerQrUrl!,
+                          height: 240,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              height: 180,
+                              alignment: Alignment.center,
+                              child: const Text('QR gagal dimuat'),
+                            );
+                          },
+                        ),
+                      ),
+                    )
+                  else
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: softBackground,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: const Text(
+                        'QRIS belum tersedia. Coba cek status beberapa saat lagi.',
+                      ),
+                    ),
+                  const SizedBox(height: 12),
+                  if (currentOrder.paymentExpiresAt != null)
+                    Text(
+                      'Berlaku sampai ${_formatPaymentExpiry(currentOrder.paymentExpiresAt!)}',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: const Color(0xFF64748B),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -6387,15 +6690,21 @@ class _TransactionCompletionScreenState
               ],
               Expanded(
                 child: FilledButton(
-                  onPressed: _isPending ? _completeTransaction : _backToHome,
+                  onPressed: _isSubmitting
+                      ? null
+                      : _isPending
+                      ? _completeTransaction
+                      : _backToHome,
                   style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(52),
                     backgroundColor: theme.colorScheme.primary,
                   ),
                   child: Text(
-                    _isPending
-                        ? (_isTransferBank
-                              ? 'Saya Sudah Bayar'
+                    _isSubmitting
+                        ? 'Memeriksa...'
+                        : _isPending
+                        ? (_isTransferBank || _isQris
+                              ? 'Cek Status Pembayaran'
                               : 'Selesaikan Transaksi')
                         : 'Kembali ke Beranda',
                   ),
@@ -6408,10 +6717,16 @@ class _TransactionCompletionScreenState
     );
   }
 
-  void _completeTransaction() {
-    final updatedOrder = widget.onCompletePayment(currentOrder);
-    if (updatedOrder == null || !mounted) return;
-    setState(() => currentOrder = updatedOrder);
+  Future<void> _completeTransaction() async {
+    setState(() => _isSubmitting = true);
+    final updatedOrder = await widget.onCompletePayment(currentOrder);
+    if (!mounted) return;
+    setState(() {
+      _isSubmitting = false;
+      if (updatedOrder != null) {
+        currentOrder = updatedOrder;
+      }
+    });
   }
 
   void _backToHome() {
@@ -6449,13 +6764,23 @@ class _TransactionCompletionScreenState
   }
 
   String _paymentMethodLabel() {
-    if (_isTransferBank) return 'Transfer Bank BNI Virtual Account';
+    if (_isQris) {
+      return 'QRIS';
+    }
+    if (_isTransferBank) {
+      final bank = (currentOrder.providerBank ?? '').trim();
+      return bank.isEmpty
+          ? 'Transfer Bank Virtual Account'
+          : 'Transfer Bank ${bank.toUpperCase()} Virtual Account';
+    }
     if (_isPayAtCoop) return 'Bayar di Koperasi';
     return 'Saldo MepuPoin';
   }
 
   String _estimatedFulfillmentText() {
-    if (_isPending && _isTransferBank) return 'Bayar dalam 1 x 24 jam';
+    if (_isPending && (_isTransferBank || _isQris)) {
+      return 'Bayar dalam 1 x 24 jam';
+    }
     if (_isPending && _isPayAtCoop) return 'Bayar saat pengambilan';
     if (_isPickupOrder) return 'Siap diambil hari ini, 15.00 - 18.00';
     return 'Tiba hari ini, 16.00 - 19.00';
@@ -6468,8 +6793,15 @@ class _TransactionCompletionScreenState
   }
 
   String _extractVirtualAccount(OrderItem order) {
+    final savedVa = (order.providerVaNumber ?? '').trim();
+    if (savedVa.isNotEmpty) return savedVa;
     final match = RegExp(r'(\d{8,})').firstMatch(order.progressLabel);
     return match?.group(1) ?? '880800000000';
+  }
+
+  String _formatPaymentExpiry(DateTime value) {
+    return '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')}/${value.year} '
+        '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
   }
 }
 

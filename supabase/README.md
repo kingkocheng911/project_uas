@@ -154,3 +154,53 @@ supabase db push
 
 - Setelah memakai workflow migration, hindari mengubah schema langsung dari SQL Editor remote untuk perubahan permanen.
 - Gunakan migration file agar schema tetap sinkron dengan Git.
+
+## Integrasi Sandbox Pembayaran
+
+Project ini menyiapkan alur top up saldo dan checkout `Transfer Bank` atau `QRIS`
+melalui sandbox pembayaran internal berbasis Supabase Edge Functions.
+
+### 1. Deploy Edge Functions
+
+Jalankan:
+
+```bash
+supabase functions deploy sandbox-start-topup
+supabase functions deploy sandbox-sync-topup
+supabase functions deploy sandbox-start-order-payment
+supabase functions deploy sandbox-sync-order-payment
+```
+
+### 2. Push migration terbaru
+
+Jalankan:
+
+```bash
+supabase db push
+```
+
+Migration yang perlu ikut ter-push:
+
+- `20260624090000_add_sandbox_provider_fields_to_wallet_topups.sql`
+- `20260624101500_add_sandbox_provider_fields_to_orders.sql`
+
+Keduanya menambah kolom metadata provider sandbox dan function SQL idempoten
+untuk update status top up maupun order.
+
+### 3. Jalankan Flutter
+
+Tidak ada credential provider pembayaran yang perlu ditaruh di aplikasi Flutter
+karena seluruh simulasi dijalankan oleh backend Supabase Function.
+
+Tetap jalankan app seperti biasa:
+
+```bash
+flutter run --dart-define-from-file=dart_defines.json
+```
+
+### 4. Simulasi pembayaran Sandbox
+
+- Pilih `Virtual Account` atau `QRIS` saat top up.
+- Untuk checkout, pilih `Transfer Bank` atau `QRIS`.
+- Setelah transaksi dibuat, tunggu beberapa detik lalu tekan tombol `Cek Status`.
+- Status sandbox akan berubah otomatis menjadi berhasil selama transaksi belum kedaluwarsa.
