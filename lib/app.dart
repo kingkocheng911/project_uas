@@ -82,6 +82,28 @@ bool _isValidSupabasePublishableKey(String value) {
       normalized.split('.').length >= 3;
 }
 
+/// Hasil dari aksi autentikasi (login/sign up/verifikasi).
+///
+/// - [error] berisi pesan error bila gagal (null bila sukses).
+/// - [needsVerification] true bila akun perlu verifikasi email (OTP) dahulu.
+/// - [email] email terkait, dipakai untuk membuka layar verifikasi.
+class AuthResult {
+  const AuthResult._({this.error, this.needsVerification = false, this.email});
+
+  factory AuthResult.success() => const AuthResult._();
+
+  factory AuthResult.error(String message) => AuthResult._(error: message);
+
+  factory AuthResult.needsVerification(String email) =>
+      AuthResult._(needsVerification: true, email: email);
+
+  final String? error;
+  final bool needsVerification;
+  final String? email;
+
+  bool get isSuccess => error == null && !needsVerification;
+}
+
 class KdmpApp extends StatefulWidget {
   const KdmpApp({
     super.key,
@@ -155,10 +177,9 @@ class _KdmpAppState extends State<KdmpApp> {
             await _syncActiveProfile(user);
           });
     } else if (widget.startAuthenticated) {
-      // Jika di web, default langsung gunakan profil superadmin mock
-      _activeProfile = kIsWeb
-          ? _mockSuperAdmin.profile
-          : _mockRegisteredUser.profile;
+      _activeProfile = widget.forceMockAuth
+          ? _mockRegisteredUser.profile
+          : (kIsWeb ? _mockSuperAdmin.profile : _mockAdmin.profile);
     }
   }
 
@@ -190,6 +211,9 @@ class _KdmpAppState extends State<KdmpApp> {
                         : _mockRegisteredUser.password),
               onLogin: _handleLogin,
               onSignUp: _handleSignUp,
+              onVerifyOtp: _handleVerifyOtp,
+              onResendOtp: _handleResendOtp,
+              onForgotPassword: _handleForgotPassword,
               usingSupabase: _useSupabase,
               setupMessage: supabaseConfigStatusMessage,
             )
@@ -282,7 +306,7 @@ class _KdmpAppState extends State<KdmpApp> {
     return 'Email atau password salah';
   }
 
-  Future<String?> _handleSignUp({
+  Future<AuthResult> _handleSignUp({
     required String name,
     required String phone,
     required String email,
@@ -305,39 +329,40 @@ class _KdmpAppState extends State<KdmpApp> {
           },
         );
 
-        final signedUpUser = response.user;
-        Session? session = response.session;
-        User? user = session?.user ?? signedUpUser;
+        final session = response.session;
+        final user = session?.user ?? response.user;
 
+        // Bila verifikasi email diaktifkan, signUp tidak langsung membuat sesi.
+        // Arahkan pengguna ke layar verifikasi OTP.
         if (session == null) {
-          final signInResponse = await Supabase.instance.client.auth
-              .signInWithPassword(email: email, password: password);
-          session = signInResponse.session;
-          user =
-              signInResponse.user ?? Supabase.instance.client.auth.currentUser;
+          return AuthResult.needsVerification(email);
         }
 
         if (user == null) {
-          return 'Akun dibuat, tapi sesi belum aktif. Coba login kembali.';
+          return AuthResult.needsVerification(email);
         }
 
         await _ensureUserData(user, fallbackName: name, fallbackPhone: phone);
         final profile = await _profileFromSupabaseUser(user);
         if (profile == null) {
-          return 'Akun berhasil dibuat, tetapi profil belum siap. Silakan login ulang.';
+          return AuthResult.error(
+            'Akun berhasil dibuat, tetapi profil belum siap. Silakan login ulang.',
+          );
         }
         setState(() => _activeProfile = profile);
-        return null;
+        return AuthResult.success();
       } on AuthException catch (error) {
-        return error.message;
+        return AuthResult.error(error.message);
       } catch (error) {
-        return 'Tidak dapat membuat akun di Supabase saat ini. $error';
+        return AuthResult.error(
+          'Tidak dapat membuat akun di Supabase saat ini. $error',
+        );
       }
     }
 
     if (_mockRegisteredUser.profile.email.toLowerCase() ==
         email.toLowerCase()) {
-      return 'Email ini sudah terdaftar. Silakan login.';
+      return AuthResult.error('Email ini sudah terdaftar. Silakan login.');
     }
     final newUser = _MockAuthUser(
       profile: UserProfile(
@@ -353,7 +378,75 @@ class _KdmpAppState extends State<KdmpApp> {
       _mockRegisteredUser = newUser;
       _activeProfile = newUser.profile;
     });
-    return null;
+    return AuthResult.success();
+  }
+
+  /// Verifikasi kode OTP yang dikirim ke email saat pendaftaran.
+  Future<AuthResult> _handleVerifyOtp({
+    required String email,
+    required String token,
+  }) async {
+    if (!_useSupabase) {
+      // Mode demo: anggap verifikasi langsung sukses.
+      return AuthResult.success();
+    }
+    try {
+      final response = await Supabase.instance.client.auth.verifyOTP(
+        email: email,
+        token: token,
+        type: OtpType.signup,
+      );
+      final user =
+          response.session?.user ?? Supabase.instance.client.auth.currentUser;
+      if (user == null) {
+        return AuthResult.error('Verifikasi gagal. Coba lagi.');
+      }
+
+      await _ensureUserData(user, fallbackName: _nameFromEmail(email));
+      final profile = await _profileFromSupabaseUser(user);
+      if (profile == null) {
+        return AuthResult.error(
+          'Akun terverifikasi, tetapi profil belum siap. Silakan login ulang.',
+        );
+      }
+      setState(() => _activeProfile = profile);
+      return AuthResult.success();
+    } on AuthException catch (error) {
+      return AuthResult.error(error.message);
+    } catch (_) {
+      return AuthResult.error('Tidak dapat memverifikasi kode saat ini.');
+    }
+  }
+
+  /// Kirim ulang kode verifikasi (OTP) ke email pengguna.
+  Future<String?> _handleResendOtp(String email) async {
+    if (!_useSupabase) return null;
+    try {
+      await Supabase.instance.client.auth.resend(
+        type: OtpType.signup,
+        email: email,
+      );
+      return null;
+    } on AuthException catch (error) {
+      return error.message;
+    } catch (_) {
+      return 'Tidak dapat mengirim ulang kode saat ini.';
+    }
+  }
+
+  /// Kirim email reset kata sandi (lupa password).
+  Future<String?> _handleForgotPassword(String email) async {
+    if (!_useSupabase) {
+      return 'Reset kata sandi hanya tersedia saat terhubung ke Supabase.';
+    }
+    try {
+      await Supabase.instance.client.auth.resetPasswordForEmail(email);
+      return null;
+    } on AuthException catch (error) {
+      return error.message;
+    } catch (_) {
+      return 'Tidak dapat mengirim email reset kata sandi saat ini.';
+    }
   }
 
   Future<void> _handleLogout() async {
@@ -597,6 +690,9 @@ class AuthScreen extends StatefulWidget {
     super.key,
     required this.onLogin,
     required this.onSignUp,
+    required this.onVerifyOtp,
+    required this.onResendOtp,
+    required this.onForgotPassword,
     required this.usingSupabase,
     required this.setupMessage,
     this.initialEmail = '',
@@ -608,13 +704,20 @@ class AuthScreen extends StatefulWidget {
     required String password,
   })
   onLogin;
-  final Future<String?> Function({
+  final Future<AuthResult> Function({
     required String name,
     required String phone,
     required String email,
     required String password,
   })
   onSignUp;
+  final Future<AuthResult> Function({
+    required String email,
+    required String token,
+  })
+  onVerifyOtp;
+  final Future<String?> Function(String email) onResendOtp;
+  final Future<String?> Function(String email) onForgotPassword;
   final bool usingSupabase;
   final String setupMessage;
   final String initialEmail;
@@ -779,6 +882,13 @@ class _AuthScreenState extends State<AuthScreen> {
               const SizedBox(height: 14),
               _AuthErrorText(message: _loginError!),
             ],
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: _submittingLogin ? null : _showForgotPasswordDialog,
+                child: const Text('Lupa kata sandi?'),
+              ),
+            ),
             const SizedBox(height: 18),
             SizedBox(
               width: double.infinity,
@@ -921,17 +1031,130 @@ class _AuthScreenState extends State<AuthScreen> {
       _submittingSignUp = true;
       _signUpError = null;
     });
-    final error = await widget.onSignUp(
+    final email = _signUpEmailController.text.trim();
+    final result = await widget.onSignUp(
       name: _signUpNameController.text.trim(),
       phone: _signUpPhoneController.text.trim(),
-      email: _signUpEmailController.text.trim(),
+      email: email,
       password: _signUpPasswordController.text.trim(),
     );
     if (!mounted) return;
     setState(() {
       _submittingSignUp = false;
-      _signUpError = error;
+      _signUpError = result.error;
     });
+
+    if (result.needsVerification) {
+      await _openVerificationScreen(result.email ?? email);
+    }
+  }
+
+  /// Buka layar verifikasi OTP. Bila verifikasi sukses, sesi akan aktif dan
+  /// halaman auth otomatis tertutup karena _activeProfile sudah terisi.
+  Future<void> _openVerificationScreen(String email) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => VerificationScreen(
+          email: email,
+          onVerify: widget.onVerifyOtp,
+          onResend: widget.onResendOtp,
+        ),
+      ),
+    );
+  }
+
+  /// Tampilkan dialog untuk mengirim email reset kata sandi.
+  Future<void> _showForgotPasswordDialog() async {
+    final controller = TextEditingController(
+      text: _loginEmailController.text.trim(),
+    );
+    final formKey = GlobalKey<FormState>();
+    var submitting = false;
+    String? message;
+    var isError = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Lupa Kata Sandi'),
+              content: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Masukkan email akunmu. Kami akan mengirim tautan untuk '
+                      'mereset kata sandi.',
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: controller,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: const InputDecoration(
+                        labelText: 'Email',
+                        prefixIcon: Icon(Icons.mail_outline_rounded),
+                      ),
+                      validator: _validateEmail,
+                    ),
+                    if (message != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        message!,
+                        style: TextStyle(
+                          color: isError
+                              ? const Color(0xFFB42318)
+                              : const Color(0xFF15803D),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: submitting
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Tutup'),
+                ),
+                FilledButton(
+                  onPressed: submitting
+                      ? null
+                      : () async {
+                          if (!formKey.currentState!.validate()) return;
+                          setDialogState(() {
+                            submitting = true;
+                            message = null;
+                          });
+                          final error = await widget.onForgotPassword(
+                            controller.text.trim(),
+                          );
+                          setDialogState(() {
+                            submitting = false;
+                            if (error == null) {
+                              isError = false;
+                              message =
+                                  'Email reset kata sandi sudah dikirim. '
+                                  'Periksa kotak masuk kamu.';
+                            } else {
+                              isError = true;
+                              message = error;
+                            }
+                          });
+                        },
+                  child: Text(submitting ? 'Mengirim...' : 'Kirim'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    controller.dispose();
   }
 
   String? _validateEmail(String? value) {
@@ -1126,5 +1349,179 @@ class _KdmpScrollBehavior extends MaterialScrollBehavior {
   @override
   ScrollPhysics getScrollPhysics(BuildContext context) {
     return const ClampingScrollPhysics();
+  }
+}
+
+/// Layar verifikasi kode OTP yang dikirim ke email pengguna setelah sign up.
+class VerificationScreen extends StatefulWidget {
+  const VerificationScreen({
+    super.key,
+    required this.email,
+    required this.onVerify,
+    required this.onResend,
+  });
+
+  final String email;
+  final Future<AuthResult> Function({
+    required String email,
+    required String token,
+  })
+  onVerify;
+  final Future<String?> Function(String email) onResend;
+
+  @override
+  State<VerificationScreen> createState() => _VerificationScreenState();
+}
+
+class _VerificationScreenState extends State<VerificationScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _tokenController = TextEditingController();
+  bool _submitting = false;
+  bool _resending = false;
+  String? _error;
+  String? _info;
+
+  @override
+  void dispose() {
+    _tokenController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _submitting = true;
+      _error = null;
+      _info = null;
+    });
+    final result = await widget.onVerify(
+      email: widget.email,
+      token: _tokenController.text.trim(),
+    );
+    if (!mounted) return;
+    if (result.isSuccess) {
+      // Verifikasi sukses: tutup layar verifikasi. Halaman auth otomatis
+      // beralih ke home karena _activeProfile sudah terisi.
+      Navigator.of(context).pop();
+      return;
+    }
+    setState(() {
+      _submitting = false;
+      _error = result.error ?? 'Verifikasi gagal. Coba lagi.';
+    });
+  }
+
+  Future<void> _resend() async {
+    setState(() {
+      _resending = true;
+      _error = null;
+      _info = null;
+    });
+    final error = await widget.onResend(widget.email);
+    if (!mounted) return;
+    setState(() {
+      _resending = false;
+      if (error == null) {
+        _info = 'Kode verifikasi baru sudah dikirim ke email kamu.';
+      } else {
+        _error = error;
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Verifikasi Email')),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Icon(
+                Icons.mark_email_read_outlined,
+                color: theme.colorScheme.primary,
+                size: 34,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Masukkan Kode Verifikasi',
+              style: theme.textTheme.headlineMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Kami telah mengirim kode 6 digit ke ${widget.email}. '
+              'Masukkan kode tersebut untuk mengaktifkan akunmu.',
+              style: theme.textTheme.bodyLarge?.copyWith(
+                color: const Color(0xFF64748B),
+              ),
+            ),
+            const SizedBox(height: 24),
+            Form(
+              key: _formKey,
+              child: TextFormField(
+                controller: _tokenController,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                decoration: const InputDecoration(
+                  labelText: 'Kode OTP',
+                  prefixIcon: Icon(Icons.pin_outlined),
+                  counterText: '',
+                ),
+                validator: (value) {
+                  final token = value?.trim() ?? '';
+                  if (token.length < 6) {
+                    return 'Kode verifikasi terdiri dari 6 digit';
+                  }
+                  return null;
+                },
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 14),
+              _AuthErrorText(message: _error!),
+            ],
+            if (_info != null) ...[
+              const SizedBox(height: 14),
+              Text(
+                _info!,
+                style: const TextStyle(
+                  color: Color(0xFF15803D),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: _submitting ? null : _submit,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(56),
+                ),
+                child: Text(_submitting ? 'Memverifikasi...' : 'Verifikasi'),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Center(
+              child: TextButton(
+                onPressed: _resending ? null : _resend,
+                child: Text(
+                  _resending ? 'Mengirim ulang...' : 'Kirim ulang kode',
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

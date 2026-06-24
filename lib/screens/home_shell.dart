@@ -40,21 +40,90 @@ class UserProfile {
 
 class CheckoutVoucher {
   const CheckoutVoucher({
+    this.id,
     required this.code,
     required this.title,
     required this.description,
     required this.icon,
     required this.minimumSpend,
-    required this.calculateDiscount,
+    required this.discountType,
+    required this.discountValue,
+    this.maxDiscount,
+    this.endAt,
+    this.usageCount = 0,
+    this.maxUsagePerUser = 1,
   });
 
+  final String? id;
   final String code;
   final String title;
   final String description;
   final IconData icon;
   final int minimumSpend;
-  final int Function(int subtotal, int deliveryFee, int serviceFee)
-  calculateDiscount;
+  final String discountType;
+  final int discountValue;
+  final int? maxDiscount;
+  final DateTime? endAt;
+  final int usageCount;
+  final int maxUsagePerUser;
+
+  bool get isUsed => usageCount >= maxUsagePerUser;
+
+  bool get isExpired {
+    final expiry = endAt;
+    return expiry != null && expiry.isBefore(DateTime.now());
+  }
+
+  bool get isAvailable => !isUsed && !isExpired;
+
+  String get statusLabel {
+    if (isUsed) return 'Sudah dipakai';
+    if (isExpired) return 'Kedaluwarsa';
+    return 'Bisa dipakai';
+  }
+
+  String get validityLabel {
+    final expiry = endAt;
+    if (expiry == null) return 'Berlaku selama promo aktif';
+    final day = expiry.day.toString().padLeft(2, '0');
+    final month = expiry.month.toString().padLeft(2, '0');
+    return 'Berlaku sampai $day/$month/${expiry.year}';
+  }
+
+  int calculateDiscount(int subtotal, int deliveryFee, int serviceFee) {
+    if (subtotal < minimumSpend || !isAvailable) return 0;
+    final totalBeforeDiscount = subtotal + deliveryFee + serviceFee;
+    final discount = switch (discountType) {
+      'free_delivery' => deliveryFee,
+      'percentage' => (subtotal * (discountValue / 100)).round(),
+      'fixed_amount' => discountValue,
+      _ => 0,
+    };
+    final limitedDiscount = maxDiscount == null
+        ? discount
+        : discount.clamp(0, maxDiscount!);
+    return limitedDiscount.clamp(0, totalBeforeDiscount).toInt();
+  }
+
+  factory CheckoutVoucher.fromMap(
+    Map<String, dynamic> row, {
+    int usageCount = 0,
+  }) {
+    return CheckoutVoucher(
+      id: row['id']?.toString(),
+      code: (row['code'] ?? '').toString(),
+      title: (row['title'] ?? '').toString(),
+      description: (row['description'] ?? '').toString(),
+      icon: _voucherIconFromName((row['icon_name'] ?? '').toString()),
+      minimumSpend: (row['minimum_spend'] as num?)?.toInt() ?? 0,
+      discountType: (row['discount_type'] ?? 'fixed_amount').toString(),
+      discountValue: (row['discount_value'] as num?)?.toInt() ?? 0,
+      maxDiscount: (row['max_discount'] as num?)?.toInt(),
+      endAt: DateTime.tryParse((row['end_at'] ?? '').toString())?.toLocal(),
+      usageCount: usageCount,
+      maxUsagePerUser: (row['max_usage_per_user'] as num?)?.toInt() ?? 1,
+    );
+  }
 }
 
 class CheckoutAddress {
@@ -126,7 +195,9 @@ const _checkoutVouchers = <CheckoutVoucher>[
     description: 'Potongan ongkir sampai Rp 8.000',
     icon: Icons.local_shipping_outlined,
     minimumSpend: 50000,
-    calculateDiscount: _freeDeliveryDiscount,
+    discountType: 'free_delivery',
+    discountValue: 8000,
+    maxDiscount: 8000,
   ),
   CheckoutVoucher(
     code: 'MEPU10',
@@ -134,7 +205,9 @@ const _checkoutVouchers = <CheckoutVoucher>[
     description: 'Maksimal potongan Rp 25.000',
     icon: Icons.percent_rounded,
     minimumSpend: 100000,
-    calculateDiscount: _tenPercentDiscount,
+    discountType: 'percentage',
+    discountValue: 10,
+    maxDiscount: 25000,
   ),
   CheckoutVoucher(
     code: 'ANGGOTA15',
@@ -142,21 +215,10 @@ const _checkoutVouchers = <CheckoutVoucher>[
     description: 'Potongan langsung Rp 15.000',
     icon: Icons.workspace_premium_outlined,
     minimumSpend: 75000,
-    calculateDiscount: _memberVoucherDiscount,
+    discountType: 'fixed_amount',
+    discountValue: 15000,
   ),
 ];
-
-int _freeDeliveryDiscount(int subtotal, int deliveryFee, int serviceFee) {
-  return deliveryFee.clamp(0, 8000).toInt();
-}
-
-int _tenPercentDiscount(int subtotal, int deliveryFee, int serviceFee) {
-  return (subtotal * 0.10).round().clamp(0, 25000).toInt();
-}
-
-int _memberVoucherDiscount(int subtotal, int deliveryFee, int serviceFee) {
-  return 15000.clamp(0, subtotal + deliveryFee + serviceFee).toInt();
-}
 
 class HomeShell extends StatefulWidget {
   const HomeShell({
@@ -183,6 +245,7 @@ class _HomeShellState extends State<HomeShell> {
   late final Map<String, int> _productStocks = _createStocks(products);
   final List<Product> _cartItems = [];
   final List<OrderItem> _orderItems = List<OrderItem>.of(orders);
+  List<CheckoutVoucher> _vouchers = List<CheckoutVoucher>.of(_checkoutVouchers);
   List<_UserBranchOption> _branches = const [];
   String? _selectedBranchId;
   String _selectedBranchName = 'Pilih Cabang';
@@ -195,6 +258,7 @@ class _HomeShellState extends State<HomeShell> {
     unawaited(_initializeBranchSelection());
     unawaited(_loadWalletBalance());
     unawaited(_loadOrders());
+    unawaited(_loadVouchers());
   }
 
   @override
@@ -238,6 +302,7 @@ class _HomeShellState extends State<HomeShell> {
       ProfileScreen(
         profile: _profile,
         mepuBalance: _mepuBalance,
+        vouchers: _vouchers,
         onTopUp: _openTopUpDialog,
         onEditProfile: _openEditProfile,
         onOpenSetting: _openSetting,
@@ -433,6 +498,52 @@ class _HomeShellState extends State<HomeShell> {
     }
   }
 
+  Future<void> _loadVouchers() async {
+    if (!_canUseSupabase) return;
+    try {
+      final client = Supabase.instance.client;
+      final user = client.auth.currentUser;
+      if (user == null) return;
+
+      final voucherRows = await client
+          .from('vouchers')
+          .select(
+            'id, code, title, description, icon_name, discount_type, '
+            'discount_value, max_discount, minimum_spend, max_usage_per_user, end_at',
+          )
+          .eq('is_active', true)
+          .order('minimum_spend');
+
+      final redemptionRows = await client
+          .from('voucher_redemptions')
+          .select('voucher_id')
+          .eq('user_id', user.id);
+      final usageByVoucher = <String, int>{};
+      for (final row in redemptionRows) {
+        final voucherId = row['voucher_id']?.toString();
+        if (voucherId == null || voucherId.isEmpty) continue;
+        usageByVoucher[voucherId] = (usageByVoucher[voucherId] ?? 0) + 1;
+      }
+
+      final loadedVouchers = voucherRows
+          .map<CheckoutVoucher>(
+            (row) => CheckoutVoucher.fromMap(
+              Map<String, dynamic>.from(row),
+              usageCount: usageByVoucher[row['id']?.toString()] ?? 0,
+            ),
+          )
+          .where(
+            (voucher) => voucher.code.isNotEmpty && voucher.title.isNotEmpty,
+          )
+          .toList(growable: false);
+
+      if (!mounted || loadedVouchers.isEmpty) return;
+      setState(() => _vouchers = loadedVouchers);
+    } catch (_) {
+      // Keep local fallback vouchers if the voucher tables are not available yet.
+    }
+  }
+
   Future<bool> _persistWalletBalance(int newBalance) async {
     if (!_canUseSupabase) return true;
     try {
@@ -579,6 +690,7 @@ class _HomeShellState extends State<HomeShell> {
           items: List<Product>.of(items),
           mepuBalance: _mepuBalance,
           productStocks: _productStocks,
+          vouchers: _vouchers,
           onCompletePayment: _payOrder,
           onCancelOrder: _cancelOrder,
           onPlaceOrder:
@@ -589,7 +701,8 @@ class _HomeShellState extends State<HomeShell> {
                 addressId,
                 address,
                 finalTotal,
-                voucherLabel,
+                voucher,
+                voucherDiscount,
               ) async {
                 final order = await _createOrder(
                   checkoutItems,
@@ -598,7 +711,8 @@ class _HomeShellState extends State<HomeShell> {
                   addressId: addressId,
                   address: address,
                   finalTotal: finalTotal,
-                  voucherLabel: voucherLabel,
+                  voucher: voucher,
+                  voucherDiscount: voucherDiscount,
                 );
                 if (order == null) return null;
                 setState(() {
@@ -637,8 +751,10 @@ class _HomeShellState extends State<HomeShell> {
     String? addressId,
     required String address,
     required int finalTotal,
-    String? voucherLabel,
+    CheckoutVoucher? voucher,
+    required int voucherDiscount,
   }) async {
+    final voucherLabel = voucher?.code;
     if (_canUseSupabase) {
       try {
         final client = Supabase.instance.client;
@@ -687,7 +803,7 @@ class _HomeShellState extends State<HomeShell> {
                 0,
                 (sum, product) => sum + product.price,
               ),
-              'discount_total': 0,
+              'discount_total': voucherDiscount,
               'delivery_fee': orderType == 'delivery' ? 8000 : 0,
               'grand_total': finalTotal,
               'notes': voucherLabel == null ? null : 'Voucher: $voucherLabel',
@@ -713,6 +829,17 @@ class _HomeShellState extends State<HomeShell> {
                   )
                   .toList(),
             );
+
+        final voucherId = voucher?.id;
+        if (voucherId != null && voucherId.isNotEmpty && voucherDiscount > 0) {
+          await client.from('voucher_redemptions').insert({
+            'user_id': user.id,
+            'voucher_id': voucherId,
+            'order_id': orderRow['id'],
+            'discount_amount': voucherDiscount,
+          });
+          unawaited(_loadVouchers());
+        }
 
         final orderNo = (orderRow['order_no'] ?? '').toString();
         return OrderItem(
@@ -1648,15 +1775,6 @@ Future<void> _showFeatureSnack(
     onAction: onAction,
   );
   return Future<void>.value();
-}
-
-Future<void> _showVoucherList(BuildContext context) {
-  return _showFeatureSnack(
-    context,
-    'Voucher tersedia: ONGKIRHEMAT, MEPU10, dan ANGGOTA15. Gunakan saat checkout sesuai syarat minimum belanja.',
-    title: 'Voucher Anggota',
-    icon: Icons.confirmation_number_outlined,
-  );
 }
 
 class _TopNotificationController {
@@ -4471,6 +4589,7 @@ class ProfileScreen extends StatelessWidget {
     super.key,
     required this.profile,
     required this.mepuBalance,
+    required this.vouchers,
     required this.onTopUp,
     required this.onEditProfile,
     required this.onOpenSetting,
@@ -4483,6 +4602,7 @@ class ProfileScreen extends StatelessWidget {
 
   final UserProfile profile;
   final int mepuBalance;
+  final List<CheckoutVoucher> vouchers;
   final VoidCallback onTopUp;
   final VoidCallback onEditProfile;
   final ValueChanged<SettingShortcut> onOpenSetting;
@@ -4643,7 +4763,12 @@ class ProfileScreen extends StatelessWidget {
                             child: ProfileActionChip(
                               label: 'Vouchers',
                               icon: Icons.confirmation_number_outlined,
-                              onTap: () => _showVoucherList(context),
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) =>
+                                      VoucherCenterScreen(vouchers: vouchers),
+                                ),
+                              ),
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -4757,6 +4882,232 @@ class ProductDetailScreen extends StatefulWidget {
 
   @override
   State<ProductDetailScreen> createState() => _ProductDetailScreenState();
+}
+
+class VoucherCenterScreen extends StatelessWidget {
+  const VoucherCenterScreen({super.key, required this.vouchers});
+
+  final List<CheckoutVoucher> vouchers;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final usableCount = vouchers.where((voucher) => voucher.isAvailable).length;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Voucher Saya')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF4F5),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: const Color(0xFFF3C7CC)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 54,
+                  height: 54,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Icon(
+                    Icons.confirmation_number_outlined,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '$usableCount voucher bisa dipakai',
+                        style: theme.textTheme.headlineMedium?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Pilih voucher saat checkout sesuai minimum belanja.',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: const Color(0xFF64748B),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          if (vouchers.isEmpty)
+            const _EmptyVoucherState()
+          else
+            for (final voucher in vouchers)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 14),
+                child: _ProfileVoucherCard(voucher: voucher),
+              ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileVoucherCard extends StatelessWidget {
+  const _ProfileVoucherCard({required this.voucher});
+
+  final CheckoutVoucher voucher;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final active = voucher.isAvailable;
+    final statusColor = active
+        ? const Color(0xFF15803D)
+        : voucher.isUsed
+        ? const Color(0xFF64748B)
+        : const Color(0xFFB45309);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: active ? const Color(0xFFBBF7D0) : const Color(0xFFE2E8F0),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: statusColor.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(voucher.icon, color: statusColor),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        voucher.title,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    StatusPill(
+                      label: voucher.statusLabel,
+                      foreground: statusColor,
+                      background: statusColor.withValues(alpha: 0.10),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  voucher.description,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _VoucherInfoPill(label: voucher.code),
+                    _VoucherInfoPill(
+                      label: 'Min. ${formatRupiah(voucher.minimumSpend)}',
+                    ),
+                    _VoucherInfoPill(label: voucher.validityLabel),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VoucherInfoPill extends StatelessWidget {
+  const _VoucherInfoPill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+          color: const Color(0xFF475569),
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyVoucherState extends StatelessWidget {
+  const _EmptyVoucherState();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            Icons.confirmation_number_outlined,
+            size: 42,
+            color: theme.colorScheme.primary,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Belum ada voucher aktif',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Voucher baru akan muncul di sini saat promo tersedia.',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: const Color(0xFF64748B),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class PromoCenterScreen extends StatelessWidget {
@@ -5830,6 +6181,7 @@ class CheckoutScreen extends StatefulWidget {
     required this.items,
     required this.mepuBalance,
     required this.productStocks,
+    required this.vouchers,
     required this.onCompletePayment,
     required this.onCancelOrder,
     required this.onPlaceOrder,
@@ -5838,6 +6190,7 @@ class CheckoutScreen extends StatefulWidget {
   final List<Product> items;
   final int mepuBalance;
   final Map<String, int> productStocks;
+  final List<CheckoutVoucher> vouchers;
   final OrderItem? Function(OrderItem order) onCompletePayment;
   final ValueChanged<OrderItem> onCancelOrder;
   final Future<OrderItem?> Function(
@@ -5847,7 +6200,8 @@ class CheckoutScreen extends StatefulWidget {
     String? addressId,
     String address,
     int finalTotal,
-    String? voucherLabel,
+    CheckoutVoucher? voucher,
+    int voucherDiscount,
   )
   onPlaceOrder;
 
@@ -6077,6 +6431,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   subtotal: subtotal,
                   deliveryFee: deliveryFee,
                   serviceFee: serviceFee,
+                  vouchers: widget.vouchers,
                   onSelect: (voucher) => setState(() {
                     selectedVoucher = voucher;
                   }),
@@ -6254,7 +6609,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       selectedAddressId,
       destinationAddress,
       total,
-      selectedVoucher?.code,
+      selectedVoucher,
+      voucherDiscount,
     );
     if (!mounted || order == null) return;
     Navigator.of(context).pushReplacement(
@@ -7766,6 +8122,7 @@ class _VoucherSelector extends StatelessWidget {
     required this.subtotal,
     required this.deliveryFee,
     required this.serviceFee,
+    required this.vouchers,
     required this.onSelect,
   });
 
@@ -7773,6 +8130,7 @@ class _VoucherSelector extends StatelessWidget {
   final int subtotal;
   final int deliveryFee;
   final int serviceFee;
+  final List<CheckoutVoucher> vouchers;
   final ValueChanged<CheckoutVoucher> onSelect;
 
   @override
@@ -7780,12 +8138,13 @@ class _VoucherSelector extends StatelessWidget {
     final theme = Theme.of(context);
     return Column(
       children: [
-        for (final voucher in _checkoutVouchers)
+        for (final voucher in vouchers)
           Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: Builder(
               builder: (context) {
-                final eligible = subtotal >= voucher.minimumSpend;
+                final eligible =
+                    subtotal >= voucher.minimumSpend && voucher.isAvailable;
                 final selected = selectedVoucher?.code == voucher.code;
                 final discount = _voucherDiscount(
                   voucher,
@@ -7869,7 +8228,9 @@ class _VoucherSelector extends StatelessWidget {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                eligible
+                                voucher.isUsed || voucher.isExpired
+                                    ? voucher.statusLabel
+                                    : eligible
                                     ? 'Hemat ${formatRupiah(discount)}'
                                     : 'Min. belanja ${formatRupiah(voucher.minimumSpend)}',
                                 style: theme.textTheme.labelMedium?.copyWith(
@@ -10491,6 +10852,21 @@ IconData categoryIcon(String category) {
       return Icons.checkroom_outlined;
     default:
       return Icons.apps_rounded;
+  }
+}
+
+IconData _voucherIconFromName(String name) {
+  switch (name) {
+    case 'local_shipping':
+      return Icons.local_shipping_outlined;
+    case 'percent':
+      return Icons.percent_rounded;
+    case 'premium':
+      return Icons.workspace_premium_outlined;
+    case 'basket':
+      return Icons.shopping_basket_outlined;
+    default:
+      return Icons.confirmation_number_outlined;
   }
 }
 
