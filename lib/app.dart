@@ -19,7 +19,68 @@ const supabasePublishableKey = String.fromEnvironment(
 );
 
 bool get isSupabaseConfigured =>
-    supabaseUrl.isNotEmpty && supabasePublishableKey.isNotEmpty;
+    _isValidSupabaseUrl(supabaseUrl) &&
+    _isValidSupabasePublishableKey(supabasePublishableKey);
+
+bool get hasSupabaseConfigValues =>
+    supabaseUrl.trim().isNotEmpty || supabasePublishableKey.trim().isNotEmpty;
+
+bool get hasInvalidSupabaseConfig =>
+    hasSupabaseConfigValues && !isSupabaseConfigured;
+
+String get supabaseConfigStatusMessage {
+  if (isSupabaseConfigured) {
+    return 'Supabase aktif dan siap digunakan.';
+  }
+
+  if (hasInvalidSupabaseConfig) {
+    return 'Konfigurasi Supabase masih placeholder atau tidak valid. Aplikasi memakai akun lokal demo sampai SUPABASE_URL dan SUPABASE_PUBLISHABLE_KEY benar.';
+  }
+
+  return 'Supabase belum dikonfigurasi. Aplikasi memakai akun lokal demo sampai SUPABASE_URL dan SUPABASE_PUBLISHABLE_KEY dikirim lewat dart-define.';
+}
+
+bool _isValidSupabaseUrl(String value) {
+  final normalized = value.trim().toLowerCase();
+  final uri = Uri.tryParse(normalized);
+  if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
+    return false;
+  }
+
+  const invalidMarkers = [
+    'your_project',
+    'your-project',
+    'your_project_ref',
+    'your-supabase',
+    'example.supabase.co',
+  ];
+  if (invalidMarkers.any(normalized.contains)) {
+    return false;
+  }
+
+  return uri.scheme == 'https' && uri.host.endsWith('.supabase.co');
+}
+
+bool _isValidSupabasePublishableKey(String value) {
+  final normalized = value.trim();
+  final lower = normalized.toLowerCase();
+  if (normalized.isEmpty) {
+    return false;
+  }
+
+  const invalidMarkers = [
+    'your_supabase',
+    'your_publishable',
+    'publishable_key',
+    'anon-key',
+  ];
+  if (invalidMarkers.any(lower.contains)) {
+    return false;
+  }
+
+  return normalized.startsWith('sb_publishable_') ||
+      normalized.split('.').length >= 3;
+}
 
 class KdmpApp extends StatefulWidget {
   const KdmpApp({
@@ -95,7 +156,9 @@ class _KdmpAppState extends State<KdmpApp> {
           });
     } else if (widget.startAuthenticated) {
       // Jika di web, default langsung gunakan profil superadmin mock
-      _activeProfile = kIsWeb ? _mockSuperAdmin.profile : _mockAdmin.profile;
+      _activeProfile = kIsWeb
+          ? _mockSuperAdmin.profile
+          : _mockRegisteredUser.profile;
     }
   }
 
@@ -128,6 +191,7 @@ class _KdmpAppState extends State<KdmpApp> {
               onLogin: _handleLogin,
               onSignUp: _handleSignUp,
               usingSupabase: _useSupabase,
+              setupMessage: supabaseConfigStatusMessage,
             )
           : _buildHomeByRole(),
     );
@@ -180,14 +244,6 @@ class _KdmpAppState extends State<KdmpApp> {
           return 'Profil akun belum berhasil dimuat. Coba login kembali.';
         }
 
-        // 3. Proteksi Web Dashboard: Validasi role saat masuk via Web
-        if (kIsWeb) {
-          if (profile.role != 'superadmin' && profile.role != 'admin') {
-            await Supabase.instance.client.auth.signOut(); // Log out otomatis
-            return 'Akses ditolak. Halaman ini khusus untuk manajemen Admin MepuPoin.';
-          }
-        }
-
         setState(() => _activeProfile = profile);
         return null;
       } on AuthException catch (error) {
@@ -232,10 +288,8 @@ class _KdmpAppState extends State<KdmpApp> {
     required String email,
     required String password,
   }) async {
-    // Blokir pendaftaran mandiri (Sign Up) dari panel web superadmin
-    if (kIsWeb) {
-      return 'Pendaftaran akun admin baru hanya bisa dilakukan oleh Superadmin di dalam sistem.';
-    }
+    // Pendaftaran user biasa (customer) tetap diizinkan di web.
+    // Hanya akun admin/superadmin yang diblokir untuk mendaftar mandiri.
 
     if (_useSupabase) {
       try {
@@ -544,6 +598,7 @@ class AuthScreen extends StatefulWidget {
     required this.onLogin,
     required this.onSignUp,
     required this.usingSupabase,
+    required this.setupMessage,
     this.initialEmail = '',
     this.initialPassword = '',
   });
@@ -561,6 +616,7 @@ class AuthScreen extends StatefulWidget {
   })
   onSignUp;
   final bool usingSupabase;
+  final String setupMessage;
   final String initialEmail;
   final String initialPassword;
 
@@ -664,10 +720,9 @@ class _AuthScreenState extends State<AuthScreen> {
             ),
             if (!widget.usingSupabase) ...[
               const SizedBox(height: 16),
-              const _SetupHintCard(
+              _SetupHintCard(
                 title: 'Mode Demo Aktif',
-                message:
-                    'Supabase belum dikonfigurasi. Aplikasi masih memakai akun lokal demo sampai SUPABASE_URL dan SUPABASE_PUBLISHABLE_KEY dikirim lewat dart-define.',
+                message: widget.setupMessage,
               ),
             ],
             const SizedBox(height: 20),

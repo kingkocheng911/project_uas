@@ -86,10 +86,7 @@ class _CheckoutBranchContext {
 }
 
 class _CustomerOrderSnapshot {
-  const _CustomerOrderSnapshot({
-    required this.name,
-    required this.phone,
-  });
+  const _CustomerOrderSnapshot({required this.name, required this.phone});
 
   final String name;
   final String? phone;
@@ -316,19 +313,23 @@ class _HomeShellState extends State<HomeShell> {
 
       final selectedBranch = branches.firstWhere(
         (branch) => branch.id == preferredBranchId,
-        orElse: () => branches.isNotEmpty ? branches.first : const _UserBranchOption(
-          id: '',
-          code: '',
-          name: 'Pilih Cabang',
-          address: '',
-          district: '',
-          city: '',
-        ),
+        orElse: () => branches.isNotEmpty
+            ? branches.first
+            : const _UserBranchOption(
+                id: '',
+                code: '',
+                name: 'Pilih Cabang',
+                address: '',
+                district: '',
+                city: '',
+              ),
       );
 
       setState(() {
         _branches = branches;
-        _selectedBranchId = selectedBranch.id.isEmpty ? null : selectedBranch.id;
+        _selectedBranchId = selectedBranch.id.isEmpty
+            ? null
+            : selectedBranch.id;
         _selectedBranchName = selectedBranch.name;
         _selectedBranchSubtitle = selectedBranch.id.isEmpty
             ? 'Pilih cabang KDMP terdekat'
@@ -347,7 +348,9 @@ class _HomeShellState extends State<HomeShell> {
 
   Future<void> _loadCatalog() async {
     try {
-      final snapshot = await _catalogRepository.load(branchId: _selectedBranchId);
+      final snapshot = await _catalogRepository.load(
+        branchId: _selectedBranchId,
+      );
       final loadedCategories = List<CategoryItem>.of(snapshot.categories);
       final loadedProducts = List<Product>.of(snapshot.products);
       if (!mounted) return;
@@ -437,9 +440,7 @@ class _HomeShellState extends State<HomeShell> {
       if (user == null) return false;
       await Supabase.instance.client
           .from('profiles')
-          .update({
-            'wallet_balance': newBalance.clamp(0, 2147483647),
-          })
+          .update({'wallet_balance': newBalance.clamp(0, 2147483647)})
           .eq('id', user.id);
       return true;
     } catch (_) {
@@ -618,10 +619,7 @@ class _HomeShellState extends State<HomeShell> {
                     message: paymentMethod == 'Saldo MepuPoin'
                         ? 'Pesanan ${order.id} sudah dibayar dan sedang diproses.'
                         : 'Pesanan ${order.id} menunggu pembayaran sebelum diproses.',
-                    data: {
-                      'order_no': order.id,
-                      'status': order.status,
-                    },
+                    data: {'order_no': order.id, 'status': order.status},
                   ),
                 );
                 unawaited(_loadOrders());
@@ -655,7 +653,9 @@ class _HomeShellState extends State<HomeShell> {
             ? 'paid'
             : 'unpaid';
         final orderStatus = paymentStatus == 'paid' ? 'processing' : 'pending';
-        final paymentMethodId = await _paymentMethodIdForCheckout(paymentMethod);
+        final paymentMethodId = await _paymentMethodIdForCheckout(
+          paymentMethod,
+        );
         final branchContext = await _resolveCheckoutBranchContext();
         final customerSnapshot = await _resolveCustomerOrderSnapshot(user.id);
         final deliveryLabel = orderType == 'delivery'
@@ -695,22 +695,24 @@ class _HomeShellState extends State<HomeShell> {
             .select('id, order_no, placed_at')
             .single();
 
-        await client.from('order_items').insert(
-          items
-              .map(
-                (product) => {
-                  'order_id': orderRow['id'],
-                  'product_id': product.id,
-                  'product_name': product.name,
-                  'sku': product.id,
-                  'qty': 1,
-                  'unit_price': product.price,
-                  'discount_amount': 0,
-                  'subtotal': product.price,
-                },
-              )
-              .toList(),
-        );
+        await client
+            .from('order_items')
+            .insert(
+              items
+                  .map(
+                    (product) => {
+                      'order_id': orderRow['id'],
+                      'product_id': product.id,
+                      'product_name': product.name,
+                      'sku': product.id,
+                      'qty': 1,
+                      'unit_price': product.price,
+                      'discount_amount': 0,
+                      'subtotal': product.price,
+                    },
+                  )
+                  .toList(),
+            );
 
         final orderNo = (orderRow['order_no'] ?? '').toString();
         return OrderItem(
@@ -852,16 +854,16 @@ class _HomeShellState extends State<HomeShell> {
             children: [
               Text(
                 'Pilih Cabang KDMP',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: 6),
               Text(
                 'Produk, stok, harga, dan pesanan akan mengikuti cabang yang dipilih.',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: const Color(0xFF6D5A58),
-                    ),
+                  color: const Color(0xFF6D5A58),
+                ),
               ),
               const SizedBox(height: 18),
               for (final branch in _branches)
@@ -905,21 +907,24 @@ class _HomeShellState extends State<HomeShell> {
                                 children: [
                                   Text(
                                     branch.name,
-                                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                          fontWeight: FontWeight.w800,
-                                        ),
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium
+                                        ?.copyWith(fontWeight: FontWeight.w800),
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
                                     branch.subtitle,
-                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    style: Theme.of(context).textTheme.bodySmall
+                                        ?.copyWith(
                                           color: const Color(0xFF6D5A58),
                                         ),
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
                                     branch.address,
-                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    style: Theme.of(context).textTheme.bodySmall
+                                        ?.copyWith(
                                           color: const Color(0xFF9A7B76),
                                         ),
                                   ),
@@ -943,7 +948,9 @@ class _HomeShellState extends State<HomeShell> {
       },
     );
 
-    if (selected == null || !mounted || selected.id == _selectedBranchId) return;
+    if (selected == null || !mounted || selected.id == _selectedBranchId) {
+      return;
+    }
 
     setState(() {
       _selectedBranchId = selected.id;
@@ -1380,16 +1387,15 @@ class _HomeShellState extends State<HomeShell> {
 
       final confirmResult = await Supabase.instance.client.rpc(
         'confirm_wallet_topup',
-        params: {
-          'p_topup_id': createdRow['topup_id'],
-        },
+        params: {'p_topup_id': createdRow['topup_id']},
       );
       final confirmRow = _rpcRow(confirmResult);
       if (confirmRow == null) {
         throw Exception('Konfirmasi pembayaran sandbox gagal.');
       }
 
-      final newBalance = (confirmRow['wallet_balance'] as num?)?.toInt() ?? _mepuBalance;
+      final newBalance =
+          (confirmRow['wallet_balance'] as num?)?.toInt() ?? _mepuBalance;
       if (!mounted) return;
       setState(() => _mepuBalance = newBalance);
       unawaited(_loadWalletBalance());
@@ -1399,10 +1405,7 @@ class _HomeShellState extends State<HomeShell> {
           title: 'Top Up berhasil',
           message:
               'Saldo bertambah ${formatRupiah(request.amount)}. Saldo sekarang ${formatRupiah(newBalance)}.',
-          data: {
-            'amount': request.amount,
-            'wallet_balance': newBalance,
-          },
+          data: {'amount': request.amount, 'wallet_balance': newBalance},
         ),
       );
       _showFeatureSnack(
@@ -1432,7 +1435,9 @@ class _HomeShellState extends State<HomeShell> {
 
   Map<String, dynamic>? _rpcRow(dynamic result) {
     if (result is Map<String, dynamic>) return result;
-    if (result is List && result.isNotEmpty && result.first is Map<String, dynamic>) {
+    if (result is List &&
+        result.isNotEmpty &&
+        result.first is Map<String, dynamic>) {
       return result.first as Map<String, dynamic>;
     }
     return null;
@@ -1485,10 +1490,7 @@ class _HomeShellState extends State<HomeShell> {
       unawaited(
         Supabase.instance.client
             .from('orders')
-            .update({
-              'order_status': nextStatus,
-              'payment_status': 'paid',
-            })
+            .update({'order_status': nextStatus, 'payment_status': 'paid'})
             .eq('order_no', order.id)
             .then((_) => _loadOrders()),
       );
@@ -1506,10 +1508,7 @@ class _HomeShellState extends State<HomeShell> {
         message: usesMepuBalance
             ? 'Pembayaran untuk pesanan ${order.id} berhasil. Saldo sekarang ${formatRupiah(_mepuBalance)}.'
             : 'Pesanan ${order.id} berhasil dibayar dan sedang diproses.',
-        data: {
-          'order_no': order.id,
-          'wallet_balance': _mepuBalance,
-        },
+        data: {'order_no': order.id, 'wallet_balance': _mepuBalance},
       ),
     );
     _showFeatureSnack(
@@ -1541,10 +1540,7 @@ class _HomeShellState extends State<HomeShell> {
       unawaited(
         Supabase.instance.client
             .from('orders')
-            .update({
-              'order_status': 'cancelled',
-              'payment_status': 'failed',
-            })
+            .update({'order_status': 'cancelled', 'payment_status': 'failed'})
             .eq('order_no', order.id)
             .then((_) => _loadOrders()),
       );
@@ -1632,9 +1628,7 @@ class _HomeShellState extends State<HomeShell> {
 }
 
 Map<String, int> _createStocks(List<Product> items) {
-  return {
-    for (final product in items) product.id: product.stock,
-  };
+  return {for (final product in items) product.id: product.stock};
 }
 
 Future<void> _showFeatureSnack(
@@ -2157,10 +2151,7 @@ class _TopUpDialogState extends State<_TopUpDialog> {
 }
 
 class _TopUpRequest {
-  const _TopUpRequest({
-    required this.amount,
-    required this.method,
-  });
+  const _TopUpRequest({required this.amount, required this.method});
 
   final int amount;
   final String method;
@@ -2221,7 +2212,7 @@ class _SandboxPaymentDialog extends StatelessWidget {
     final expiresLabel = expiresAt == null
         ? '-'
         : '${expiresAt.day.toString().padLeft(2, '0')}/${expiresAt.month.toString().padLeft(2, '0')}/${expiresAt.year} '
-            '${expiresAt.hour.toString().padLeft(2, '0')}:${expiresAt.minute.toString().padLeft(2, '0')}';
+              '${expiresAt.hour.toString().padLeft(2, '0')}:${expiresAt.minute.toString().padLeft(2, '0')}';
 
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
@@ -4429,23 +4420,23 @@ class _SelectedBranchCard extends StatelessWidget {
                     Text(
                       'Cabang Aktif',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: const Color(0xFF9A7B76),
-                            fontWeight: FontWeight.w700,
-                          ),
+                        color: const Color(0xFF9A7B76),
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       branchName,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w900,
-                          ),
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       branchSubtitle,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: const Color(0xFF6D5A58),
-                          ),
+                        color: const Color(0xFF6D5A58),
+                      ),
                     ),
                   ],
                 ),
@@ -5481,7 +5472,8 @@ class CheckoutScreen extends StatefulWidget {
     String address,
     int finalTotal,
     String? voucherLabel,
-  ) onPlaceOrder;
+  )
+  onPlaceOrder;
 
   @override
   State<CheckoutScreen> createState() => _CheckoutScreenState();
@@ -5521,8 +5513,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   CheckoutAddress get selectedAddress =>
       deliveryAddresses[selectedAddressIndex];
 
-  String? get selectedAddressId =>
-      deliveryAddresses.isEmpty ? null : deliveryAddresses[selectedAddressIndex].id;
+  String? get selectedAddressId => deliveryAddresses.isEmpty
+      ? null
+      : deliveryAddresses[selectedAddressIndex].id;
 
   Future<void> _loadDeliveryAddresses() async {
     try {
@@ -5544,10 +5537,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final loadedAddresses = rows
           .map<CheckoutAddress>(
             (row) => _toCheckoutAddress(
-              SavedAddressResult.fromMap(
-                row,
-                fallbackUserId: user.id,
-              ),
+              SavedAddressResult.fromMap(row, fallbackUserId: user.id),
             ),
           )
           .toList();
@@ -5833,8 +5823,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final stock = widget.productStocks[item.product.id] ?? 0;
       if (item.quantity > stock) {
         _showFeatureSnack(
-        context,
-        'Stok ${item.product.name} tersisa $stock. Kurangi jumlah pembelian sebelum checkout.',
+          context,
+          'Stok ${item.product.name} tersisa $stock. Kurangi jumlah pembelian sebelum checkout.',
           title: 'Stok Tidak Cukup',
           icon: Icons.inventory_2_outlined,
         );
@@ -5870,7 +5860,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (deliveryMethod == 'Kirim ke Rumah' && deliveryAddresses.isEmpty) {
       _showFeatureSnack(
         context,
-        'Tambahkan alamat pengiriman terlebih dahulu dari backend Supabase.',
+        'Tambahkan alamat pengiriman terlebih dahulu lewat tombol Tambah di Buku Alamat.',
         title: 'Alamat Dibutuhkan',
         icon: Icons.location_on_outlined,
       );
@@ -5960,7 +5950,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     await _loadDeliveryAddresses();
     if (!mounted) return;
     final newIndex = deliveryAddresses.indexWhere(
-      (address) => address.address == selected.address && address.label == selected.label,
+      (address) =>
+          address.address == selected.address &&
+          address.label == selected.label,
     );
     if (newIndex >= 0) {
       setState(() => selectedAddressIndex = newIndex);
@@ -5984,7 +5976,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     await _loadDeliveryAddresses();
     if (!mounted) return;
     final newIndex = deliveryAddresses.indexWhere(
-      (address) => address.address == selected.address && address.label == selected.label,
+      (address) =>
+          address.address == selected.address &&
+          address.label == selected.label,
     );
     if (newIndex >= 0) {
       setState(() => selectedAddressIndex = newIndex);
@@ -6036,323 +6030,245 @@ class _TransactionCompletionScreenState
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final accentColor = _isPending
-        ? const Color(0xFF9A6700)
-        : theme.colorScheme.primary;
-    final softBackground = _isPending
-        ? const Color(0xFFFFF8E1)
-        : const Color(0xFFFFF4F5);
-    final summaryChips = _buildSummaryChips();
-
     return Scaffold(
+      backgroundColor: const Color(0xFFFCF9F8),
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: Text(_isPending ? 'Selesaikan Transaksi' : 'Pesanan Diproses'),
+        backgroundColor: const Color(0xCCFCF9F8),
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          onPressed: _backToHome,
+          icon: const Icon(Icons.close_rounded),
+        ),
+        title: Text(_isPending ? 'Selesaikan Pembayaran' : 'Pesanan Diproses'),
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 140),
         children: [
-          Container(
-            padding: const EdgeInsets.all(22),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: _isPending
-                    ? const [Color(0xFFFFF4CC), Color(0xFFFFE29A)]
-                    : const [Color(0xFFD9001B), Color(0xFF8B0011)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+          _buildPremiumHero(context),
+          const SizedBox(height: 20),
+          _buildStatusCard(context),
+          const SizedBox(height: 20),
+          if (_isTransferBank) ...[
+            _buildVirtualAccountCard(context),
+            const SizedBox(height: 20),
+          ],
+          if (_isPayAtCoop) ...[
+            _buildPickupInstructionCard(context),
+            const SizedBox(height: 20),
+          ],
+          _buildOrderSummaryCard(context),
+          const SizedBox(height: 20),
+          _buildNextStepsCard(context),
+          const SizedBox(height: 20),
+          _buildSupportCard(context),
+        ],
+      ),
+      bottomNavigationBar: _buildPremiumBottomBar(context),
+    );
+  }
+
+  Widget _buildPremiumHero(BuildContext context) {
+    final theme = Theme.of(context);
+    final heroGradient = _isPending
+        ? const [Color(0xFFFFF8E7), Color(0xFFFFE4A3), Color(0xFFFFF3D0)]
+        : const [Color(0xFFE60023), Color(0xFFB7001A), Color(0xFF780011)];
+    final foreground = _isPending ? const Color(0xFF503D00) : Colors.white;
+    final mutedForeground = _isPending
+        ? const Color(0xFF765B00)
+        : Colors.white.withValues(alpha: 0.78);
+
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: heroGradient,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.62)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1FE60023),
+            blurRadius: 30,
+            offset: Offset(0, 16),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            right: -36,
+            top: -42,
+            child: _GlassCircle(size: 132, color: Colors.white),
+          ),
+          Positioned(
+            right: 16,
+            bottom: 12,
+            child: Icon(
+              Icons.verified_rounded,
+              color: Colors.white.withValues(alpha: _isPending ? 0.28 : 0.13),
+              size: 92,
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 58,
+                    height: 58,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(
+                        alpha: _isPending ? 0.72 : 0.16,
+                      ),
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: Icon(
+                      _isPending
+                          ? Icons.account_balance_wallet_outlined
+                          : Icons.check_circle_rounded,
+                      color: foreground,
+                      size: 30,
+                    ),
+                  ),
+                  const Spacer(),
+                  _PremiumBadge(
+                    label: _isPending
+                        ? 'Menunggu Pembayaran'
+                        : 'Pembayaran Berhasil',
+                    foregroundColor: foreground,
+                    backgroundColor: Colors.white.withValues(
+                      alpha: _isPending ? 0.6 : 0.16,
+                    ),
+                  ),
+                ],
               ),
-              borderRadius: BorderRadius.circular(28),
+              const SizedBox(height: 22),
+              Text(
+                _isPending
+                    ? 'Selesaikan pembayaran agar pesanan diproses'
+                    : 'Pembayaran diterima, pesanan sedang diproses',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  color: foreground,
+                  fontWeight: FontWeight.w900,
+                  height: 1.12,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'No. pesanan ${currentOrder.id}',
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: mutedForeground,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                currentOrder.progressLabel,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: mutedForeground,
+                  height: 1.45,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Wrap(spacing: 10, runSpacing: 10, children: _buildSummaryChips()),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusCard(BuildContext context) {
+    return _PremiumSection(
+      title: 'Status Pesanan',
+      subtitle: 'Informasi pembayaran dan pengiriman terbaru.',
+      child: Column(
+        children: [
+          _PremiumTimelineTile(
+            icon: Icons.account_balance_wallet_outlined,
+            label: 'Metode pembayaran',
+            value: _paymentMethodLabel(),
+            active: true,
+          ),
+          _PremiumTimelineTile(
+            icon: _isPickupOrder
+                ? Icons.storefront_outlined
+                : Icons.local_shipping_outlined,
+            label: _isPickupOrder ? 'Metode penerimaan' : 'Metode pengiriman',
+            value: _isPickupOrder ? 'Ambil di koperasi' : 'Diantar ke alamat',
+            active: true,
+          ),
+          _PremiumTimelineTile(
+            icon: Icons.schedule_outlined,
+            label: _isPickupOrder ? 'Estimasi siap diambil' : 'Estimasi tiba',
+            value: _estimatedFulfillmentText(),
+            active: _isPending,
+          ),
+          _PremiumTimelineTile(
+            icon: Icons.verified_user_outlined,
+            label: 'Status saat ini',
+            value: _statusText(),
+            active: !_isPending,
+            isLast: true,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVirtualAccountCard(BuildContext context) {
+    final theme = Theme.of(context);
+    return _PremiumSection(
+      title: 'Pembayaran Virtual Account',
+      subtitle: 'Transfer sesuai nominal agar verifikasi lebih cepat.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _PaymentNumberCard(
+            title: 'BNI Virtual Account',
+            value: _extractVirtualAccount(currentOrder),
+            trailing: IconButton(
+              onPressed: () {
+                _showFeatureSnack(
+                  context,
+                  'Nomor virtual account siap disalin.',
+                  title: 'Nomor VA',
+                  icon: Icons.copy_rounded,
+                );
+              },
+              icon: const Icon(Icons.copy_rounded),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF8E7),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: const Color(0xFFFFE0A3)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 52,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        color: _isPending
-                            ? Colors.white.withValues(alpha: 0.55)
-                            : Colors.white.withValues(alpha: 0.16),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        _isPending
-                            ? Icons.payments_outlined
-                            : Icons.check_circle_rounded,
-                        color: _isPending
-                            ? const Color(0xFF9A6700)
-                            : Colors.white,
-                        size: 30,
-                      ),
-                    ),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _isPending
-                            ? const Color(0x66FFFFFF)
-                            : Colors.white.withValues(alpha: 0.14),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        _isPending
-                            ? 'Menunggu Pembayaran'
-                            : 'Pembayaran Berhasil',
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          color: _isPending
-                              ? const Color(0xFF6D4C00)
-                              : Colors.white,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
                 Text(
-                  _isPending
-                      ? 'Selesaikan pembayaran agar pesanan diproses'
-                      : 'Pesanan kamu sudah masuk dan sedang diproses',
-                  style: theme.textTheme.headlineMedium?.copyWith(
-                    color: _isPending ? const Color(0xFF5C4100) : Colors.white,
-                    fontWeight: FontWeight.w900,
+                  'Nominal pembayaran',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: const Color(0xFF765B00),
+                    fontWeight: FontWeight.w800,
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'No. pesanan ${currentOrder.id}',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    color: _isPending
-                        ? const Color(0xFF7A5A00)
-                        : Colors.white70,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  currentOrder.progressLabel,
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    color: _isPending ? const Color(0xFF5C4100) : Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Wrap(spacing: 10, runSpacing: 10, children: summaryChips),
-              ],
-            ),
-          ),
-          const SizedBox(height: 18),
-          _CheckoutSection(
-            title: 'Status Pesanan',
-            child: Column(
-              children: [
-                _DetailRow(
-                  icon: Icons.account_balance_wallet_outlined,
-                  label: 'Metode pembayaran',
-                  value: _paymentMethodLabel(),
-                ),
-                const SizedBox(height: 14),
-                _DetailRow(
-                  icon: _isPickupOrder
-                      ? Icons.storefront_outlined
-                      : Icons.local_shipping_outlined,
-                  label: _isPickupOrder
-                      ? 'Metode penerimaan'
-                      : 'Metode pengiriman',
-                  value: _isPickupOrder
-                      ? 'Ambil di koperasi'
-                      : 'Diantar ke alamat',
-                ),
-                const SizedBox(height: 14),
-                _DetailRow(
-                  icon: Icons.schedule_outlined,
-                  label: _isPickupOrder
-                      ? 'Estimasi siap diambil'
-                      : 'Estimasi tiba',
-                  value: _estimatedFulfillmentText(),
-                ),
-                const SizedBox(height: 14),
-                _DetailRow(
-                  icon: Icons.verified_user_outlined,
-                  label: 'Status saat ini',
-                  value: _statusText(),
-                  emphasizeValue: true,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 18),
-          _CheckoutSection(
-            title: 'Ringkasan Pesanan',
-            child: Column(
-              children: [
-                _PriceRow(
-                  label: 'Total Tagihan',
-                  value: currentOrder.total,
-                  emphasized: true,
                 ),
                 const SizedBox(height: 6),
-                InfoRow(label: 'Alamat / Pickup', value: currentOrder.address),
-                InfoRow(label: 'Waktu pesanan', value: currentOrder.createdAt),
-                InfoRow(label: 'Item', value: currentOrder.items.join(', ')),
-              ],
-            ),
-          ),
-          if (_isTransferBank) ...[
-            const SizedBox(height: 18),
-            _CheckoutSection(
-              title: 'Pembayaran Virtual Account',
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Bank tujuan: BNI Virtual Account',
-                    style: theme.textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _extractVirtualAccount(currentOrder),
-                    style: theme.textTheme.headlineMedium?.copyWith(
-                      color: theme.colorScheme.primary,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: softBackground,
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Nominal yang harus dibayar',
-                          style: theme.textTheme.labelLarge?.copyWith(
-                            color: const Color(0xFF64748B),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          formatRupiah(currentOrder.total),
-                          style: theme.textTheme.headlineSmall?.copyWith(
-                            color: accentColor,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Lakukan transfer tepat sesuai nominal agar sistem memverifikasi pembayaran secara otomatis.',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: const Color(0xFF64748B),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          if (_isPayAtCoop) ...[
-            const SizedBox(height: 18),
-            _CheckoutSection(
-              title: 'Instruksi Ambil di Koperasi',
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Tunjukkan nomor pesanan ke petugas koperasi dan lakukan pembayaran di kasir sebelum barang diambil.',
-                    style: theme.textTheme.bodyLarge?.copyWith(
-                      color: const Color(0xFF64748B),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFF4F5),
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Kode pengambilan',
-                          style: theme.textTheme.labelLarge?.copyWith(
-                            color: const Color(0xFF64748B),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'PKP-${currentOrder.id.split('-').last}',
-                          style: theme.textTheme.headlineSmall?.copyWith(
-                            color: theme.colorScheme.primary,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          if (!_isPending) ...[
-            const SizedBox(height: 18),
-            _CheckoutSection(
-              title: 'Langkah Berikutnya',
-              child: Column(
-                children: [
-                  _NextStepTile(
-                    icon: Icons.inventory_2_outlined,
-                    title: 'Tim koperasi menyiapkan pesanan',
-                    subtitle: _isPickupOrder
-                        ? 'Barang akan disiapkan sebelum siap diambil di koperasi.'
-                        : 'Barang akan dicek dan dikemas sebelum diserahkan ke kurir.',
-                  ),
-                  const SizedBox(height: 12),
-                  _NextStepTile(
-                    icon: _isPickupOrder
-                        ? Icons.notifications_active_outlined
-                        : Icons.local_shipping_outlined,
-                    title: _isPickupOrder
-                        ? 'Kamu akan mendapat notifikasi saat siap diambil'
-                        : 'Status kurir akan muncul di tab Pesanan',
-                    subtitle: _isPickupOrder
-                        ? 'Datang ke koperasi sesuai jam operasional saat notifikasi muncul.'
-                        : 'Pantau pergerakan pesanan dari tab Pesanan Aktif.',
-                  ),
-                ],
-              ),
-            ),
-          ],
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.support_agent_rounded, color: accentColor),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Butuh bantuan? Hubungi admin koperasi jika ada kendala pembayaran atau pengiriman.',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: const Color(0xFF475569),
-                    ),
+                Text(
+                  formatRupiah(currentOrder.total),
+                  style: theme.textTheme.headlineMedium?.copyWith(
+                    color: const Color(0xFF1A1A1A),
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
               ],
@@ -6360,49 +6276,196 @@ class _TransactionCompletionScreenState
           ),
         ],
       ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+    );
+  }
+
+  Widget _buildPickupInstructionCard(BuildContext context) {
+    return _PremiumSection(
+      title: 'Instruksi Ambil di Koperasi',
+      subtitle: 'Tunjukkan kode pengambilan ke petugas koperasi.',
+      child: _PaymentNumberCard(
+        title: 'Kode pengambilan',
+        value: 'PKP-${currentOrder.id.split('-').last}',
+        trailing: const Icon(
+          Icons.storefront_rounded,
+          color: Color(0xFFE60023),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOrderSummaryCard(BuildContext context) {
+    return _PremiumSection(
+      title: 'Ringkasan Pesanan',
+      subtitle: 'Detail transaksi yang akan diproses koperasi.',
+      child: Column(
+        children: [
+          _PriceRow(
+            label: 'Total Tagihan',
+            value: currentOrder.total,
+            emphasized: true,
           ),
-          child: Row(
-            children: [
-              if (_isPending) ...[
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () {
-                      widget.onCancelOrder(currentOrder);
-                      Navigator.of(context).popUntil((route) => route.isFirst);
-                    },
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(52),
-                    ),
-                    child: const Text('Batalkan'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-              ],
+          const SizedBox(height: 8),
+          InfoRow(label: 'Alamat / Pickup', value: currentOrder.address),
+          InfoRow(label: 'Waktu pesanan', value: currentOrder.createdAt),
+          InfoRow(label: 'Item', value: currentOrder.items.join(', ')),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNextStepsCard(BuildContext context) {
+    return _PremiumSection(
+      title: _isPending ? 'Cara Menyelesaikan' : 'Langkah Berikutnya',
+      subtitle: _isPending
+          ? 'Selesaikan pembayaran sebelum batas waktu.'
+          : 'Pantau status pesanan secara berkala.',
+      child: Column(
+        children: [
+          _NextStepTile(
+            icon: _isPending
+                ? Icons.payments_outlined
+                : Icons.inventory_2_outlined,
+            title: _isPending
+                ? 'Bayar sesuai nominal'
+                : 'Tim koperasi menyiapkan pesanan',
+            subtitle: _isPending
+                ? 'Gunakan nomor pembayaran yang tertera dan pastikan nominalnya sama.'
+                : (_isPickupOrder
+                      ? 'Barang akan disiapkan sebelum siap diambil di koperasi.'
+                      : 'Barang akan dicek dan dikemas sebelum diserahkan ke kurir.'),
+          ),
+          const SizedBox(height: 14),
+          _NextStepTile(
+            icon: _isPending
+                ? Icons.verified_outlined
+                : (_isPickupOrder
+                      ? Icons.notifications_active_outlined
+                      : Icons.local_shipping_outlined),
+            title: _isPending
+                ? 'Konfirmasi setelah pembayaran'
+                : (_isPickupOrder
+                      ? 'Kamu akan mendapat notifikasi'
+                      : 'Status kurir muncul di tab Pesanan'),
+            subtitle: _isPending
+                ? 'Tekan tombol “Saya Sudah Bayar” setelah transfer berhasil.'
+                : (_isPickupOrder
+                      ? 'Datang ke koperasi sesuai jam operasional.'
+                      : 'Pantau pergerakan pesanan dari tab Pesanan Aktif.'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSupportCard(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE8BCB8)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0F000000),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFDAD7),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Icon(
+              Icons.support_agent_rounded,
+              color: Color(0xFFE60023),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(
+              'Butuh bantuan? Hubungi admin koperasi jika ada kendala pembayaran atau pengiriman.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: const Color(0xFF5E3F3C),
+                height: 1.45,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPremiumBottomBar(BuildContext context) {
+    final theme = Theme.of(context);
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(20, 14, 20, 18),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.92),
+          border: Border.all(color: const Color(0xFFE8BCB8)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x1AE60023),
+              blurRadius: 28,
+              offset: Offset(0, -10),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            if (_isPending) ...[
               Expanded(
-                child: FilledButton(
-                  onPressed: _isPending ? _completeTransaction : _backToHome,
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(52),
-                    backgroundColor: theme.colorScheme.primary,
+                child: OutlinedButton(
+                  onPressed: () {
+                    widget.onCancelOrder(currentOrder);
+                    Navigator.of(context).popUntil((route) => route.isFirst);
+                  },
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(54),
+                    foregroundColor: theme.colorScheme.primary,
+                    side: const BorderSide(color: Color(0xFFE8BCB8)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(999),
+                    ),
                   ),
-                  child: Text(
-                    _isPending
-                        ? (_isTransferBank
-                              ? 'Saya Sudah Bayar'
-                              : 'Selesaikan Transaksi')
-                        : 'Kembali ke Beranda',
-                  ),
+                  child: const Text('Batalkan'),
                 ),
               ),
+              const SizedBox(width: 12),
             ],
-          ),
+            Expanded(
+              flex: 2,
+              child: FilledButton(
+                onPressed: _isPending ? _completeTransaction : _backToHome,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(54),
+                  backgroundColor: const Color(0xFFE60023),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                child: Text(
+                  _isPending
+                      ? (_isTransferBank
+                            ? 'Saya Sudah Bayar'
+                            : 'Selesaikan Transaksi')
+                      : 'Kembali ke Beranda',
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -6512,62 +6575,248 @@ class _StatusChip extends StatelessWidget {
   }
 }
 
-class _DetailRow extends StatelessWidget {
-  const _DetailRow({
+class _GlassCircle extends StatelessWidget {
+  const _GlassCircle({required this.size, required this.color});
+
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color.withValues(alpha: 0.22),
+      ),
+    );
+  }
+}
+
+class _PremiumBadge extends StatelessWidget {
+  const _PremiumBadge({
+    required this.label,
+    required this.foregroundColor,
+    required this.backgroundColor,
+  });
+
+  final String label;
+  final Color foregroundColor;
+  final Color backgroundColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.44)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.circle, size: 8, color: foregroundColor),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: foregroundColor,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PremiumSection extends StatelessWidget {
+  const _PremiumSection({
+    required this.title,
+    required this.child,
+    this.subtitle,
+  });
+
+  final String title;
+  final String? subtitle;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: const Color(0xFFE8BCB8)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0F000000),
+            blurRadius: 24,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w900,
+              color: const Color(0xFF1A1A1A),
+            ),
+          ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              subtitle!,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: const Color(0xFF5E3F3C),
+                height: 1.35,
+              ),
+            ),
+          ],
+          const SizedBox(height: 18),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _PremiumTimelineTile extends StatelessWidget {
+  const _PremiumTimelineTile({
     required this.icon,
     required this.label,
     required this.value,
-    this.emphasizeValue = false,
+    required this.active,
+    this.isLast = false,
   });
 
   final IconData icon;
   final String label;
   final String value;
-  final bool emphasizeValue;
+  final bool active;
+  final bool isLast;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            color: theme.colorScheme.primary.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Icon(icon, color: theme.colorScheme.primary, size: 20),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    final color = active ? const Color(0xFFE60023) : const Color(0xFF936E6B);
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Column(
             children: [
-              Text(
-                label,
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: const Color(0xFF64748B),
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: active
+                      ? const Color(0xFFFFDAD7)
+                      : const Color(0xFFF6F3F2),
+                  borderRadius: BorderRadius.circular(18),
                 ),
+                child: Icon(icon, color: color, size: 22),
               ),
-              const SizedBox(height: 2),
-              Text(
-                value,
-                style:
-                    (emphasizeValue
-                            ? theme.textTheme.titleMedium
-                            : theme.textTheme.bodyLarge)
-                        ?.copyWith(
-                          fontWeight: emphasizeValue
-                              ? FontWeight.w800
-                              : FontWeight.w600,
-                        ),
-              ),
+              if (!isLast)
+                Expanded(
+                  child: Container(
+                    width: 2,
+                    margin: const EdgeInsets.symmetric(vertical: 8),
+                    color: const Color(0xFFE8BCB8),
+                  ),
+                ),
             ],
           ),
-        ),
-      ],
+          const SizedBox(width: 14),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: const Color(0xFF765B00),
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    value,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: const Color(0xFF1A1A1A),
+                      fontWeight: FontWeight.w900,
+                      height: 1.25,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PaymentNumberCard extends StatelessWidget {
+  const _PaymentNumberCard({
+    required this.title,
+    required this.value,
+    required this.trailing,
+  });
+
+  final String title;
+  final String value;
+  final Widget trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF6F3F2),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE5E2E1)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: const Color(0xFF5E3F3C),
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  value,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    color: const Color(0xFFE60023),
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          trailing,
+        ],
+      ),
     );
   }
 }
