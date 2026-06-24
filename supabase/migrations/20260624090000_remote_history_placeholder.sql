@@ -1,0 +1,2 @@
+-- Placeholder for a migration that already exists in the linked Supabase
+-- project's migration history but was missing from this local workspace.
