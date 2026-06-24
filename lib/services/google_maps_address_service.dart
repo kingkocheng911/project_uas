@@ -2,27 +2,36 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'google_maps_runtime_key.dart';
+
 const googleMapsApiKey = String.fromEnvironment(
   'GOOGLE_MAPS_API_KEY',
   defaultValue: '',
 );
 
+String get activeGoogleMapsApiKey {
+  final compileTimeKey = googleMapsApiKey.trim();
+  if (compileTimeKey.isNotEmpty) return compileTimeKey;
+  return runtimeGoogleMapsApiKey.trim();
+}
+
 class GoogleMapsAddressService {
   const GoogleMapsAddressService();
 
-  bool get isConfigured => googleMapsApiKey.trim().isNotEmpty;
+  bool get isConfigured => activeGoogleMapsApiKey.isNotEmpty;
 
   Future<List<GooglePlaceSuggestion>> autocomplete(String query) async {
     _ensureConfigured();
     final trimmed = query.trim();
     if (trimmed.isEmpty) return const [];
 
-    final uri = Uri.https('maps.googleapis.com', '/maps/api/place/autocomplete/json', {
-      'input': trimmed,
-      'key': googleMapsApiKey,
-      'language': 'id',
-      'components': 'country:id',
-    });
+    final uri =
+        Uri.https('maps.googleapis.com', '/maps/api/place/autocomplete/json', {
+          'input': trimmed,
+          'key': activeGoogleMapsApiKey,
+          'language': 'id',
+          'components': 'country:id',
+        });
 
     final response = await http.get(uri);
     final payload = jsonDecode(response.body) as Map<String, dynamic>;
@@ -43,8 +52,13 @@ class GoogleMapsAddressService {
           return GooglePlaceSuggestion(
             placeId: placeId,
             description: description,
-            mainText: _extractText(row['structured_formatting'], 'main_text') ?? description,
-            secondaryText: _extractText(row['structured_formatting'], 'secondary_text'),
+            mainText:
+                _extractText(row['structured_formatting'], 'main_text') ??
+                description,
+            secondaryText: _extractText(
+              row['structured_formatting'],
+              'secondary_text',
+            ),
           );
         })
         .whereType<GooglePlaceSuggestion>()
@@ -53,13 +67,16 @@ class GoogleMapsAddressService {
 
   Future<GoogleAddressDetails> getPlaceDetails(String placeId) async {
     _ensureConfigured();
-    final uri = Uri.https('maps.googleapis.com', '/maps/api/place/details/json', {
-      'place_id': placeId,
-      'key': googleMapsApiKey,
-      'language': 'id',
-      'fields':
-          'formatted_address,geometry,address_component,name,place_id',
-    });
+    final uri = Uri.https(
+      'maps.googleapis.com',
+      '/maps/api/place/details/json',
+      {
+        'place_id': placeId,
+        'key': activeGoogleMapsApiKey,
+        'language': 'id',
+        'fields': 'formatted_address,geometry,address_component,name,place_id',
+      },
+    );
 
     final response = await http.get(uri);
     final payload = jsonDecode(response.body) as Map<String, dynamic>;
@@ -79,7 +96,7 @@ class GoogleMapsAddressService {
     _ensureConfigured();
     final uri = Uri.https('maps.googleapis.com', '/maps/api/geocode/json', {
       'latlng': '$latitude,$longitude',
-      'key': googleMapsApiKey,
+      'key': activeGoogleMapsApiKey,
       'language': 'id',
     });
 
@@ -87,28 +104,27 @@ class GoogleMapsAddressService {
     final payload = jsonDecode(response.body) as Map<String, dynamic>;
     _ensureGoogleOk(payload);
 
-    final results = payload['results'] is List ? payload['results'] as List : const [];
+    final results = payload['results'] is List
+        ? payload['results'] as List
+        : const [];
     if (results.isEmpty) {
-      throw const GoogleMapsAddressException('Alamat tidak ditemukan dari titik peta.');
+      throw const GoogleMapsAddressException(
+        'Alamat tidak ditemukan dari titik peta.',
+      );
     }
 
     final first = results.first is Map<String, dynamic>
         ? results.first as Map<String, dynamic>
         : Map<String, dynamic>.from(results.first as Map);
 
-    return _detailsFromMap(
-      {
-        'place_id': first['place_id'],
-        'formatted_address': first['formatted_address'],
-        'address_components': first['address_components'],
-        'geometry': {
-          'location': {
-            'lat': latitude,
-            'lng': longitude,
-          },
-        },
+    return _detailsFromMap({
+      'place_id': first['place_id'],
+      'formatted_address': first['formatted_address'],
+      'address_components': first['address_components'],
+      'geometry': {
+        'location': {'lat': latitude, 'lng': longitude},
       },
-    );
+    });
   }
 
   GoogleAddressDetails _detailsFromMap(Map<String, dynamic> result) {
@@ -121,16 +137,20 @@ class GoogleMapsAddressService {
 
     final components = result['address_components'] is List
         ? (result['address_components'] as List)
-            .map((item) => item is Map<String, dynamic>
-                ? item
-                : Map<String, dynamic>.from(item as Map))
-            .toList(growable: false)
+              .map(
+                (item) => item is Map<String, dynamic>
+                    ? item
+                    : Map<String, dynamic>.from(item as Map),
+              )
+              .toList(growable: false)
         : const <Map<String, dynamic>>[];
 
     String? fromComponent(List<String> types) {
       for (final component in components) {
         final componentTypes = component['types'] is List
-            ? (component['types'] as List).map((item) => item.toString()).toSet()
+            ? (component['types'] as List)
+                  .map((item) => item.toString())
+                  .toSet()
             : <String>{};
         if (types.any(componentTypes.contains)) {
           return (component['long_name'] ?? '').toString();
@@ -145,8 +165,15 @@ class GoogleMapsAddressService {
       latitude: (location['lat'] as num?)?.toDouble() ?? 0,
       longitude: (location['lng'] as num?)?.toDouble() ?? 0,
       province: fromComponent(const ['administrative_area_level_1']) ?? '',
-      city: fromComponent(const ['administrative_area_level_2', 'locality']) ?? '',
-      district: fromComponent(const ['administrative_area_level_3', 'sublocality_level_1']) ?? '',
+      city:
+          fromComponent(const ['administrative_area_level_2', 'locality']) ??
+          '',
+      district:
+          fromComponent(const [
+            'administrative_area_level_3',
+            'sublocality_level_1',
+          ]) ??
+          '',
       postalCode: fromComponent(const ['postal_code']) ?? '',
     );
   }
@@ -170,7 +197,9 @@ class GoogleMapsAddressService {
     if (status == 'OK' || status == 'ZERO_RESULTS') return;
     final errorMessage = (payload['error_message'] ?? '').toString().trim();
     throw GoogleMapsAddressException(
-      errorMessage.isEmpty ? 'Google Maps API mengembalikan status $status.' : errorMessage,
+      errorMessage.isEmpty
+          ? 'Google Maps API mengembalikan status $status.'
+          : errorMessage,
     );
   }
 }

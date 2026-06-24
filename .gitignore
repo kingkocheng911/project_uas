@@ -31,6 +31,7 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /dart_defines.json
+/web/google_maps_config.js
 /build/
 /coverage/
 

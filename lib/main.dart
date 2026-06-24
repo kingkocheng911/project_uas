@@ -4,9 +4,12 @@ import 'package:flutter_web_plugins/url_strategy.dart'; // 1. Tambahkan import i
 
 import 'app.dart';
 
+const forceMockAuth = bool.fromEnvironment('FORCE_MOCK_AUTH');
+const startAuthenticated = bool.fromEnvironment('START_AUTHENTICATED');
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // 2. Hilangkan tanda '#' pada URL saat dijalankan di browser/web
   usePathUrlStrategy();
 
@@ -16,6 +19,11 @@ Future<void> main() async {
       publishableKey: supabasePublishableKey,
     );
   }
-  
-  runApp(const KdmpApp());
+
+  runApp(
+    const KdmpApp(
+      forceMockAuth: forceMockAuth,
+      startAuthenticated: startAuthenticated,
+    ),
+  );
 }

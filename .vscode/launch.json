@@ -1,0 +1,31 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "MepuPoin Web (Supabase)",
+      "request": "launch",
+      "type": "dart",
+      "deviceId": "chrome",
+      "toolArgs": [
+        "--dart-define-from-file=dart_defines.json"
+      ]
+    },
+    {
+      "name": "MepuPoin Web (Demo Local)",
+      "request": "launch",
+      "type": "dart",
+      "deviceId": "chrome",
+      "toolArgs": [
+        "--dart-define=FORCE_MOCK_AUTH=true"
+      ]
+    },
+    {
+      "name": "MepuPoin Mobile (Supabase)",
+      "request": "launch",
+      "type": "dart",
+      "toolArgs": [
+        "--dart-define-from-file=dart_defines.json"
+      ]
+    }
+  ]
+}

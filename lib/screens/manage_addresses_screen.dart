@@ -32,8 +32,10 @@ class SavedAddressResult {
     required String fallbackUserId,
   }) {
     return SavedAddressResult(
-      id: (map['id'] ?? '${fallbackUserId}_${DateTime.now().millisecondsSinceEpoch}')
-          .toString(),
+      id:
+          (map['id'] ??
+                  '${fallbackUserId}_${DateTime.now().millisecondsSinceEpoch}')
+              .toString(),
       label: (map['label'] ?? 'Alamat').toString(),
       name: (map['recipient_name'] ?? '').toString(),
       phone: (map['phone'] ?? '').toString(),
@@ -159,19 +161,19 @@ class _ManageAddressesScreenState extends State<ManageAddressesScreen> {
                     onPressed: _addresses.isEmpty
                         ? null
                         : () => Navigator.of(context).pop(
-                              _selectedAddress == null
-                                  ? null
-                                  : SavedAddressResult(
-                                      id: _selectedAddress!.id,
-                                      label: _selectedAddress!.label,
-                                      name: _selectedAddress!.name,
-                                      phone: _selectedAddress!.phone,
-                                      address: _selectedAddress!.address,
-                                      isPrimary: _selectedAddress!.isPrimary,
-                                      latitude: _selectedAddress!.latitude,
-                                      longitude: _selectedAddress!.longitude,
-                                    ),
-                            ),
+                            _selectedAddress == null
+                                ? null
+                                : SavedAddressResult(
+                                    id: _selectedAddress!.id,
+                                    label: _selectedAddress!.label,
+                                    name: _selectedAddress!.name,
+                                    phone: _selectedAddress!.phone,
+                                    address: _selectedAddress!.address,
+                                    isPrimary: _selectedAddress!.isPrimary,
+                                    latitude: _selectedAddress!.latitude,
+                                    longitude: _selectedAddress!.longitude,
+                                  ),
+                          ),
                     style: FilledButton.styleFrom(
                       backgroundColor: primary,
                       minimumSize: const Size.fromHeight(62),
@@ -226,14 +228,16 @@ class _ManageAddressesScreenState extends State<ManageAddressesScreen> {
 
       final addresses = rows
           .map<_AddressData>(
-            (row) => _AddressData.fromMap(row, fallbackUserId: _currentUser!.id),
+            (row) =>
+                _AddressData.fromMap(row, fallbackUserId: _currentUser!.id),
           )
           .toList();
 
       if (!mounted) return;
       setState(() {
         _addresses = addresses;
-        _selectedAddressId = addresses
+        _selectedAddressId =
+            addresses
                 .where((address) => address.isPrimary)
                 .map((address) => address.id)
                 .firstOrNull ??
@@ -427,8 +431,10 @@ class _AddressData {
     required String fallbackUserId,
   }) {
     return _AddressData(
-      id: (map['id'] ?? '${fallbackUserId}_${DateTime.now().millisecondsSinceEpoch}')
-          .toString(),
+      id:
+          (map['id'] ??
+                  '${fallbackUserId}_${DateTime.now().millisecondsSinceEpoch}')
+              .toString(),
       label: (map['label'] ?? 'Alamat').toString(),
       name: (map['recipient_name'] ?? '').toString(),
       phone: (map['phone'] ?? '').toString(),
@@ -748,7 +754,8 @@ class _AddAddressSheet extends StatefulWidget {
 }
 
 class _AddAddressSheetState extends State<_AddAddressSheet> {
-  final GoogleMapsAddressService _mapsService = const GoogleMapsAddressService();
+  final GoogleMapsAddressService _mapsService =
+      const GoogleMapsAddressService();
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _labelController;
   late final TextEditingController _nameController;
@@ -824,7 +831,9 @@ class _AddAddressSheetState extends State<_AddAddressSheet> {
                   isConfigured: _mapsService.isConfigured,
                   location: _selectedLocation,
                   isLoading: _isResolvingLocation,
-                  onSearch: _isResolvingLocation ? null : _searchAddressFromGoogle,
+                  onSearch: _isResolvingLocation
+                      ? null
+                      : _searchAddressFromGoogle,
                   onOpenMap: _isResolvingLocation ? null : _openMapPicker,
                 ),
                 const SizedBox(height: 18),
@@ -908,7 +917,9 @@ class _AddAddressSheetState extends State<_AddAddressSheet> {
                       backgroundColor: primary,
                       minimumSize: const Size.fromHeight(54),
                     ),
-                    child: Text(_isEditing ? 'Simpan Perubahan' : 'Simpan Alamat'),
+                    child: Text(
+                      _isEditing ? 'Simpan Perubahan' : 'Simpan Alamat',
+                    ),
                   ),
                 ),
               ],
@@ -1087,7 +1098,9 @@ class _MapAddressPickerCard extends StatelessWidget {
                 child: FilledButton.icon(
                   onPressed: isConfigured ? onOpenMap : null,
                   icon: const Icon(Icons.place_outlined),
-                  label: Text(location == null ? 'Pilih di Peta' : 'Ubah Titik'),
+                  label: Text(
+                    location == null ? 'Pilih di Peta' : 'Ubah Titik',
+                  ),
                 ),
               ),
             ],
@@ -1169,7 +1182,8 @@ class _GoogleAddressSearchSheet extends StatefulWidget {
   final GoogleMapsAddressService service;
 
   @override
-  State<_GoogleAddressSearchSheet> createState() => _GoogleAddressSearchSheetState();
+  State<_GoogleAddressSearchSheet> createState() =>
+      _GoogleAddressSearchSheetState();
 }
 
 class _GoogleAddressSearchSheetState extends State<_GoogleAddressSearchSheet> {
@@ -1290,21 +1304,21 @@ class _GoogleAddressSearchSheetState extends State<_GoogleAddressSearchSheet> {
 }
 
 class _AddressMapPickerScreen extends StatefulWidget {
-  const _AddressMapPickerScreen({
-    required this.service,
-    this.initialLocation,
-  });
+  const _AddressMapPickerScreen({required this.service, this.initialLocation});
 
   final GoogleMapsAddressService service;
   final GoogleAddressDetails? initialLocation;
 
   @override
-  State<_AddressMapPickerScreen> createState() => _AddressMapPickerScreenState();
+  State<_AddressMapPickerScreen> createState() =>
+      _AddressMapPickerScreenState();
 }
 
 class _AddressMapPickerScreenState extends State<_AddressMapPickerScreen> {
   GoogleAddressDetails? _selectedLocation;
   bool _isResolving = false;
+  bool _isMapReady = false;
+  bool _showMapLoadHint = false;
   GoogleMapController? _mapController;
   late LatLng _cameraTarget;
 
@@ -1320,6 +1334,10 @@ class _AddressMapPickerScreenState extends State<_AddressMapPickerScreen> {
         _resolveFromCameraTarget(_defaultAddressMapCenter);
       });
     }
+    Future<void>.delayed(const Duration(seconds: 4), () {
+      if (!mounted || _isMapReady) return;
+      setState(() => _showMapLoadHint = true);
+    });
   }
 
   @override
@@ -1335,14 +1353,20 @@ class _AddressMapPickerScreenState extends State<_AddressMapPickerScreen> {
         : LatLng(_selectedLocation!.latitude, _selectedLocation!.longitude);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Pilih Titik Alamat'),
-      ),
+      appBar: AppBar(title: const Text('Pilih Titik Alamat')),
       body: Stack(
         children: [
           GoogleMap(
             initialCameraPosition: CameraPosition(target: target, zoom: 16),
-            onMapCreated: (controller) => _mapController = controller,
+            onMapCreated: (controller) {
+              _mapController = controller;
+              if (mounted) {
+                setState(() {
+                  _isMapReady = true;
+                  _showMapLoadHint = false;
+                });
+              }
+            },
             myLocationButtonEnabled: false,
             zoomControlsEnabled: false,
             markers: {
@@ -1361,6 +1385,55 @@ class _AddressMapPickerScreenState extends State<_AddressMapPickerScreen> {
               await _resolveFromCameraTarget(_cameraTarget, moveCamera: false);
             },
           ),
+          if (_showMapLoadHint)
+            Positioned.fill(
+              child: Container(
+                color: const Color(0xEFFFFFFF),
+                padding: const EdgeInsets.all(24),
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFFF4B4BE)),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x14000000),
+                          blurRadius: 18,
+                          offset: Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: const Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.map_outlined,
+                          color: Color(0xFFD9001B),
+                          size: 36,
+                        ),
+                        SizedBox(height: 12),
+                        Text(
+                          'Peta belum berhasil dimuat',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 18,
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Pastikan Maps JavaScript API aktif untuk API key ini, billing Google Cloud aktif, lalu stop dan run ulang Flutter.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(height: 1.4),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
           Positioned(
             left: 16,
             right: 16,
@@ -1384,7 +1457,10 @@ class _AddressMapPickerScreenState extends State<_AddressMapPickerScreen> {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.place_outlined, color: Color(0xFFD9001B)),
+                      const Icon(
+                        Icons.place_outlined,
+                        color: Color(0xFFD9001B),
+                      ),
                       const SizedBox(width: 8),
                       Text(
                         _isResolving ? 'Mencari alamat...' : 'Alamat terpilih',
@@ -1521,8 +1597,7 @@ const List<_AddressData> _fallbackAddresses = [
     label: 'Work',
     name: 'Budi Santoso',
     phone: '+62 812-3456-7890',
-    address:
-        'Jl. Pahlawan No. 10, Kec. Kalijati, Subang, West Java 41271',
+    address: 'Jl. Pahlawan No. 10, Kec. Kalijati, Subang, West Java 41271',
     isPrimary: false,
   ),
   _AddressData(
@@ -1530,8 +1605,7 @@ const List<_AddressData> _fallbackAddresses = [
     label: 'Parents',
     name: 'Santoso Family',
     phone: '+62 813-9876-5432',
-    address:
-        'Jl. Kebun Raya No. 7, Kec. Purwakarta, West Java 41101',
+    address: 'Jl. Kebun Raya No. 7, Kec. Purwakarta, West Java 41101',
     isPrimary: false,
   ),
 ];

@@ -9,7 +9,7 @@ Kredensial Supabase tidak lagi disimpan hardcoded di source code, tetapi dikirim
 lewat `dart-define`.
 
 1. Salin `dart_defines.example.json` menjadi `dart_defines.json`
-2. Isi nilai Supabase Anda
+2. Isi nilai Supabase dan `GOOGLE_MAPS_API_KEY` Anda
 3. Jalankan aplikasi:
 
 ```bash
@@ -23,6 +23,24 @@ flutter run --dart-define=SUPABASE_URL=YOUR_SUPABASE_URL --dart-define=SUPABASE_
 ```
 
 Jika credential belum diisi, aplikasi tetap berjalan dalam mode demo lokal.
+
+## Google Maps untuk alamat pengiriman
+
+Fitur buku alamat checkout memakai Google Maps untuk pencarian alamat,
+place details, reverse geocode, dan picker titik peta.
+
+1. Enable API berikut di Google Cloud Console:
+   - Maps JavaScript API
+   - Places API
+   - Geocoding API
+2. Web local: salin `web/google_maps_config.example.js` menjadi
+   `web/google_maps_config.js`, lalu isi API key.
+3. Flutter service: isi `GOOGLE_MAPS_API_KEY` di `dart_defines.json`.
+4. Android local: isi `GOOGLE_MAPS_API_KEY` di `android/local.properties`.
+
+Batasi API key di Google Cloud Console sesuai platform:
+HTTP referrer untuk web, Android app restriction untuk Android, dan iOS bundle
+ID untuk iOS.
 
 ## Supabase CLI workflow
 

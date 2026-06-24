@@ -31,6 +31,48 @@
 
   <title>project_uas</title>
   <link rel="manifest" href="manifest.json">
+  <script src="google_maps_config.js"></script>
+  <script>
+    (function () {
+      var flutterStarted = false;
+
+      function startFlutter() {
+        if (flutterStarted) return;
+        flutterStarted = true;
+
+        var flutterScript = document.createElement('script');
+        flutterScript.src = 'flutter_bootstrap.js';
+        flutterScript.async = true;
+        document.body.appendChild(flutterScript);
+      }
+
+      window.__mepuPoinGoogleMapsReady = startFlutter;
+
+      window.addEventListener('load', function () {
+        var apiKey = window.googleMapsApiKey;
+        if (!apiKey || apiKey === 'YOUR_GOOGLE_MAPS_API_KEY') {
+          startFlutter();
+          return;
+        }
+
+        if (window.google && window.google.maps) {
+          startFlutter();
+          return;
+        }
+
+        var script = document.createElement('script');
+        script.src = 'https://maps.googleapis.com/maps/api/js?key='
+          + encodeURIComponent(apiKey)
+          + '&libraries=places,marker,geometry'
+          + '&loading=async'
+          + '&callback=__mepuPoinGoogleMapsReady';
+        script.async = true;
+        script.defer = true;
+        script.onerror = startFlutter;
+        document.head.appendChild(script);
+      });
+    })();
+  </script>
 </head>
 <body>
   <!--
@@ -41,6 +83,5 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
-  <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
