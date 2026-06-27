@@ -384,7 +384,6 @@ begin
     v_full_name;
 end;
 $function$;
-
 create or replace function public.superadmin_upsert_branch_admin_credentials(
   p_branch_id uuid,
   p_email text,

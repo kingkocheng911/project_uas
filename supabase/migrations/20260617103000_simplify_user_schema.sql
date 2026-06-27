@@ -1,5 +1,4 @@
 create extension if not exists "pgcrypto";
-
 create table if not exists public.user_settings (
   user_id uuid primary key references auth.users (id) on delete cascade,
   notifications jsonb not null default jsonb_build_object(
@@ -18,10 +17,8 @@ create table if not exists public.user_settings (
   constraint user_settings_notifications_is_object
     check (jsonb_typeof(notifications) = 'object')
 );
-
 alter table public.profiles
 add column if not exists role text not null default 'user';
-
 update public.profiles
 set role = case lower(coalesce(role_label, ''))
   when 'superadmin' then 'superadmin'
@@ -29,14 +26,11 @@ set role = case lower(coalesce(role_label, ''))
   when 'branch admin' then 'admin'
   else 'user'
 end;
-
 alter table public.profiles
 drop constraint if exists profiles_role_check;
-
 alter table public.profiles
 add constraint profiles_role_check
 check (role in ('user', 'admin', 'superadmin'));
-
 insert into public.user_settings (user_id, notifications, created_at, updated_at)
 select
   user_id,
@@ -58,14 +52,11 @@ on conflict (user_id) do update
 set
   notifications = excluded.notifications,
   updated_at = excluded.updated_at;
-
 drop trigger if exists set_user_settings_updated_at on public.user_settings;
 create trigger set_user_settings_updated_at
 before update on public.user_settings
 for each row execute procedure public.set_updated_at();
-
 alter table public.user_settings enable row level security;
-
 drop policy if exists "users can manage own settings" on public.user_settings;
 create policy "users can manage own settings"
 on public.user_settings
@@ -73,7 +64,6 @@ for all
 to authenticated
 using (auth.uid() = user_id)
 with check (auth.uid() = user_id);
-
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -102,10 +92,8 @@ begin
   return new;
 end;
 $$;
-
 alter table public.profiles
 drop column if exists role_label;
-
 drop table if exists public.notification_settings cascade;
 drop table if exists public.payment_methods cascade;
 drop table if exists public.order_items cascade;

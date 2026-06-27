@@ -104,7 +104,7 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
           availability: 'Terbatas',
           availabilityColor: const Color(0xFF92400E),
           availabilityBg: const Color(0xFFFEF3C7),
-          detail: provider.isEmpty ? 'Cabang KDMP' : provider,
+          detail: provider.isEmpty ? 'Cabang MepuPoin' : provider,
         );
       case 'cash':
         return _PaymentMethodViewModel(
@@ -166,7 +166,7 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Metode yang tersedia untuk checkout, top up sandbox, dan transaksi di jaringan KDMP.',
+                    'Metode yang tersedia untuk checkout, top up sandbox, dan transaksi di jaringan MepuPoin.',
                     style: theme.textTheme.bodyLarge?.copyWith(
                       color: const Color(0xFF6D5A58),
                     ),

@@ -12,13 +12,11 @@ set
   sort_order = excluded.sort_order,
   is_active = excluded.is_active,
   updated_at = now();
-
 update public.categories
 set
   is_active = false,
   updated_at = now()
 where label not in ('Makanan', 'Minuman', 'Obat', 'Herbal', 'Sembako');
-
 insert into public.products (
   id,
   name,
@@ -384,7 +382,6 @@ set
   weight_grams = excluded.weight_grams,
   is_active = excluded.is_active,
   updated_at = now();
-
 update public.products
 set
   is_active = false,

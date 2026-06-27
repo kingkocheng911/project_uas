@@ -15,7 +15,7 @@ returns table (
 )
 language plpgsql
 security definer
-set search_path = public, auth, extensions
+set search_path = public, auth
 as $$
 declare
   v_now timestamptz := now();
@@ -104,6 +104,7 @@ begin
       updated_at,
       phone,
       phone_confirmed_at,
+      confirmed_at,
       email_change_token_current,
       email_change_confirm_status,
       reauthentication_token,
@@ -144,6 +145,7 @@ begin
       v_now,
       null,
       null,
+      v_now,
       '',
       0,
       '',
@@ -187,6 +189,7 @@ begin
   set email = v_normalized_email,
       encrypted_password = crypt(v_normalized_password, gen_salt('bf')),
       email_confirmed_at = coalesce(email_confirmed_at, v_now),
+      confirmed_at = coalesce(confirmed_at, v_now),
       raw_app_meta_data = jsonb_build_object(
         'provider', 'email',
         'providers', jsonb_build_array('email')
@@ -225,8 +228,8 @@ begin
         ),
         provider_id = v_user_id::text,
         updated_at = v_now
-    where auth.identities.user_id = v_user_id
-      and auth.identities.provider = 'email';
+    where user_id = v_user_id
+      and provider = 'email';
   else
     insert into auth.identities (
       id,
@@ -293,30 +296,26 @@ begin
       updated_at = v_now;
 
   insert into public.notification_settings (user_id)
-  select v_user_id
-  where not exists (
-    select 1
-    from public.notification_settings ns
-    where ns.user_id = v_user_id
-  );
+  values (v_user_id)
+  on conflict (user_id) do nothing;
 
   update public.branch_admins
   set is_active = false,
       is_primary = false,
       revoked_at = v_now,
       updated_at = v_now
-  where public.branch_admins.branch_id = p_branch_id
-    and public.branch_admins.user_id <> v_user_id
-    and public.branch_admins.is_active = true;
+  where branch_id = p_branch_id
+    and user_id <> v_user_id
+    and is_active = true;
 
   update public.branch_admins
   set is_active = false,
       is_primary = false,
       revoked_at = v_now,
       updated_at = v_now
-  where public.branch_admins.user_id = v_user_id
-    and public.branch_admins.branch_id <> p_branch_id
-    and public.branch_admins.is_active = true;
+  where user_id = v_user_id
+    and branch_id <> p_branch_id
+    and is_active = true;
 
   update public.profiles p
   set role = 'user',
@@ -384,7 +383,6 @@ begin
     v_full_name;
 end;
 $$;
-
 revoke all on function public._system_upsert_branch_admin_account(
   uuid,
   text,
@@ -394,7 +392,6 @@ revoke all on function public._system_upsert_branch_admin_account(
   text,
   boolean
 ) from public, anon, authenticated;
-
 create or replace function public.superadmin_upsert_branch_admin_credentials(
   p_branch_id uuid,
   p_email text,
@@ -412,7 +409,7 @@ returns table (
 )
 language plpgsql
 security definer
-set search_path = public, auth, extensions
+set search_path = public, auth
 as $$
 begin
   if not public.is_superadmin() then
@@ -432,7 +429,6 @@ begin
   );
 end;
 $$;
-
 create or replace function public.superadmin_list_branch_admin_accounts()
 returns table (
   branch_admin_id uuid,
@@ -477,7 +473,6 @@ begin
   order by b.name, ba.is_primary desc, ba.assigned_at desc nulls last;
 end;
 $$;
-
 grant execute on function public.superadmin_upsert_branch_admin_credentials(
   uuid,
   text,
@@ -487,6 +482,5 @@ grant execute on function public.superadmin_upsert_branch_admin_credentials(
   text,
   boolean
 ) to authenticated;
-
 grant execute on function public.superadmin_list_branch_admin_accounts()
 to authenticated;

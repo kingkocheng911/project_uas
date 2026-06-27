@@ -26,10 +26,15 @@ create table if not exists public.vouchers (
   constraint vouchers_usage_valid check (max_usage_per_user > 0),
   constraint vouchers_schedule_valid check (end_at > start_at)
 );
+<<<<<<< HEAD
 
 create unique index if not exists vouchers_code_key
 on public.vouchers (upper(code));
 
+=======
+create unique index if not exists vouchers_code_key
+on public.vouchers (upper(code));
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
 create table if not exists public.voucher_redemptions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
@@ -40,6 +45,7 @@ create table if not exists public.voucher_redemptions (
   created_at timestamptz not null default now(),
   constraint voucher_redemptions_discount_non_negative check (discount_amount >= 0)
 );
+<<<<<<< HEAD
 
 create index if not exists voucher_redemptions_user_id_idx
 on public.voucher_redemptions (user_id);
@@ -51,6 +57,15 @@ create unique index if not exists voucher_redemptions_order_voucher_key
 on public.voucher_redemptions (order_id, voucher_id)
 where order_id is not null;
 
+=======
+create index if not exists voucher_redemptions_user_id_idx
+on public.voucher_redemptions (user_id);
+create index if not exists voucher_redemptions_voucher_id_idx
+on public.voucher_redemptions (voucher_id);
+create unique index if not exists voucher_redemptions_order_voucher_key
+on public.voucher_redemptions (order_id, voucher_id)
+where order_id is not null;
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
 create or replace function public.validate_voucher_redemption()
 returns trigger
 language plpgsql
@@ -97,7 +112,10 @@ begin
   return new;
 end;
 $$;
+<<<<<<< HEAD
 
+=======
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
 create or replace function public.increment_voucher_quota_used()
 returns trigger
 language plpgsql
@@ -113,27 +131,41 @@ begin
   return new;
 end;
 $$;
+<<<<<<< HEAD
 
+=======
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
 drop trigger if exists validate_voucher_redemption_before_insert
 on public.voucher_redemptions;
 create trigger validate_voucher_redemption_before_insert
 before insert on public.voucher_redemptions
 for each row execute procedure public.validate_voucher_redemption();
+<<<<<<< HEAD
 
+=======
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
 drop trigger if exists increment_voucher_quota_after_insert
 on public.voucher_redemptions;
 create trigger increment_voucher_quota_after_insert
 after insert on public.voucher_redemptions
 for each row execute procedure public.increment_voucher_quota_used();
+<<<<<<< HEAD
 
+=======
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
 drop trigger if exists set_vouchers_updated_at on public.vouchers;
 create trigger set_vouchers_updated_at
 before update on public.vouchers
 for each row execute procedure public.set_updated_at();
+<<<<<<< HEAD
 
 alter table public.vouchers enable row level security;
 alter table public.voucher_redemptions enable row level security;
 
+=======
+alter table public.vouchers enable row level security;
+alter table public.voucher_redemptions enable row level security;
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
 drop policy if exists "users read active vouchers" on public.vouchers;
 create policy "users read active vouchers"
 on public.vouchers
@@ -142,7 +174,10 @@ to authenticated, anon
 using (
   is_active = true
 );
+<<<<<<< HEAD
 
+=======
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
 drop policy if exists "superadmin manage vouchers" on public.vouchers;
 create policy "superadmin manage vouchers"
 on public.vouchers
@@ -150,21 +185,30 @@ for all
 to authenticated
 using (public.is_superadmin())
 with check (public.is_superadmin());
+<<<<<<< HEAD
 
+=======
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
 drop policy if exists "users read own voucher redemptions" on public.voucher_redemptions;
 create policy "users read own voucher redemptions"
 on public.voucher_redemptions
 for select
 to authenticated
 using (auth.uid() = user_id or public.is_superadmin());
+<<<<<<< HEAD
 
+=======
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
 drop policy if exists "users redeem own vouchers" on public.voucher_redemptions;
 create policy "users redeem own vouchers"
 on public.voucher_redemptions
 for insert
 to authenticated
 with check (auth.uid() = user_id);
+<<<<<<< HEAD
 
+=======
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
 insert into public.vouchers (
   code,
   title,

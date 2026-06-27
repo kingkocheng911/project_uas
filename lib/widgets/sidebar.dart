@@ -11,16 +11,17 @@ class SidebarMenuItem {
 
 const superAdminMenus = <SidebarMenuItem>[
   SidebarMenuItem(name: 'Dashboard', icon: Icons.dashboard_rounded),
-  SidebarMenuItem(name: 'Branch Management', icon: Icons.storefront_rounded),
+  SidebarMenuItem(name: 'Branch Monitoring', icon: Icons.storefront_rounded),
+  SidebarMenuItem(name: 'Branch Performance', icon: Icons.leaderboard_rounded),
   SidebarMenuItem(
-    name: 'Admin Management',
+    name: 'Admin Monitoring',
     icon: Icons.admin_panel_settings_rounded,
   ),
-  SidebarMenuItem(name: 'User Management', icon: Icons.people_alt_rounded),
-  SidebarMenuItem(name: 'Loyalty Points Management', icon: Icons.stars_rounded),
-  SidebarMenuItem(name: 'Promotions & Banners', icon: Icons.campaign_rounded),
-  SidebarMenuItem(name: 'Reports', icon: Icons.assessment_rounded),
-  SidebarMenuItem(name: 'System Settings', icon: Icons.settings_rounded),
+  SidebarMenuItem(
+    name: 'Branch Management',
+    icon: Icons.edit_location_alt_rounded,
+  ),
+  SidebarMenuItem(name: 'Analytics', icon: Icons.insights_rounded),
 ];
 
 class SidebarWidget extends StatelessWidget {

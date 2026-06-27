@@ -73,7 +73,7 @@ class _OrderListScreenState extends State<OrderListScreen> {
       final branchRelation = assignment?['branches'];
       final branchName = branchRelation is Map<String, dynamic>
           ? (branchRelation['name'] ?? '').toString()
-          : 'Cabang KDMP';
+          : 'Cabang MepuPoin';
 
       final rows = await _repository.loadBranchOrders(branchId);
 

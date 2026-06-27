@@ -78,11 +78,17 @@ Jika credential belum diisi, aplikasi tetap bisa berjalan dalam mode demo lokal.
   - `addresses`
   - `user_settings`
 
+Catatan penting:
+
+- Kedua file di atas bukan lagi representasi penuh schema aktif aplikasi retail KDMP.
+- Untuk database yang benar-benar dipakai Flutter saat ini, gunakan migration di folder `supabase/migrations/` sebagai source of truth.
+
 ## Migration KDMP Retail
 
 Backend retail multi-cabang KDMP sudah mulai dipisahkan melalui migration:
 
 - `supabase/migrations/20260619210602_add_kdmp_retail_backend.sql`
+- `supabase/migrations/20260626101500_add_secure_order_transaction_functions.sql`
 
 Migration ini menambahkan atau memperluas:
 
@@ -102,6 +108,7 @@ Selain tabel inti, migration tersebut juga menyiapkan:
 
 - helper function RLS untuk `superadmin` dan `branch_admin`
 - policy akses data per role
+- RPC transaksi order customer dan admin cabang
 - bucket storage:
   - `avatars`
   - `product-images`
@@ -119,8 +126,8 @@ Catatan:
 Project ini sekarang sudah disiapkan untuk workflow Supabase CLI:
 
 1. Inisialisasi lokal sudah ada di `supabase/config.toml`
-2. Migration utama ada di:
-   - `supabase/migrations/20260611130722_initial_app_database.sql`
+2. Schema aktif ada di:
+   - `supabase/migrations/`
 3. Seed data awal ada di:
    - `supabase/seed.sql`
 

@@ -1,4 +1,4 @@
-package com.example.project_uas
+package com.mepupoin.app
 
 import io.flutter.embedding.android.FlutterActivity
 

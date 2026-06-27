@@ -12,7 +12,6 @@ as $$
       and role in ('superadmin', 'super_admin')
   );
 $$;
-
 create or replace function public.is_branch_admin(target_branch_id uuid)
 returns boolean
 language sql

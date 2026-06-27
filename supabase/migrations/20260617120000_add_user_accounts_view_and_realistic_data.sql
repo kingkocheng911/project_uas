@@ -11,7 +11,6 @@ select
   u.created_at
 from auth.users u
 left join public.profiles p on p.id = u.id;
-
 insert into public.profiles (id, full_name, phone, avatar_url, role)
 select
   u.id,
@@ -41,7 +40,6 @@ set
   full_name = excluded.full_name,
   phone = excluded.phone,
   role = excluded.role;
-
 insert into public.user_settings (user_id, notifications)
 select
   u.id,
@@ -72,7 +70,6 @@ select
 from auth.users u
 on conflict (user_id) do update
 set notifications = excluded.notifications;
-
 with candidate_addresses as (
   select
     u.id as user_id,

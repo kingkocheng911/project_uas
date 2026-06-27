@@ -5,7 +5,6 @@ immutable
 as $$
   select trim(both '-' from lower(regexp_replace(coalesce(source, ''), '[^a-zA-Z0-9]+', '-', 'g')));
 $$;
-
 create or replace function public.branch_admin_create_product(
   p_branch_id uuid,
   p_name text,
@@ -169,7 +168,6 @@ begin
   return query select v_branch_product_id, v_product_id;
 end;
 $$;
-
 create or replace function public.branch_admin_update_product(
   p_branch_product_id uuid,
   p_name text,
@@ -247,7 +245,6 @@ begin
   where id = p_branch_product_id;
 end;
 $$;
-
 create or replace function public.branch_admin_adjust_stock(
   p_branch_product_id uuid,
   p_qty_change integer,
@@ -333,7 +330,6 @@ begin
   return v_qty_after;
 end;
 $$;
-
 create or replace function public.notify_customer_order_change()
 returns trigger
 language plpgsql
@@ -385,17 +381,14 @@ begin
   return new;
 end;
 $$;
-
 drop trigger if exists notify_customer_on_order_insert on public.orders;
 create trigger notify_customer_on_order_insert
 after insert on public.orders
 for each row execute procedure public.notify_customer_order_change();
-
 drop trigger if exists notify_customer_on_order_update on public.orders;
 create trigger notify_customer_on_order_update
 after update of order_status, payment_status on public.orders
 for each row execute procedure public.notify_customer_order_change();
-
 grant execute on function public.branch_admin_create_product(uuid, text, text, integer, integer, integer, text, text, text, integer, boolean) to authenticated;
 grant execute on function public.branch_admin_update_product(uuid, text, text, integer, integer, text, text, text, integer, boolean, boolean) to authenticated;
 grant execute on function public.branch_admin_adjust_stock(uuid, integer, text, text) to authenticated;

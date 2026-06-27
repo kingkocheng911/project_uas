@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../branch_admin_repository.dart';
+import '../inventory/inventory_screen.dart';
 import '../orders/admin_order_models.dart';
 import '../orders/order_list_screen.dart';
+import '../promotions/promotion_management_screen.dart';
 import '../products/product_list_screen.dart';
 import '../products/category_screen.dart';
 import '../products/stock_management_screen.dart';
+import '../reports/revenue_report_screen.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -76,16 +79,19 @@ class _AdminDashboardState extends State<AdminDashboard> {
     if (currentUser == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Sesi admin tidak ditemukan. Login ulang lalu coba lagi.')),
+        const SnackBar(
+          content: Text(
+            'Sesi admin tidak ditemukan. Login ulang lalu coba lagi.',
+          ),
+        ),
       );
       return;
     }
 
     final result = await showDialog<_AdminCredentialUpdateResult>(
       context: context,
-      builder: (context) => _AdminCredentialDialog(
-        currentEmail: currentUser.email ?? '',
-      ),
+      builder: (context) =>
+          _AdminCredentialDialog(currentEmail: currentUser.email ?? ''),
     );
     if (result == null) return;
 
@@ -107,9 +113,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
       );
     } on AuthException catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -147,7 +153,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
             ),
             const SizedBox(height: 4),
             Text(
-              _assignment?.name ?? 'Cabang KDMP',
+              _assignment?.name ?? 'Cabang MepuPoin',
               style: const TextStyle(
                 color: Color(0xFF6D5A58),
                 fontSize: 12,
@@ -217,7 +223,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 borderRadius: BorderRadius.circular(16),
               ),
               alignment: Alignment.center,
-              child: const Icon(Icons.more_vert_rounded, color: Color(0xFF6D5A58)),
+              child: const Icon(
+                Icons.more_vert_rounded,
+                color: Color(0xFF6D5A58),
+              ),
             ),
           ),
         ],
@@ -262,6 +271,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
           repository: _repository,
           onOpenOrders: () => setState(() => _currentIndex = 1),
           onOpenProducts: () => setState(() => _currentIndex = 2),
+          onOpenInventory: () {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const InventoryScreen()),
+            );
+          },
           onOpenStock: () {
             Navigator.of(context).push(
               MaterialPageRoute<void>(
@@ -269,11 +283,23 @@ class _AdminDashboardState extends State<AdminDashboard> {
               ),
             );
           },
-          onOpenCategories: () {
+          onOpenPromotions: () {
             Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (_) => const CategoryScreen(),
+                builder: (_) => const PromotionManagementScreen(),
               ),
+            );
+          },
+          onOpenReports: () {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const RevenueReportScreen(),
+              ),
+            );
+          },
+          onOpenCategories: () {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const CategoryScreen()),
             );
           },
         );
@@ -363,10 +389,7 @@ class _AdminCredentialDialogState extends State<_AdminCredentialDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Batal'),
         ),
-        FilledButton(
-          onPressed: _save,
-          child: const Text('Simpan'),
-        ),
+        FilledButton(onPressed: _save, child: const Text('Simpan')),
       ],
     );
   }
@@ -397,9 +420,9 @@ class _AdminCredentialDialogState extends State<_AdminCredentialDialog> {
       return;
     }
 
-    Navigator.of(context).pop(
-      _AdminCredentialUpdateResult(email: email, password: password),
-    );
+    Navigator.of(
+      context,
+    ).pop(_AdminCredentialUpdateResult(email: email, password: password));
   }
 }
 
@@ -418,14 +441,20 @@ class _AdminDashboardHome extends StatefulWidget {
     required this.repository,
     required this.onOpenOrders,
     required this.onOpenProducts,
+    required this.onOpenInventory,
     required this.onOpenStock,
+    required this.onOpenPromotions,
+    required this.onOpenReports,
     required this.onOpenCategories,
   });
 
   final BranchAdminRepository repository;
   final VoidCallback onOpenOrders;
   final VoidCallback onOpenProducts;
+  final VoidCallback onOpenInventory;
   final VoidCallback onOpenStock;
+  final VoidCallback onOpenPromotions;
+  final VoidCallback onOpenReports;
   final VoidCallback onOpenCategories;
 
   @override
@@ -455,7 +484,9 @@ class _AdminDashboardHomeState extends State<_AdminDashboardHome> {
       setState(() => _data = data);
     } catch (error) {
       if (!mounted) return;
-      setState(() => _errorMessage = error.toString().replaceFirst('Exception: ', ''));
+      setState(
+        () => _errorMessage = error.toString().replaceFirst('Exception: ', ''),
+      );
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -476,16 +507,19 @@ class _AdminDashboardHomeState extends State<_AdminDashboardHome> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline_rounded, size: 42, color: Color(0xFFD9001B)),
-              const SizedBox(height: 12),
-              Text(
-                _errorMessage!,
-                textAlign: TextAlign.center,
+              const Icon(
+                Icons.error_outline_rounded,
+                size: 42,
+                color: Color(0xFFD9001B),
               ),
+              const SizedBox(height: 12),
+              Text(_errorMessage!, textAlign: TextAlign.center),
               const SizedBox(height: 16),
               FilledButton(
                 onPressed: _load,
-                style: FilledButton.styleFrom(backgroundColor: const Color(0xFFD9001B)),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFD9001B),
+                ),
                 child: const Text('Coba Lagi'),
               ),
             ],
@@ -504,9 +538,9 @@ class _AdminDashboardHomeState extends State<_AdminDashboardHome> {
           const SizedBox(height: 18),
           Text(
             'Ringkasan Hari Ini',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 12),
           GridView.count(
@@ -525,11 +559,11 @@ class _AdminDashboardHomeState extends State<_AdminDashboardHome> {
                 icon: Icons.receipt_long_rounded,
               ),
               _MetricCard(
-                title: 'Diproses',
-                value: '${data.processingOrders}',
-                subtitle: 'Confirmed dan processing',
+                title: 'Omzet Hari Ini',
+                value: formatCurrency(data.todayRevenue),
+                subtitle: '${data.todaySales} item terjual',
                 tone: const Color(0xFF1565C0),
-                icon: Icons.inventory_2_rounded,
+                icon: Icons.payments_rounded,
               ),
               _MetricCard(
                 title: 'Low Stock',
@@ -539,20 +573,20 @@ class _AdminDashboardHomeState extends State<_AdminDashboardHome> {
                 icon: Icons.warning_amber_rounded,
               ),
               _MetricCard(
-                title: 'Selesai',
-                value: '${data.completedOrders}',
-                subtitle: 'Order completed',
+                title: 'Stok Habis',
+                value: '${data.outOfStockProducts}',
+                subtitle: 'Produk kosong di cabang',
                 tone: const Color(0xFF1A7F42),
-                icon: Icons.check_circle_rounded,
+                icon: Icons.remove_shopping_cart_rounded,
               ),
             ],
           ),
           const SizedBox(height: 18),
           Text(
             'Aksi Cepat',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 12),
           GridView.count(
@@ -582,13 +616,34 @@ class _AdminDashboardHomeState extends State<_AdminDashboardHome> {
                 subtitle: 'Restock dan catat mutasi stok manual.',
                 icon: Icons.inventory_rounded,
                 tone: const Color(0xFF1A7F42),
+                onTap: widget.onOpenInventory,
+              ),
+              _QuickActionCard(
+                title: 'Penyesuaian Stok',
+                subtitle: 'Catat restock, koreksi, rusak, dan hilang.',
+                icon: Icons.tune_rounded,
+                tone: const Color(0xFFC47A00),
                 onTap: widget.onOpenStock,
+              ),
+              _QuickActionCard(
+                title: 'Promo Cabang',
+                subtitle: 'Buat, ubah, dan nonaktifkan promo cabang.',
+                icon: Icons.local_offer_rounded,
+                tone: const Color(0xFF7B1FA2),
+                onTap: widget.onOpenPromotions,
+              ),
+              _QuickActionCard(
+                title: 'Laporan Cabang',
+                subtitle: 'Lihat omzet, transaksi, dan produk terlaris.',
+                icon: Icons.bar_chart_rounded,
+                tone: const Color(0xFF00695C),
+                onTap: widget.onOpenReports,
               ),
               _QuickActionCard(
                 title: 'Kategori Aktif',
                 subtitle: 'Lihat kategori pusat yang dipakai cabang.',
                 icon: Icons.category_rounded,
-                tone: const Color(0xFF7B1FA2),
+                tone: const Color(0xFF5D4037),
                 onTap: widget.onOpenCategories,
               ),
             ],
@@ -607,8 +662,8 @@ class _AdminDashboardHomeState extends State<_AdminDashboardHome> {
                 Text(
                   'Pesanan Terbaru',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 const SizedBox(height: 14),
                 if (data.recentOrders.isEmpty)
@@ -667,16 +722,16 @@ class _HeroBranchCard extends StatelessWidget {
           Text(
             data.assignment.name,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                ),
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+            ),
           ),
           const SizedBox(height: 6),
           Text(
             data.assignment.shortLocation,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.white.withValues(alpha: 0.82),
-                ),
+              color: Colors.white.withValues(alpha: 0.82),
+            ),
           ),
           const SizedBox(height: 18),
           Row(
@@ -721,17 +776,17 @@ class _HeroStat extends StatelessWidget {
         children: [
           Text(
             label,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Colors.white70,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: Colors.white70),
           ),
           const SizedBox(height: 8),
           Text(
             value,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                ),
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+            ),
           ),
         ],
       ),
@@ -837,9 +892,9 @@ class _QuickActionCard extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               title,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 6),
             Expanded(
@@ -882,7 +937,10 @@ class _RecentOrderTile extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   '${order.orderNo} • ${order.typeLabel}',
-                  style: const TextStyle(color: Color(0xFF6D5A58), fontSize: 12),
+                  style: const TextStyle(
+                    color: Color(0xFF6D5A58),
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),
@@ -943,7 +1001,9 @@ class _BranchCustomerScreenState extends State<_BranchCustomerScreen> {
       setState(() => _customers = customers);
     } catch (error) {
       if (!mounted) return;
-      setState(() => _errorMessage = error.toString().replaceFirst('Exception: ', ''));
+      setState(
+        () => _errorMessage = error.toString().replaceFirst('Exception: ', ''),
+      );
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -968,16 +1028,16 @@ class _BranchCustomerScreenState extends State<_BranchCustomerScreen> {
         children: [
           Text(
             'Pelanggan Cabang',
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w900,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 6),
           Text(
             'Daftar ini diambil dari pesanan pelanggan yang masuk ke cabang aktif.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: const Color(0xFF6D5A58),
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF6D5A58)),
           ),
           const SizedBox(height: 16),
           if (_customers.isEmpty)
@@ -1024,20 +1084,22 @@ class _BranchCustomerScreenState extends State<_BranchCustomerScreen> {
                           children: [
                             Text(
                               customer.name,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium
+                              style: Theme.of(context).textTheme.titleMedium
                                   ?.copyWith(fontWeight: FontWeight.w800),
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              customer.phone.isEmpty ? 'Nomor belum tersedia' : customer.phone,
+                              customer.phone.isEmpty
+                                  ? 'Nomor belum tersedia'
+                                  : customer.phone,
                               style: const TextStyle(color: Color(0xFF6D5A58)),
                             ),
                             const SizedBox(height: 8),
                             Text(
                               '${customer.totalOrders} order • ${customer.completedOrders} selesai',
-                              style: const TextStyle(fontWeight: FontWeight.w700),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ],
                         ),

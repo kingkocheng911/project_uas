@@ -292,7 +292,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
       return 'Wajib diisi';
     }
     if (int.tryParse(value.trim()) == null) {
-      return 'Harus berupa angka';
+      return 'ewe';
     }
     return null;
   }

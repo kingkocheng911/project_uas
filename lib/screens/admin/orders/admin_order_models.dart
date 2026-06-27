@@ -35,7 +35,7 @@ class AdminOrder {
       userId: (row['user_id'] ?? '').toString(),
       branchId: (row['branch_id'] ?? '').toString(),
       customerName: (row['customer_name'] ?? '').toString().trim().isEmpty
-          ? 'Pelanggan KDMP'
+          ? 'Pelanggan MepuPoin'
           : (row['customer_name'] ?? '').toString().trim(),
       customerPhone: (row['customer_phone'] ?? '').toString().trim(),
       orderType: (row['order_type'] ?? 'delivery').toString(),

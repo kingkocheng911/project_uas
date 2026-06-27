@@ -54,6 +54,8 @@ class Product {
     required this.tone,
     required this.categories,
     this.imageUrl,
+    this.branchId,
+    this.branchProductId,
     required this.highlights,
     required this.relatedIds,
   });
@@ -71,6 +73,8 @@ class Product {
   final Color tone;
   final List<String> categories;
   final String? imageUrl;
+  final String? branchId;
+  final String? branchProductId;
   final List<String> highlights;
   final List<String> relatedIds;
 }

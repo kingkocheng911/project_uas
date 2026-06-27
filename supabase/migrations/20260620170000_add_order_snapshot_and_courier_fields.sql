@@ -5,7 +5,6 @@ alter table public.orders
   add column if not exists delivery_address text,
   add column if not exists courier_name text,
   add column if not exists courier_phone text;
-
 update public.orders o
 set
   customer_name = coalesce(nullif(o.customer_name, ''), p.full_name),
@@ -16,7 +15,6 @@ where p.id = o.user_id
     o.customer_name is null or o.customer_name = ''
     or o.customer_phone is null or o.customer_phone = ''
   );
-
 update public.orders o
 set
   delivery_label = coalesce(nullif(o.delivery_label, ''), a.label),

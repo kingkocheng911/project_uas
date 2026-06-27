@@ -1,5 +1,4 @@
 create extension if not exists "pgcrypto";
-
 create or replace function public.is_superadmin()
 returns boolean
 language sql
@@ -12,7 +11,6 @@ as $$
       and role in ('superadmin', 'super_admin')
   );
 $$;
-
 create table if not exists public.branches (
   id uuid primary key default gen_random_uuid(),
   code text not null unique,
@@ -31,7 +29,6 @@ create table if not exists public.branches (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create table if not exists public.branch_admins (
   id uuid primary key default gen_random_uuid(),
   branch_id uuid not null references public.branches (id) on delete cascade,
@@ -45,11 +42,9 @@ create table if not exists public.branch_admins (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create unique index if not exists branch_admins_branch_user_active_idx
 on public.branch_admins (branch_id, user_id)
 where is_active = true;
-
 create or replace function public.is_branch_admin(target_branch_id uuid)
 returns boolean
 language sql
@@ -65,13 +60,11 @@ as $$
         and is_active = true
     );
 $$;
-
 alter table public.profiles
   add column if not exists default_branch_id uuid references public.branches (id) on delete set null,
   add column if not exists member_code text,
   add column if not exists role_type text,
   add column if not exists is_active boolean not null default true;
-
 update public.profiles
 set
   role_type = case
@@ -80,22 +73,17 @@ set
     else 'customer'
   end
 where role_type is null;
-
 create unique index if not exists profiles_member_code_key
 on public.profiles (member_code)
 where member_code is not null;
-
 alter table public.categories
   add column if not exists parent_id uuid references public.categories (id) on delete set null,
   add column if not exists slug text,
   add column if not exists updated_at timestamptz not null default now();
-
 update public.categories
 set slug = lower(regexp_replace(label, '[^a-zA-Z0-9]+', '-', 'g'))
 where slug is null;
-
 create unique index if not exists categories_slug_key on public.categories (slug);
-
 alter table public.products
   add column if not exists sku text,
   add column if not exists barcode text,
@@ -104,16 +92,13 @@ alter table public.products
   add column if not exists unit text not null default 'pcs',
   add column if not exists brand text,
   add column if not exists weight_grams numeric(10, 2);
-
 update public.products
 set
   sku = coalesce(sku, id),
   slug = coalesce(slug, lower(regexp_replace(name || '-' || id, '[^a-zA-Z0-9]+', '-', 'g')))
 where sku is null or slug is null;
-
 create unique index if not exists products_sku_key on public.products (sku);
 create unique index if not exists products_slug_key on public.products (slug);
-
 create table if not exists public.branch_products (
   id uuid primary key default gen_random_uuid(),
   branch_id uuid not null references public.branches (id) on delete cascade,
@@ -131,10 +116,8 @@ create table if not exists public.branch_products (
   constraint branch_products_stock_non_negative
     check (stock_on_hand >= 0 and stock_reserved >= 0 and min_stock_alert >= 0)
 );
-
 create unique index if not exists branch_products_branch_product_key
 on public.branch_products (branch_id, product_id);
-
 create table if not exists public.promotions (
   id uuid primary key default gen_random_uuid(),
   branch_id uuid references public.branches (id) on delete cascade,
@@ -159,7 +142,6 @@ create table if not exists public.promotions (
   updated_at timestamptz not null default now(),
   constraint promotions_schedule_valid check (end_at > start_at)
 );
-
 create table if not exists public.notifications (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
@@ -174,7 +156,6 @@ create table if not exists public.notifications (
   created_at timestamptz not null default now(),
   constraint notifications_data_is_object check (jsonb_typeof(data) = 'object')
 );
-
 create table if not exists public.notification_settings (
   user_id uuid primary key references auth.users (id) on delete cascade,
   orders_enabled boolean not null default true,
@@ -189,7 +170,6 @@ create table if not exists public.notification_settings (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create table if not exists public.payment_methods (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references auth.users (id) on delete cascade,
@@ -206,7 +186,6 @@ create table if not exists public.payment_methods (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 alter table public.payment_methods
   add column if not exists user_id uuid references auth.users (id) on delete cascade,
   add column if not exists code text,
@@ -221,7 +200,6 @@ alter table public.payment_methods
   add column if not exists sort_order integer not null default 0,
   add column if not exists created_at timestamptz not null default now(),
   add column if not exists updated_at timestamptz not null default now();
-
 do $$
 begin
   if exists (
@@ -276,11 +254,9 @@ begin
       check (type in ('cash', 'bank_transfer', 'ewallet', 'qris', 'cod'));
   end if;
 end $$;
-
 create unique index if not exists payment_methods_code_key
 on public.payment_methods (code)
 where code is not null;
-
 do $$
 begin
   if to_regclass('public.user_settings') is not null then
@@ -313,7 +289,6 @@ begin
     $notification_settings_migration$;
   end if;
 end $$;
-
 insert into public.payment_methods (code, name, type, provider_name, sort_order)
 select seed.code, seed.name, seed.type, seed.provider_name, seed.sort_order
 from (
@@ -330,7 +305,6 @@ where not exists (
   from public.payment_methods pm
   where pm.code = seed.code
 );
-
 create table if not exists public.orders (
   id uuid primary key default gen_random_uuid(),
   order_no text unique,
@@ -363,7 +337,6 @@ create table if not exists public.orders (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 alter table public.orders
   add column if not exists order_no text,
   add column if not exists branch_id uuid references public.branches (id) on delete set null,
@@ -380,7 +353,6 @@ alter table public.orders
   add column if not exists notes text,
   add column if not exists placed_at timestamptz not null default now(),
   add column if not exists completed_at timestamptz;
-
 do $$
 begin
   if not exists (
@@ -418,12 +390,10 @@ begin
       check (payment_status in ('unpaid', 'paid', 'failed', 'refunded'));
   end if;
 end $$;
-
 update public.orders
 set
   placed_at = coalesce(placed_at, created_at, now())
 where placed_at is null;
-
 do $$
 declare
   has_status boolean;
@@ -462,11 +432,9 @@ begin
     $orders_total_backfill$;
   end if;
 end $$;
-
 create unique index if not exists orders_order_no_key
 on public.orders (order_no)
 where order_no is not null;
-
 create table if not exists public.order_items (
   id uuid primary key default gen_random_uuid(),
   order_id uuid not null references public.orders (id) on delete cascade,
@@ -480,19 +448,16 @@ create table if not exists public.order_items (
   subtotal integer not null default 0,
   created_at timestamptz not null default now()
 );
-
 alter table public.order_items
   add column if not exists branch_product_id uuid references public.branch_products (id) on delete set null,
   add column if not exists sku text,
   add column if not exists qty integer not null default 1,
   add column if not exists discount_amount integer not null default 0,
   add column if not exists subtotal integer not null default 0;
-
 update public.order_items
 set
   qty = coalesce(qty, 1)
 where qty is null;
-
 do $$
 declare
   has_quantity boolean;
@@ -523,7 +488,6 @@ begin
     end;
   end if;
 end $$;
-
 create table if not exists public.stock_movements (
   id uuid primary key default gen_random_uuid(),
   branch_product_id uuid not null references public.branch_products (id) on delete cascade,
@@ -549,7 +513,6 @@ create table if not exists public.stock_movements (
   performed_by uuid references auth.users (id) on delete set null,
   created_at timestamptz not null default now()
 );
-
 create table if not exists public.branch_performance (
   id uuid primary key default gen_random_uuid(),
   branch_id uuid not null references public.branches (id) on delete cascade,
@@ -568,10 +531,8 @@ create table if not exists public.branch_performance (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create unique index if not exists branch_performance_period_key
 on public.branch_performance (branch_id, period_date, period_type);
-
 alter table public.addresses
   add column if not exists province text,
   add column if not exists city text,
@@ -580,7 +541,6 @@ alter table public.addresses
   add column if not exists latitude numeric(10, 7),
   add column if not exists longitude numeric(10, 7),
   add column if not exists notes text;
-
 create or replace function public.generate_order_no()
 returns trigger
 language plpgsql
@@ -592,57 +552,46 @@ begin
   return new;
 end;
 $$;
-
 drop trigger if exists set_branches_updated_at on public.branches;
 create trigger set_branches_updated_at
 before update on public.branches
 for each row execute procedure public.set_updated_at();
-
 drop trigger if exists set_branch_admins_updated_at on public.branch_admins;
 create trigger set_branch_admins_updated_at
 before update on public.branch_admins
 for each row execute procedure public.set_updated_at();
-
 drop trigger if exists set_categories_updated_at on public.categories;
 create trigger set_categories_updated_at
 before update on public.categories
 for each row execute procedure public.set_updated_at();
-
 drop trigger if exists set_branch_products_updated_at on public.branch_products;
 create trigger set_branch_products_updated_at
 before update on public.branch_products
 for each row execute procedure public.set_updated_at();
-
 drop trigger if exists set_promotions_updated_at on public.promotions;
 create trigger set_promotions_updated_at
 before update on public.promotions
 for each row execute procedure public.set_updated_at();
-
 drop trigger if exists set_notification_settings_updated_at on public.notification_settings;
 create trigger set_notification_settings_updated_at
 before update on public.notification_settings
 for each row execute procedure public.set_updated_at();
-
 drop trigger if exists set_payment_methods_updated_at on public.payment_methods;
 create trigger set_payment_methods_updated_at
 before update on public.payment_methods
 for each row execute procedure public.set_updated_at();
-
 drop trigger if exists set_orders_updated_at on public.orders;
 create trigger set_orders_updated_at
 before update on public.orders
 for each row execute procedure public.set_updated_at();
-
 drop trigger if exists set_branch_performance_updated_at on public.branch_performance;
 create trigger set_branch_performance_updated_at
 before update on public.branch_performance
 for each row execute procedure public.set_updated_at();
-
 drop trigger if exists set_order_no_before_insert on public.orders;
 create trigger set_order_no_before_insert
 before insert on public.orders
 for each row execute procedure public.generate_order_no();
-
 alter table public.branches enable row level security;
 alter table public.branch_admins enable row level security;
 alter table public.branch_products enable row level security;
@@ -654,14 +603,12 @@ alter table public.orders enable row level security;
 alter table public.order_items enable row level security;
 alter table public.stock_movements enable row level security;
 alter table public.branch_performance enable row level security;
-
 drop policy if exists "superadmin can read all profiles" on public.profiles;
 create policy "superadmin can read all profiles"
 on public.profiles
 for select
 to authenticated
 using (public.is_superadmin());
-
 drop policy if exists "superadmin can update all profiles" on public.profiles;
 create policy "superadmin can update all profiles"
 on public.profiles
@@ -669,7 +616,6 @@ for update
 to authenticated
 using (public.is_superadmin())
 with check (public.is_superadmin());
-
 drop policy if exists "superadmin manage categories" on public.categories;
 create policy "superadmin manage categories"
 on public.categories
@@ -677,7 +623,6 @@ for all
 to authenticated
 using (public.is_superadmin())
 with check (public.is_superadmin());
-
 drop policy if exists "superadmin manage products" on public.products;
 create policy "superadmin manage products"
 on public.products
@@ -685,14 +630,12 @@ for all
 to authenticated
 using (public.is_superadmin())
 with check (public.is_superadmin());
-
 drop policy if exists "authenticated can read active branches" on public.branches;
 create policy "authenticated can read active branches"
 on public.branches
 for select
 to authenticated, anon
 using (is_active = true or public.is_superadmin());
-
 drop policy if exists "superadmin manage branches" on public.branches;
 create policy "superadmin manage branches"
 on public.branches
@@ -700,14 +643,12 @@ for all
 to authenticated
 using (public.is_superadmin())
 with check (public.is_superadmin());
-
 drop policy if exists "users can read own branch assignments" on public.branch_admins;
 create policy "users can read own branch assignments"
 on public.branch_admins
 for select
 to authenticated
 using (auth.uid() = user_id or public.is_superadmin());
-
 drop policy if exists "superadmin manage branch admins" on public.branch_admins;
 create policy "superadmin manage branch admins"
 on public.branch_admins
@@ -715,7 +656,6 @@ for all
 to authenticated
 using (public.is_superadmin())
 with check (public.is_superadmin());
-
 drop policy if exists "anyone can read branch products" on public.branch_products;
 create policy "anyone can read branch products"
 on public.branch_products
@@ -730,7 +670,6 @@ using (
       and b.is_active = true
   )
 );
-
 drop policy if exists "branch admins manage own branch products" on public.branch_products;
 create policy "branch admins manage own branch products"
 on public.branch_products
@@ -738,14 +677,12 @@ for all
 to authenticated
 using (public.is_branch_admin(branch_id))
 with check (public.is_branch_admin(branch_id));
-
 drop policy if exists "anyone can read active promotions" on public.promotions;
 create policy "anyone can read active promotions"
 on public.promotions
 for select
 to authenticated, anon
 using (is_active = true and start_at <= now() and end_at >= now());
-
 drop policy if exists "branch admins manage promotions" on public.promotions;
 create policy "branch admins manage promotions"
 on public.promotions
@@ -759,7 +696,6 @@ with check (
   public.is_superadmin()
   or (branch_id is not null and public.is_branch_admin(branch_id))
 );
-
 drop policy if exists "users manage own notification settings" on public.notification_settings;
 create policy "users manage own notification settings"
 on public.notification_settings
@@ -767,28 +703,24 @@ for all
 to authenticated
 using (auth.uid() = user_id)
 with check (auth.uid() = user_id);
-
 drop policy if exists "users read own notifications" on public.notifications;
 create policy "users read own notifications"
 on public.notifications
 for select
 to authenticated
 using (auth.uid() = user_id or public.is_superadmin());
-
 drop policy if exists "system inserts notifications" on public.notifications;
 create policy "system inserts notifications"
 on public.notifications
 for insert
 to authenticated
 with check (auth.uid() = user_id or public.is_superadmin());
-
 drop policy if exists "users read active payment methods" on public.payment_methods;
 create policy "users read active payment methods"
 on public.payment_methods
 for select
 to authenticated, anon
 using (is_active = true or public.is_superadmin());
-
 drop policy if exists "superadmin manage payment methods" on public.payment_methods;
 create policy "superadmin manage payment methods"
 on public.payment_methods
@@ -796,14 +728,12 @@ for all
 to authenticated
 using (public.is_superadmin())
 with check (public.is_superadmin());
-
 drop policy if exists "users create own orders" on public.orders;
 create policy "users create own orders"
 on public.orders
 for insert
 to authenticated
 with check (auth.uid() = user_id);
-
 drop policy if exists "users read own orders and branch admins read assigned branch orders" on public.orders;
 create policy "users read own orders and branch admins read assigned branch orders"
 on public.orders
@@ -813,7 +743,6 @@ using (
   auth.uid() = user_id
   or (branch_id is not null and public.is_branch_admin(branch_id))
 );
-
 drop policy if exists "users update own pending orders and branch admins update assigned branch orders" on public.orders;
 create policy "users update own pending orders and branch admins update assigned branch orders"
 on public.orders
@@ -827,7 +756,6 @@ with check (
   (auth.uid() = user_id and order_status = 'pending')
   or (branch_id is not null and public.is_branch_admin(branch_id))
 );
-
 drop policy if exists "users read related order items" on public.order_items;
 create policy "users read related order items"
 on public.order_items
@@ -844,7 +772,6 @@ using (
       )
   )
 );
-
 drop policy if exists "users create related order items for own orders" on public.order_items;
 create policy "users create related order items for own orders"
 on public.order_items
@@ -858,28 +785,24 @@ with check (
       and o.user_id = auth.uid()
   )
 );
-
 drop policy if exists "branch admins read stock movements" on public.stock_movements;
 create policy "branch admins read stock movements"
 on public.stock_movements
 for select
 to authenticated
 using (public.is_branch_admin(branch_id));
-
 drop policy if exists "branch admins insert stock movements" on public.stock_movements;
 create policy "branch admins insert stock movements"
 on public.stock_movements
 for insert
 to authenticated
 with check (public.is_branch_admin(branch_id));
-
 drop policy if exists "branch admins read branch performance" on public.branch_performance;
 create policy "branch admins read branch performance"
 on public.branch_performance
 for select
 to authenticated
 using (public.is_branch_admin(branch_id));
-
 drop policy if exists "superadmin manage branch performance" on public.branch_performance;
 create policy "superadmin manage branch performance"
 on public.branch_performance
@@ -887,31 +810,26 @@ for all
 to authenticated
 using (public.is_superadmin())
 with check (public.is_superadmin());
-
 insert into storage.buckets (id, name, public)
 select 'avatars', 'avatars', false
 where not exists (
   select 1 from storage.buckets where id = 'avatars'
 );
-
 insert into storage.buckets (id, name, public)
 select 'product-images', 'product-images', true
 where not exists (
   select 1 from storage.buckets where id = 'product-images'
 );
-
 insert into storage.buckets (id, name, public)
 select 'branch-assets', 'branch-assets', false
 where not exists (
   select 1 from storage.buckets where id = 'branch-assets'
 );
-
 insert into storage.buckets (id, name, public)
 select 'promotion-banners', 'promotion-banners', true
 where not exists (
   select 1 from storage.buckets where id = 'promotion-banners'
 );
-
 drop policy if exists "users manage own avatar objects" on storage.objects;
 create policy "users manage own avatar objects"
 on storage.objects
@@ -925,21 +843,18 @@ with check (
   bucket_id = 'avatars'
   and (storage.foldername(name))[1] = auth.uid()::text
 );
-
 drop policy if exists "public read product images" on storage.objects;
 create policy "public read product images"
 on storage.objects
 for select
 to authenticated, anon
 using (bucket_id = 'product-images');
-
 drop policy if exists "public read promotion banners" on storage.objects;
 create policy "public read promotion banners"
 on storage.objects
 for select
 to authenticated, anon
 using (bucket_id = 'promotion-banners');
-
 drop policy if exists "superadmin manage product image objects" on storage.objects;
 create policy "superadmin manage product image objects"
 on storage.objects
@@ -953,7 +868,6 @@ with check (
   bucket_id = 'product-images'
   and public.is_superadmin()
 );
-
 drop policy if exists "superadmin manage branch asset objects" on storage.objects;
 create policy "superadmin manage branch asset objects"
 on storage.objects
@@ -967,7 +881,6 @@ with check (
   bucket_id = 'branch-assets'
   and public.is_superadmin()
 );
-
 drop policy if exists "superadmin manage promotion banner objects" on storage.objects;
 create policy "superadmin manage promotion banner objects"
 on storage.objects

@@ -2,95 +2,157 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'models.dart';
+import 'services/backend_support.dart';
 
 class CatalogSnapshot {
   const CatalogSnapshot({
     required this.categories,
     required this.products,
+    required this.promotions,
   });
 
   final List<CategoryItem> categories;
   final List<Product> products;
+  final List<PromoBanner> promotions;
 }
 
 class CatalogRepository {
   const CatalogRepository();
 
+  static List<CategoryItem>? _cachedCategories;
+  static DateTime? _categoriesCachedAt;
+  static final Map<String, _CachedPromotions> _promotionCache =
+      <String, _CachedPromotions>{};
+
+  static const Duration _cacheTtl = Duration(minutes: 1);
+
   Future<CatalogSnapshot> load({required String? branchId}) async {
-    try {
-      final client = Supabase.instance.client;
-      final categoryRows = await client
-          .from('categories')
-          .select('id, label, icon_name, sort_order, is_active')
-          .eq('is_active', true)
-          .order('sort_order');
+    final client = Supabase.instance.client;
+    final results = await Future.wait<dynamic>([
+      _loadCategories(client),
+      _loadPromotions(client, branchId: branchId),
+    ]);
+    final mappedCategories = results[0] as List<CategoryItem>;
+    final mappedPromotions = results[1] as List<PromoBanner>;
 
-      if (branchId == null || branchId.isEmpty) {
-        return CatalogSnapshot(
-          categories: categoryRows
-              .map<CategoryItem>(
-                (row) => CategoryItem(
-                  label: _categoryLabelFromRow(row),
-                  icon: _categoryIconFromName(
-                    (row['icon_name'] ?? '').toString(),
-                  ),
-                ),
-              )
-              .where((item) => item.label.isNotEmpty)
-              .toList(),
-          products: const [],
-        );
-      }
+    if (branchId == null || branchId.isEmpty) {
+      return CatalogSnapshot(
+        categories: mappedCategories,
+        products: const [],
+        promotions: mappedPromotions,
+      );
+    }
 
-      final branchProductRows = await client
+    final branchProductRows = await runBackendAction(
+      'CatalogRepository.loadProducts',
+      () => client
           .from('branch_products')
           .select(
-            'selling_price, original_price, stock_on_hand, is_featured, '
+            'id, branch_id, selling_price, original_price, stock_on_hand, is_featured, '
             'products(id, name, claimed_percent, reward_points, badge, description, '
             'icon_name, tone_hex, image_url, category_labels, highlights, related_ids, is_active)',
           )
           .eq('branch_id', branchId)
           .eq('is_active', true)
           .order('is_featured', ascending: false)
-          .order('updated_at', ascending: false);
+          .order('updated_at', ascending: false),
+      retryOnce: true,
+    );
 
-      final activeCategoryLabels = categoryRows
-          .map<String>(_categoryLabelFromRow)
-          .where((label) => label.isNotEmpty)
-          .toSet();
+    final activeCategoryLabels = mappedCategories
+        .map((category) => category.label)
+        .toSet();
 
-      final mappedProducts = branchProductRows
-          .map<Product?>(
-            (row) => _productFromRow(
-              row,
-              activeCategoryLabels: activeCategoryLabels,
-            ),
-          )
-          .whereType<Product>()
-          .where((product) => product.name.isNotEmpty)
-          .toList();
+    final mappedProducts = branchProductRows
+        .map<Product?>(
+          (row) =>
+              _productFromRow(row, activeCategoryLabels: activeCategoryLabels),
+        )
+        .whereType<Product>()
+        .where((product) => product.name.isNotEmpty)
+        .toList(growable: false);
 
-      return CatalogSnapshot(
-        categories: categoryRows
-            .map<CategoryItem>(
-              (row) => CategoryItem(
-                label: _categoryLabelFromRow(row),
-                icon: _categoryIconFromName(
-                  (row['icon_name'] ?? '').toString(),
-                ),
-              ),
-            )
-            .where((item) => item.label.isNotEmpty)
-            .toList(),
-        products: mappedProducts,
-      );
-    } catch (_) {
-      // Supabase not configured or query failed: keep local dev catalog only.
-      return const CatalogSnapshot(
-        categories: [],
-        products: [],
-      );
+    return CatalogSnapshot(
+      categories: mappedCategories,
+      products: mappedProducts,
+      promotions: mappedPromotions,
+    );
+  }
+
+  Future<List<CategoryItem>> _loadCategories(SupabaseClient client) async {
+    final now = DateTime.now();
+    if (_cachedCategories != null &&
+        _categoriesCachedAt != null &&
+        now.difference(_categoriesCachedAt!) < _cacheTtl) {
+      return _cachedCategories!;
     }
+
+    final categoryRows = await runBackendAction(
+      'CatalogRepository.loadCategories',
+      () => client
+          .from('categories')
+          .select('id, label, icon_name, sort_order, is_active')
+          .eq('is_active', true)
+          .order('sort_order'),
+      retryOnce: true,
+    );
+
+    final mappedCategories = categoryRows
+        .map<CategoryItem>(
+          (row) => CategoryItem(
+            label: _categoryLabelFromRow(row),
+            icon: _categoryIconFromName((row['icon_name'] ?? '').toString()),
+          ),
+        )
+        .where((item) => item.label.isNotEmpty)
+        .toList(growable: false);
+
+    _cachedCategories = mappedCategories;
+    _categoriesCachedAt = now;
+    return mappedCategories;
+  }
+
+  Future<List<PromoBanner>> _loadPromotions(
+    SupabaseClient client, {
+    required String? branchId,
+  }) async {
+    final cacheKey = branchId?.trim().isEmpty ?? true
+        ? '__all__'
+        : branchId!.trim();
+    final now = DateTime.now();
+    final cached = _promotionCache[cacheKey];
+    if (cached != null && now.difference(cached.cachedAt) < _cacheTtl) {
+      return cached.promotions;
+    }
+
+    final promotionRows = await runBackendAction(
+      'CatalogRepository.loadPromotions',
+      () => client
+          .from('promotions')
+          .select(
+            'id, branch_id, title, description, promo_type, promo_scope, '
+            'discount_value, start_at, end_at, is_active',
+          )
+          .eq('is_active', true)
+          .order('created_at', ascending: false),
+      retryOnce: true,
+    );
+
+    final mappedPromotions = promotionRows
+        .map<PromoBanner?>(
+          (row) => _promotionFromRow(
+            Map<String, dynamic>.from(row),
+            branchId: branchId,
+          ),
+        )
+        .whereType<PromoBanner>()
+        .toList(growable: false);
+
+    _promotionCache[cacheKey] = _CachedPromotions(
+      promotions: mappedPromotions,
+      cachedAt: now,
+    );
+    return mappedPromotions;
   }
 
   String _categoryLabelFromRow(Map<String, dynamic> row) {
@@ -153,8 +215,48 @@ class CatalogRepository {
       imageUrl: (productRow['image_url'] as String?)?.trim().isEmpty ?? true
           ? null
           : (productRow['image_url'] as String),
+      branchId: (row['branch_id'] ?? '').toString(),
+      branchProductId: (row['id'] ?? '').toString(),
       highlights: highlights,
       relatedIds: relatedIds,
+    );
+  }
+
+  PromoBanner? _promotionFromRow(
+    Map<String, dynamic> row, {
+    required String? branchId,
+  }) {
+    final title = (row['title'] ?? '').toString().trim();
+    if (title.isEmpty) return null;
+
+    final promoBranchId = (row['branch_id'] ?? '').toString().trim();
+    if (promoBranchId.isNotEmpty &&
+        branchId != null &&
+        branchId.isNotEmpty &&
+        promoBranchId != branchId) {
+      return null;
+    }
+
+    final startAt = DateTime.tryParse((row['start_at'] ?? '').toString());
+    final endAt = DateTime.tryParse((row['end_at'] ?? '').toString());
+    final now = DateTime.now().toUtc();
+    if (startAt != null && startAt.toUtc().isAfter(now)) return null;
+    if (endAt != null && endAt.toUtc().isBefore(now)) return null;
+
+    final promoType = (row['promo_type'] ?? '').toString().trim().toLowerCase();
+    final discountValue = (row['discount_value'] as num?)?.toInt() ?? 0;
+    final description = (row['description'] ?? '').toString().trim();
+
+    return PromoBanner(
+      title: title,
+      subtitle: description.isEmpty
+          ? _promotionSubtitle(
+              promoType: promoType,
+              discountValue: discountValue,
+            )
+          : description,
+      icon: _promotionIconFromType(promoType),
+      colors: _promotionColorsFromType(promoType),
     );
   }
 }
@@ -211,8 +313,62 @@ IconData _productIconFromName(String name) {
   }
 }
 
+IconData _promotionIconFromType(String promoType) {
+  switch (promoType) {
+    case 'free_shipping':
+      return Icons.local_shipping_outlined;
+    case 'point_exchange':
+      return Icons.workspace_premium_outlined;
+    case 'bundle':
+      return Icons.shopping_basket_outlined;
+    case 'discount':
+    default:
+      return Icons.local_offer_outlined;
+  }
+}
+
+List<Color> _promotionColorsFromType(String promoType) {
+  switch (promoType) {
+    case 'free_shipping':
+      return const [Color(0xFF00608E), Color(0xFF003A5A)];
+    case 'point_exchange':
+      return const [Color(0xFF7A0014), Color(0xFFD9001B)];
+    case 'bundle':
+      return const [Color(0xFF166534), Color(0xFF0F3D25)];
+    case 'discount':
+    default:
+      return const [Color(0xFFE21F26), Color(0xFF9F0016)];
+  }
+}
+
+String _promotionSubtitle({
+  required String promoType,
+  required int discountValue,
+}) {
+  switch (promoType) {
+    case 'free_shipping':
+      return 'Potongan ongkir untuk belanja kebutuhan harian.';
+    case 'point_exchange':
+      return 'Tukar MepuPoint untuk harga lebih hemat.';
+    case 'bundle':
+      return 'Promo bundling untuk produk pilihan cabang.';
+    case 'discount':
+    default:
+      return discountValue > 0
+          ? 'Diskon hingga $discountValue% untuk produk pilihan.'
+          : 'Promo belanja aktif dari cabang MepuPoin.';
+  }
+}
+
 Color _colorFromHex(String hex) {
   final normalized = hex.replaceAll('#', '').trim();
   final value = normalized.length == 6 ? 'FF$normalized' : normalized;
   return Color(int.tryParse(value, radix: 16) ?? 0xFF8B0011);
+}
+
+class _CachedPromotions {
+  const _CachedPromotions({required this.promotions, required this.cachedAt});
+
+  final List<PromoBanner> promotions;
+  final DateTime cachedAt;
 }

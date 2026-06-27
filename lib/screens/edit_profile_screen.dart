@@ -34,7 +34,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: Text('KDMP Profile', style: TextStyle(color: primary, fontWeight: FontWeight.w700)),
+        title: Text('Profil MepuPoin', style: TextStyle(color: primary, fontWeight: FontWeight.w700)),
         actions: [
           IconButton(
             icon: Icon(Icons.settings_outlined, color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),

@@ -17,8 +17,13 @@ const supabasePublishableKey = String.fromEnvironment(
   'SUPABASE_PUBLISHABLE_KEY',
   defaultValue: '',
 );
+const _demoAuthOverride = bool.fromEnvironment(
+  'ALLOW_DEMO_AUTH',
+  defaultValue: true,
+);
 
 bool get isSupabaseConfigured =>
+<<<<<<< HEAD
     _isValidSupabaseUrl(supabaseUrl) &&
     _isValidSupabasePublishableKey(supabasePublishableKey);
 
@@ -103,6 +108,11 @@ class AuthResult {
 
   bool get isSuccess => error == null && !needsVerification;
 }
+=======
+    supabaseUrl.trim().isNotEmpty && supabasePublishableKey.trim().isNotEmpty;
+
+bool get isDemoAuthAllowed => !kReleaseMode && _demoAuthOverride;
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
 
 class KdmpApp extends StatefulWidget {
   const KdmpApp({
@@ -158,6 +168,7 @@ class _KdmpAppState extends State<KdmpApp> {
   StreamSubscription<AuthState>? _authSubscription;
 
   bool get _useSupabase => isSupabaseConfigured && !widget.forceMockAuth;
+  bool get _canUseMockAuth => !_useSupabase && isDemoAuthAllowed;
 
   @override
   void initState() {
@@ -176,10 +187,18 @@ class _KdmpAppState extends State<KdmpApp> {
             });
             await _syncActiveProfile(user);
           });
+<<<<<<< HEAD
     } else if (widget.startAuthenticated) {
       _activeProfile = widget.forceMockAuth
           ? _mockRegisteredUser.profile
           : (kIsWeb ? _mockSuperAdmin.profile : _mockAdmin.profile);
+=======
+    } else if (widget.startAuthenticated && _canUseMockAuth) {
+      // Jika di web, default langsung gunakan profil superadmin mock
+      _activeProfile = kIsWeb
+          ? _mockSuperAdmin.profile
+          : _mockRegisteredUser.profile;
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
     }
   }
 
@@ -215,10 +234,25 @@ class _KdmpAppState extends State<KdmpApp> {
               onResendOtp: _handleResendOtp,
               onForgotPassword: _handleForgotPassword,
               usingSupabase: _useSupabase,
+<<<<<<< HEAD
               setupMessage: supabaseConfigStatusMessage,
+=======
+              allowDemoAuth: _canUseMockAuth,
+              setupMessage: _setupMessage,
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
             )
           : _buildHomeByRole(),
     );
+  }
+
+  String get _setupMessage {
+    if (_useSupabase) {
+      return 'Masuk dengan akun Supabase aktif.';
+    }
+    if (_canUseMockAuth) {
+      return 'Mode demo aktif untuk development. Jangan gunakan mode ini saat build production.';
+    }
+    return 'Konfigurasi Supabase wajib diisi untuk build production. Login demo dinonaktifkan.';
   }
 
   Widget _buildHomeByRole() {
@@ -275,6 +309,10 @@ class _KdmpAppState extends State<KdmpApp> {
       } catch (_) {
         return 'Tidak dapat login ke Supabase saat ini.';
       }
+    }
+
+    if (!_canUseMockAuth) {
+      return 'Login demo dinonaktifkan. Isi konfigurasi Supabase untuk melanjutkan.';
     }
 
     // Alur otentikasi lokal untuk mode Demo/Mock
@@ -358,6 +396,10 @@ class _KdmpAppState extends State<KdmpApp> {
           'Tidak dapat membuat akun di Supabase saat ini. $error',
         );
       }
+    }
+
+    if (!_canUseMockAuth) {
+      return 'Pendaftaran demo dinonaktifkan. Isi konfigurasi Supabase untuk melanjutkan.';
     }
 
     if (_mockRegisteredUser.profile.email.toLowerCase() ==
@@ -694,6 +736,10 @@ class AuthScreen extends StatefulWidget {
     required this.onResendOtp,
     required this.onForgotPassword,
     required this.usingSupabase,
+<<<<<<< HEAD
+=======
+    required this.allowDemoAuth,
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
     required this.setupMessage,
     this.initialEmail = '',
     this.initialPassword = '',
@@ -719,6 +765,10 @@ class AuthScreen extends StatefulWidget {
   final Future<String?> Function(String email) onResendOtp;
   final Future<String?> Function(String email) onForgotPassword;
   final bool usingSupabase;
+<<<<<<< HEAD
+=======
+  final bool allowDemoAuth;
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
   final String setupMessage;
   final String initialEmail;
   final String initialPassword;
@@ -824,7 +874,11 @@ class _AuthScreenState extends State<AuthScreen> {
             if (!widget.usingSupabase) ...[
               const SizedBox(height: 16),
               _SetupHintCard(
+<<<<<<< HEAD
                 title: 'Mode Demo Aktif',
+=======
+                title: widget.allowDemoAuth ? 'Mode Demo Aktif' : 'Konfigurasi Diperlukan',
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
                 message: widget.setupMessage,
               ),
             ],
@@ -893,14 +947,17 @@ class _AuthScreenState extends State<AuthScreen> {
             SizedBox(
               width: double.infinity,
               child: FilledButton(
-                onPressed: _submittingLogin ? null : _submitLogin,
+                onPressed:
+                    _submittingLogin || (!widget.usingSupabase && !widget.allowDemoAuth)
+                    ? null
+                    : _submitLogin,
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(56),
                 ),
                 child: Text(_submittingLogin ? 'Memproses...' : 'Login'),
               ),
             ),
-            if (!widget.usingSupabase) ...[
+            if (!widget.usingSupabase && widget.allowDemoAuth) ...[
               const SizedBox(height: 12),
               Text(
                 'Akun demo: budi.santoso@email.com / mepupoin123',
@@ -995,7 +1052,11 @@ class _AuthScreenState extends State<AuthScreen> {
             SizedBox(
               width: double.infinity,
               child: FilledButton(
-                onPressed: _submittingSignUp ? null : _submitSignUp,
+                onPressed:
+                    _submittingSignUp ||
+                        (!widget.usingSupabase && !widget.allowDemoAuth)
+                    ? null
+                    : _submitSignUp,
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(56),
                 ),

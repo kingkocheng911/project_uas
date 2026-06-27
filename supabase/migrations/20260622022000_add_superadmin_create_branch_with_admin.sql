@@ -103,7 +103,10 @@ begin
     coalesce(v_admin_email, nullif(lower(trim(coalesce(p_admin_email, ''))), ''));
 end;
 $$;
+<<<<<<< HEAD
 
+=======
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
 grant execute on function public.superadmin_create_branch_with_admin(
   text,
   text,

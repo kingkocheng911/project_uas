@@ -1,14 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
+import '../../../services/order_service.dart';
 import 'admin_order_models.dart';
 import 'order_invoice_screen.dart';
 
 class OrderDetailScreen extends StatefulWidget {
-  const OrderDetailScreen({
-    super.key,
-    required this.order,
-  });
+  const OrderDetailScreen({super.key, required this.order});
 
   final AdminOrder order;
 
@@ -18,7 +14,7 @@ class OrderDetailScreen extends StatefulWidget {
 
 class _OrderDetailScreenState extends State<OrderDetailScreen> {
   static const _primary = Color(0xFFD9001B);
-  final SupabaseClient _client = Supabase.instance.client;
+  final OrderService _orderService = OrderService();
 
   late AdminOrder _order = widget.order;
   bool _isSaving = false;
@@ -41,26 +37,27 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
     setState(() => _isSaving = true);
     try {
-      await _client.from('orders').update({
-        'order_status': nextStatus,
-        'courier_name': courierName,
-        'courier_phone': courierPhone,
-        'completed_at': nextStatus == 'completed'
-            ? DateTime.now().toIso8601String()
-            : null,
-      }).eq('id', _order.id);
+      final result = await _orderService.updateBranchOrderStatus(
+        orderId: _order.id,
+        nextStatus: nextStatus,
+        courierName: courierName,
+        courierPhone: courierPhone,
+      );
 
       if (!mounted) return;
       setState(() {
         _order = _order.copyWith(
-          orderStatus: nextStatus,
-          courierName: courierName,
-          courierPhone: courierPhone,
+          orderStatus: result.orderStatus,
+          paymentStatus: result.paymentStatus,
+          courierName: result.courierName,
+          courierPhone: result.courierPhone,
         );
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Status order diubah menjadi ${_order.statusLabel}.')),
+        SnackBar(
+          content: Text('Status order diubah menjadi ${_order.statusLabel}.'),
+        ),
       );
       Navigator.of(context).pop(true);
     } catch (error) {
@@ -99,9 +96,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             children: [
               Text(
                 'Pilih Kurir Pengantaran',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 8),
               const Text(
@@ -132,7 +129,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                     final name = nameController.text.trim();
                     final phone = phoneController.text.trim();
                     if (name.isEmpty) return;
-                    Navigator.of(context).pop((name, phone.isEmpty ? null : phone));
+                    Navigator.of(
+                      context,
+                    ).pop((name, phone.isEmpty ? null : phone));
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _primary,
@@ -182,16 +181,14 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                         children: [
                           Text(
                             _order.orderNo,
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                  fontWeight: FontWeight.w900,
-                                ),
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.w900),
                           ),
                           const SizedBox(height: 6),
                           Text(
                             '${_order.typeLabel} - ${formatShortDate(_order.placedAt)}',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                  color: const Color(0xFF6D5A58),
-                                ),
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(color: const Color(0xFF6D5A58)),
                           ),
                         ],
                       ),
@@ -221,14 +218,18 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 _InfoTile(
                   icon: Icons.person_outline_rounded,
                   title: _order.customerName,
-                  subtitle: _order.customerPhone.isEmpty ? 'Nomor belum tersedia' : _order.customerPhone,
+                  subtitle: _order.customerPhone.isEmpty
+                      ? 'Nomor belum tersedia'
+                      : _order.customerPhone,
                 ),
                 const SizedBox(height: 8),
                 _InfoTile(
                   icon: _order.isPickup
                       ? Icons.storefront_rounded
                       : Icons.location_on_outlined,
-                  title: _order.isPickup ? 'Metode Pickup' : 'Alamat Pengiriman',
+                  title: _order.isPickup
+                      ? 'Metode Pickup'
+                      : 'Alamat Pengiriman',
                   subtitle: _order.destinationLabel,
                 ),
                 if (_order.isDelivery) ...[
@@ -266,25 +267,22 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                             children: [
                               Text(
                                 item.productName,
-                                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                      fontWeight: FontWeight.w800,
-                                    ),
+                                style: Theme.of(context).textTheme.titleSmall
+                                    ?.copyWith(fontWeight: FontWeight.w800),
                               ),
                               const SizedBox(height: 4),
                               Text(
                                 '${item.qty} x ${formatCurrency(item.unitPrice)}',
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: const Color(0xFF6D5A58),
-                                    ),
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(color: const Color(0xFF6D5A58)),
                               ),
                             ],
                           ),
                         ),
                         Text(
                           formatCurrency(item.subtotal),
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w900,
-                              ),
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w900),
                         ),
                       ],
                     ),
@@ -302,8 +300,14 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               children: [
                 _SectionTitle(title: 'Ringkasan Pembayaran'),
                 const SizedBox(height: 12),
-                _PriceRow(title: 'Subtotal', value: formatCurrency(_order.subtotal)),
-                _PriceRow(title: 'Ongkir', value: formatCurrency(_order.deliveryFee)),
+                _PriceRow(
+                  title: 'Subtotal',
+                  value: formatCurrency(_order.subtotal),
+                ),
+                _PriceRow(
+                  title: 'Ongkir',
+                  value: formatCurrency(_order.deliveryFee),
+                ),
                 _PriceRow(
                   title: 'Diskon',
                   value: formatCurrency(-_order.discountTotal),
@@ -350,7 +354,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                     return ChoiceChip(
                       label: Text(_statusLabel(status)),
                       selected: selected,
-                      onSelected: selected || _isSaving ? null : (_) => _changeStatus(status),
+                      onSelected: selected || _isSaving
+                          ? null
+                          : (_) => _changeStatus(status),
                     );
                   }).toList(),
                 ),
@@ -454,7 +460,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   bool _canRunPrimaryAction() {
-    return _order.orderStatus != 'completed' && _order.orderStatus != 'cancelled';
+    return _order.orderStatus != 'completed' &&
+        _order.orderStatus != 'cancelled';
   }
 
   String _statusLabel(String status) {
@@ -503,9 +510,9 @@ class _SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       title,
-      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w900,
-          ),
+      style: Theme.of(
+        context,
+      ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
     );
   }
 }
@@ -535,7 +542,11 @@ class _InfoTile extends StatelessWidget {
             color: const Color(0xFFFFEFEF),
             borderRadius: BorderRadius.circular(14),
           ),
-          child: Icon(icon, color: const Color(0xFFD9001B), size: dense ? 18 : 20),
+          child: Icon(
+            icon,
+            color: const Color(0xFFD9001B),
+            size: dense ? 18 : 20,
+          ),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -544,17 +555,17 @@ class _InfoTile extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 4),
               Text(
                 subtitle,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF6D5A58),
-                      height: 1.35,
-                    ),
+                  color: const Color(0xFF6D5A58),
+                  height: 1.35,
+                ),
               ),
             ],
           ),

@@ -3,7 +3,6 @@ set
   category_labels = array_remove(category_labels, 'Alat-alat'),
   updated_at = now()
 where 'Alat-alat' = any(category_labels);
-
 update public.promotions
 set
   category_id = null,
@@ -13,6 +12,5 @@ where category_id in (
   from public.categories
   where label = 'Alat-alat'
 );
-
 delete from public.categories
 where label = 'Alat-alat';

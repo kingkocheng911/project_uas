@@ -1,4 +1,4 @@
-# project_uas
+# MepuPoin
 
 Flutter app dengan backend Supabase.
 
@@ -81,7 +81,9 @@ supabase db reset
 
 File penting:
 
-- `supabase/migrations/20260611130722_initial_app_database.sql`
+- `supabase/migrations/`
+- `supabase/migrations/20260619210602_add_kdmp_retail_backend.sql`
+- `supabase/migrations/20260626101500_add_secure_order_transaction_functions.sql`
 - `supabase/seed.sql`
 - `supabase/schema.sql`
 - `supabase/account_schema.sql`
@@ -89,5 +91,6 @@ File penting:
 ## Catatan
 
 - Gunakan migration file untuk perubahan schema permanen.
+- Untuk schema aktif aplikasi, jadikan folder `supabase/migrations/` sebagai source of truth.
 - Hindari mengubah schema remote langsung dari SQL Editor jika perubahan itu
   perlu tersimpan di Git.

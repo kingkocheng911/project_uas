@@ -5,10 +5,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../catalog_repository.dart';
-import '../mock_data.dart';
+import '../mock_data.dart' show activities, orders, profileSettings;
 import '../models.dart';
+<<<<<<< HEAD
 import '../services/sandbox_order_payment_service.dart';
 import '../services/sandbox_topup_service.dart';
+=======
+import '../services/cart_service.dart';
+import '../services/order_service.dart';
+import '../services/reward_service.dart';
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
 import 'manage_addresses_screen.dart';
 import 'notification_history_screen.dart';
 import 'notification_settings_screen.dart';
@@ -18,11 +24,6 @@ import 'security_settings_screen.dart';
 const _cooperativeImageUrl =
     'https://images.unsplash.com/photo-1516321497487-e288fb19713f?auto=format&fit=crop&w=600&q=80';
 const _initialsAvatarKey = '__initials__';
-
-List<String> get productCategories => [
-  'Semua',
-  ...categories.map((category) => category.label),
-];
 
 class UserProfile {
   const UserProfile({
@@ -156,6 +157,7 @@ class _CheckoutBranchContext {
   final String branchName;
 }
 
+<<<<<<< HEAD
 class _CustomerOrderSnapshot {
   const _CustomerOrderSnapshot({required this.name, required this.phone});
 
@@ -163,6 +165,8 @@ class _CustomerOrderSnapshot {
   final String? phone;
 }
 
+=======
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
 final RegExp _uuidPattern = RegExp(
   r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
 );
@@ -240,25 +244,58 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   static const _catalogRepository = CatalogRepository();
+  static const _cartService = CartService();
+  static const _rewardService = RewardService();
+  final OrderService _orderService = OrderService();
   int _currentIndex = 0;
+  int _shopSearchRequestToken = 0;
   int _mepuBalance = 0;
   String _shopSelectedCategory = 'Semua';
   late UserProfile _profile;
-  late final Map<String, int> _productStocks = _createStocks(products);
-  final List<Product> _cartItems = [];
+  final Map<String, int> _productStocks = <String, int>{};
+  List<CartLine> _cartLines = const [];
+  String? _cartErrorMessage;
   final List<OrderItem> _orderItems = List<OrderItem>.of(orders);
+<<<<<<< HEAD
   List<CheckoutVoucher> _vouchers = List<CheckoutVoucher>.of(_checkoutVouchers);
   List<_UserBranchOption> _branches = const [];
   String? _selectedBranchId;
   String _selectedBranchName = 'Pilih Cabang';
   String _selectedBranchSubtitle = 'Pilih cabang KDMP terdekat';
   String? _branchLoadError;
+=======
+  List<CategoryItem> _catalogCategories = const [];
+  List<Product> _catalogProducts = const [];
+  List<PromoBanner> _catalogPromotions = const [];
+  String? _catalogErrorMessage;
+  RewardSummary? _rewardSummary;
+  List<_UserBranchOption> _branches = const [];
+  String? _selectedBranchId;
+  String _selectedBranchName = 'Pilih Cabang';
+  String _selectedBranchSubtitle = 'Pilih cabang MepuPoin terdekat';
+
+  List<String> get _catalogCategoryLabels => [
+    'Semua',
+    ..._catalogCategories.map((category) => category.label),
+  ];
+
+  int get _cartItemCount =>
+      _cartLines.fold<int>(0, (sum, item) => sum + item.quantity);
+
+  String? get _cartBranchId =>
+      _cartLines.isEmpty ? null : _cartLines.first.branchId;
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
 
   @override
   void initState() {
     super.initState();
     _profile = widget.initialProfile;
+    if (_canUseSupabase) {
+      _orderItems.clear();
+    }
     unawaited(_initializeBranchSelection());
+    unawaited(_loadCart());
+    unawaited(_loadRewardSummary());
     unawaited(_loadWalletBalance());
     unawaited(_loadOrders());
     unawaited(_loadVouchers());
@@ -268,11 +305,13 @@ class _HomeShellState extends State<HomeShell> {
   Widget build(BuildContext context) {
     final pages = <Widget>[
       DashboardScreen(
-        cartItemCount: _cartItems.length,
+        cartItemCount: _cartItemCount,
         mepuBalance: _mepuBalance,
         productStocks: _productStocks,
-        products: products,
-        categories: productCategories,
+        products: _catalogProducts,
+        categories: _catalogCategoryLabels,
+        promotions: _catalogPromotions,
+        catalogErrorMessage: _catalogErrorMessage,
         selectedBranchName: _selectedBranchName,
         selectedBranchSubtitle: _selectedBranchSubtitle,
         onOpenProduct: _openProduct,
@@ -280,16 +319,19 @@ class _HomeShellState extends State<HomeShell> {
         onOpenCart: _openCart,
         onAddToCart: _addToCart,
         onTopUp: _openTopUpDialog,
+        onOpenSearch: _openShopSearch,
         onSelectCategory: _openShopCategory,
         onOpenNotifications: _openNotifications,
         onSelectBranch: _handleSelectBranchTap,
       ),
       ShopScreen(
-        cartItemCount: _cartItems.length,
+        cartItemCount: _cartItemCount,
         productStocks: _productStocks,
-        products: products,
-        categories: productCategories,
+        products: _catalogProducts,
+        categories: _catalogCategoryLabels,
+        catalogErrorMessage: _catalogErrorMessage,
         selectedCategory: _shopSelectedCategory,
+        searchRequestToken: _shopSearchRequestToken,
         selectedBranchName: _selectedBranchName,
         onOpenProduct: _openProduct,
         onOpenCart: _openCart,
@@ -305,12 +347,17 @@ class _HomeShellState extends State<HomeShell> {
       ProfileScreen(
         profile: _profile,
         mepuBalance: _mepuBalance,
+<<<<<<< HEAD
         vouchers: _vouchers,
+=======
+        rewardSummary: _rewardSummary,
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
         onTopUp: _openTopUpDialog,
         onEditProfile: _openEditProfile,
         onOpenSetting: _openSetting,
         onChangeTab: _changeTab,
         onOpenPromo: _openPromoCenter,
+        onOpenRewardHistory: _openRewardHistory,
         onOpenFaq: _openFaq,
         onOpenContactSupport: _openContactSupport,
         onLogout: _handleLogout,
@@ -331,6 +378,13 @@ class _HomeShellState extends State<HomeShell> {
 
   void _changeTab(int index) {
     setState(() => _currentIndex = index);
+  }
+
+  void _openShopSearch() {
+    setState(() {
+      _currentIndex = 1;
+      _shopSearchRequestToken++;
+    });
   }
 
   void _handleSelectBranchTap() {
@@ -404,7 +458,7 @@ class _HomeShellState extends State<HomeShell> {
             : selectedBranch.id;
         _selectedBranchName = selectedBranch.name;
         _selectedBranchSubtitle = selectedBranch.id.isEmpty
-            ? 'Pilih cabang KDMP terdekat'
+            ? 'Pilih cabang MepuPoin terdekat'
             : selectedBranch.subtitle;
         _branchLoadError = null;
       });
@@ -414,8 +468,12 @@ class _HomeShellState extends State<HomeShell> {
         _branches = const [];
         _selectedBranchId = null;
         _selectedBranchName = 'Pilih Cabang';
+<<<<<<< HEAD
         _selectedBranchSubtitle = 'Cabang KDMP belum tersedia dari backend.';
         _branchLoadError = error.toString();
+=======
+        _selectedBranchSubtitle = 'Pilih cabang MepuPoin terdekat';
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
       });
     }
   }
@@ -425,25 +483,79 @@ class _HomeShellState extends State<HomeShell> {
       final snapshot = await _catalogRepository.load(
         branchId: _selectedBranchId,
       );
+<<<<<<< HEAD
       final loadedCategories = List<CategoryItem>.of(snapshot.categories);
       final loadedProducts = List<Product>.of(snapshot.products);
+=======
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
       if (!mounted) return;
       setState(() {
-        categories
-          ..clear()
-          ..addAll(loadedCategories);
-        products
-          ..clear()
-          ..addAll(loadedProducts);
+        _catalogErrorMessage = null;
+        _catalogCategories = List<CategoryItem>.of(snapshot.categories);
+        _catalogProducts = List<Product>.of(snapshot.products);
+        _catalogPromotions = List<PromoBanner>.of(snapshot.promotions);
         _productStocks
           ..clear()
-          ..addAll(_createStocks(loadedProducts));
-        if (!productCategories.contains(_shopSelectedCategory)) {
+          ..addAll(_createStocks(_catalogProducts));
+        if (!_catalogCategoryLabels.contains(_shopSelectedCategory)) {
           _shopSelectedCategory = 'Semua';
         }
       });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _catalogCategories = const [];
+        _catalogProducts = const [];
+        _catalogPromotions = const [];
+        _catalogErrorMessage =
+            'Catalog belum berhasil dimuat. Periksa koneksi atau data Supabase.';
+        _productStocks.clear();
+        _shopSelectedCategory = 'Semua';
+      });
+    }
+  }
+
+  Future<void> _loadCart() async {
+    if (!_canUseSupabase) {
+      if (!mounted) return;
+      setState(() {
+        _cartLines = const [];
+        _cartErrorMessage = null;
+      });
+      return;
+    }
+
+    try {
+      final snapshot = await _cartService.load();
+      if (!mounted) return;
+      setState(() {
+        _cartLines = List<CartLine>.of(snapshot.items);
+        _cartErrorMessage = null;
+      });
     } catch (_) {
-      // Keep fallback catalog if remote load fails.
+      if (!mounted) return;
+      setState(() {
+        _cartLines = const [];
+        _cartErrorMessage =
+            'Keranjang belum berhasil dimuat. Periksa koneksi lalu coba lagi.';
+      });
+    }
+  }
+
+  Future<void> _loadRewardSummary() async {
+    if (!_canUseSupabase) {
+      if (!mounted) return;
+      setState(() => _rewardSummary = null);
+      return;
+    }
+
+    try {
+      final summary = await _rewardService.getSummary();
+      if (!mounted) return;
+      setState(() => _rewardSummary = summary);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _rewardSummary = null);
     }
   }
 
@@ -469,7 +581,8 @@ class _HomeShellState extends State<HomeShell> {
       if (!mounted) return;
       setState(() => _mepuBalance = balance);
     } catch (_) {
-      // Keep local fallback balance if remote load fails.
+      if (!mounted) return;
+      setState(() => _mepuBalance = 0);
     }
   }
 
@@ -504,6 +617,7 @@ class _HomeShellState extends State<HomeShell> {
           ..addAll(mappedOrders);
       });
     } catch (_) {
+<<<<<<< HEAD
       // Keep local fallback orders if remote load fails.
     }
   }
@@ -566,12 +680,15 @@ class _HomeShellState extends State<HomeShell> {
       return true;
     } catch (_) {
       return false;
+=======
+      if (!mounted) return;
+      setState(() => _orderItems.clear());
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
     }
   }
 
   void _setWalletBalance(int newBalance) {
     setState(() => _mepuBalance = newBalance.clamp(0, 2147483647));
-    unawaited(_persistWalletBalance(_mepuBalance));
   }
 
   Future<void> _createNotification({
@@ -635,10 +752,12 @@ class _HomeShellState extends State<HomeShell> {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => ProductDetailScreen(
-          cartItemCount: _cartItems.length,
+          cartItemCount: _cartItemCount,
           product: product,
           stock: _stockOf(product),
+          rewardEarnLabel: _rewardSummary?.earnLabel,
           productStocks: _productStocks,
+          catalogProducts: _catalogProducts,
           onOpenCart: _openCart,
           onAddToCart: _addToCart,
           onAddItemsToCart: _addItemsToCart,
@@ -652,53 +771,53 @@ class _HomeShellState extends State<HomeShell> {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => CartScreen(
-          items: List<Product>.of(_cartItems),
-          onCartChanged: _setCartItems,
-          onCheckout: (items) => _openCheckout(items, clearCart: true),
+          items: List<CartLine>.of(_cartLines),
+          errorMessage: _cartErrorMessage,
+          onReload: _reloadCartForScreen,
+          onClearCart: _clearCart,
+          onRemoveItem: _removeCartItem,
+          onUpdateQuantity: _updateCartQuantity,
+          onCheckout: _checkoutCartSelection,
         ),
       ),
     );
   }
 
   void _addToCart(Product product) {
-    if (!_hasAvailableStock([product], includeCartItems: true)) return;
-    setState(() => _cartItems.add(product));
-    _showFeatureSnack(
-      context,
-      '${product.name} ditambahkan ke keranjang.',
-      title: 'Produk Ditambahkan',
-      icon: Icons.shopping_cart_checkout_rounded,
-    );
+    unawaited(_addProductToCart(product, quantity: 1));
   }
 
   void _addItemsToCart(List<Product> items) {
     if (items.isEmpty) return;
-    if (!_hasAvailableStock(items, includeCartItems: true)) return;
-    setState(() => _cartItems.addAll(items));
     final firstProduct = items.first;
-    final message = items.length == 1
-        ? '${firstProduct.name} ditambahkan ke keranjang.'
-        : '${firstProduct.name} x ${items.length} ditambahkan ke keranjang.';
-    _showFeatureSnack(
-      context,
-      message,
-      title: 'Produk Ditambahkan',
-      icon: Icons.shopping_cart_checkout_rounded,
-    );
+    if (items.any((item) => item.id != firstProduct.id)) {
+      _showFeatureSnack(
+        context,
+        'Tambah banyak produk sekaligus belum didukung dari layar ini.',
+        title: 'Keranjang',
+      );
+      return;
+    }
+    unawaited(_addProductToCart(firstProduct, quantity: items.length));
   }
 
   void _buyNow(List<Product> items) {
-    _openCheckout(items, clearCart: false);
+    unawaited(_openCheckout(items, clearCart: false));
   }
 
-  void _openCheckout(List<Product> items, {required bool clearCart}) {
+  Future<void> _openCheckout(
+    List<Product> items, {
+    required bool clearCart,
+    List<String> purchasedCartItemIds = const [],
+  }) async {
     if (items.isEmpty) return;
     if (!_hasAvailableStock(items, includeCartItems: false)) return;
-    Navigator.of(context).push(
+    await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => CheckoutScreen(
           items: List<Product>.of(items),
           mepuBalance: _mepuBalance,
+          rewardSummary: _rewardSummary,
           productStocks: _productStocks,
           vouchers: _vouchers,
           onCompletePayment: _payOrder,
@@ -711,8 +830,13 @@ class _HomeShellState extends State<HomeShell> {
                 addressId,
                 address,
                 finalTotal,
+<<<<<<< HEAD
                 voucher,
                 voucherDiscount,
+=======
+                voucherLabel,
+                redeemedPoints,
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
               ) async {
                 final order = await _createOrder(
                   checkoutItems,
@@ -721,21 +845,31 @@ class _HomeShellState extends State<HomeShell> {
                   addressId: addressId,
                   address: address,
                   finalTotal: finalTotal,
+<<<<<<< HEAD
                   voucher: voucher,
                   voucherDiscount: voucherDiscount,
+=======
+                  voucherLabel: voucherLabel,
+                  redeemedPoints: redeemedPoints,
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
                 );
                 if (order == null) return null;
                 setState(() {
                   _orderItems.insert(0, order);
                   _decreaseStock(checkoutItems);
-                  if (paymentMethod == 'Saldo MepuPoin') {
-                    _mepuBalance -= finalTotal;
-                  }
-                  if (clearCart) _cartItems.clear();
                 });
-                if (paymentMethod == 'Saldo MepuPoin') {
-                  unawaited(_persistWalletBalance(_mepuBalance));
+                if (clearCart && purchasedCartItemIds.isNotEmpty) {
+                  await _removePurchasedCartItems(
+                    purchasedCartItemIds,
+                    showFeedback: false,
+                  );
                 }
+                unawaited(_loadCatalog());
+                unawaited(_loadRewardSummary());
+                if (paymentMethod == 'Saldo MepuPoin') {
+                  unawaited(_loadWalletBalance());
+                }
+<<<<<<< HEAD
                 unawaited(
                   _createNotification(
                     type: 'order',
@@ -746,12 +880,238 @@ class _HomeShellState extends State<HomeShell> {
                     data: {'order_no': order.id, 'status': order.status},
                   ),
                 );
+=======
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
                 unawaited(_loadOrders());
                 return order;
               },
         ),
       ),
     );
+  }
+
+  Future<void> _addProductToCart(
+    Product product, {
+    required int quantity,
+  }) async {
+    if (!_canUseSupabase) {
+      _showFeatureSnack(
+        context,
+        'Keranjang membutuhkan sesi login aktif.',
+        title: 'Keranjang Tidak Tersedia',
+      );
+      return;
+    }
+    if (quantity < 1) return;
+    if ((product.branchProductId ?? '').isEmpty ||
+        (product.branchId ?? '').isEmpty) {
+      _showFeatureSnack(
+        context,
+        'Produk belum terhubung ke cabang aktif. Muat ulang katalog lalu coba lagi.',
+        title: 'Produk Tidak Valid',
+      );
+      return;
+    }
+
+    final shouldContinue = await _ensureCartBranchForProduct(product);
+    if (!shouldContinue || !mounted) return;
+
+    try {
+      final snapshot = await _cartService.addProduct(
+        product: product,
+        quantity: quantity,
+      );
+      if (!mounted) return;
+      _applyCartSnapshot(snapshot);
+      final message = quantity == 1
+          ? '${product.name} ditambahkan ke keranjang.'
+          : '${product.name} x $quantity ditambahkan ke keranjang.';
+      _showFeatureSnack(
+        context,
+        message,
+        title: 'Produk Ditambahkan',
+        icon: Icons.shopping_cart_checkout_rounded,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _showFeatureSnack(
+        context,
+        '$error',
+        title: 'Keranjang Gagal Diperbarui',
+        icon: Icons.error_outline_rounded,
+      );
+    }
+  }
+
+  Future<bool> _ensureCartBranchForProduct(Product product) async {
+    final cartBranchId = _cartBranchId;
+    final productBranchId = product.branchId;
+    if (cartBranchId == null ||
+        cartBranchId.isEmpty ||
+        productBranchId == null ||
+        productBranchId.isEmpty ||
+        cartBranchId == productBranchId) {
+      return true;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Ganti Isi Keranjang?'),
+        content: const Text(
+          'Keranjang Anda berisi produk dari cabang lain. Kosongkan keranjang untuk melanjutkan?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Kosongkan'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return false;
+    await _clearCart(showFeedback: false);
+    return mounted;
+  }
+
+  Future<List<CartLine>> _clearCart({bool showFeedback = true}) async {
+    try {
+      final snapshot = await _cartService.clear();
+      if (!mounted) return const [];
+      _applyCartSnapshot(snapshot);
+      if (showFeedback) {
+        _showFeatureSnack(context, 'Keranjang dikosongkan.');
+      }
+      return List<CartLine>.of(snapshot.items);
+    } catch (error) {
+      if (mounted) {
+        _showFeatureSnack(
+          context,
+          '$error',
+          title: 'Keranjang Gagal Dikosongkan',
+          icon: Icons.error_outline_rounded,
+        );
+      }
+      rethrow;
+    }
+  }
+
+  Future<List<CartLine>> _removeCartItem(String cartItemId) async {
+    try {
+      final snapshot = await _cartService.removeItem(cartItemId);
+      if (!mounted) return const [];
+      _applyCartSnapshot(snapshot);
+      return List<CartLine>.of(snapshot.items);
+    } catch (error) {
+      if (mounted) {
+        _showFeatureSnack(
+          context,
+          '$error',
+          title: 'Item Gagal Dihapus',
+          icon: Icons.error_outline_rounded,
+        );
+      }
+      rethrow;
+    }
+  }
+
+  Future<List<CartLine>> _updateCartQuantity(
+    String cartItemId,
+    int quantity,
+  ) async {
+    try {
+      final snapshot = await _cartService.updateQuantity(
+        cartItemId: cartItemId,
+        quantity: quantity,
+      );
+      if (!mounted) return const [];
+      _applyCartSnapshot(snapshot);
+      return List<CartLine>.of(snapshot.items);
+    } catch (error) {
+      if (mounted) {
+        _showFeatureSnack(
+          context,
+          '$error',
+          title: 'Jumlah Keranjang Tidak Valid',
+          icon: Icons.error_outline_rounded,
+        );
+      }
+      rethrow;
+    }
+  }
+
+  Future<List<CartLine>> _checkoutCartSelection(
+    List<CartLine> selectedLines,
+  ) async {
+    try {
+      final validation = await _cartService.validateCheckout(selectedLines);
+      if (!mounted) return List<CartLine>.of(_cartLines);
+      if (validation.hasPriceChanges) {
+        final preview = validation.changedProducts.take(2).join(', ');
+        final moreCount = validation.changedProducts.length - 2;
+        final message = moreCount > 0
+            ? 'Harga $preview dan $moreCount produk lain diperbarui mengikuti data cabang terbaru.'
+            : 'Harga $preview diperbarui mengikuti data cabang terbaru.';
+        _showFeatureSnack(
+          context,
+          message,
+          title: 'Harga Diperbarui',
+          icon: Icons.sell_outlined,
+        );
+      }
+      await _openCheckout(
+        _expandCartLines(validation.items),
+        clearCart: true,
+        purchasedCartItemIds: validation.items.map((item) => item.id).toList(),
+      );
+      return List<CartLine>.of(_cartLines);
+    } catch (error) {
+      if (mounted) {
+        _showFeatureSnack(
+          context,
+          '$error',
+          title: 'Checkout Tidak Dapat Dilanjutkan',
+          icon: Icons.error_outline_rounded,
+        );
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _removePurchasedCartItems(
+    List<String> cartItemIds, {
+    required bool showFeedback,
+  }) async {
+    try {
+      final snapshot = await _cartService.removeItems(cartItemIds);
+      if (!mounted) return;
+      _applyCartSnapshot(snapshot);
+      if (showFeedback) {
+        _showFeatureSnack(
+          context,
+          'Produk yang berhasil dipesan sudah dikeluarkan dari keranjang.',
+        );
+      }
+    } catch (_) {
+      unawaited(_loadCart());
+    }
+  }
+
+  void _applyCartSnapshot(CartSnapshot snapshot) {
+    setState(() {
+      _cartLines = List<CartLine>.of(snapshot.items);
+      _cartErrorMessage = null;
+    });
+  }
+
+  Future<List<CartLine>> _reloadCartForScreen() async {
+    await _loadCart();
+    return List<CartLine>.of(_cartLines);
   }
 
   Future<OrderItem?> _createOrder(
@@ -761,20 +1121,22 @@ class _HomeShellState extends State<HomeShell> {
     String? addressId,
     required String address,
     required int finalTotal,
+<<<<<<< HEAD
     CheckoutVoucher? voucher,
     required int voucherDiscount,
+=======
+    String? voucherLabel,
+    int redeemedPoints = 0,
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
   }) async {
     final voucherLabel = voucher?.code;
     if (_canUseSupabase) {
       try {
-        final client = Supabase.instance.client;
-        final user = client.auth.currentUser;
-        if (user == null) return null;
-
         final groupedItems = _summarizeProducts(items);
         final orderType = deliveryMethod == 'Ambil di Koperasi'
             ? 'pickup'
             : 'delivery';
+<<<<<<< HEAD
         final paymentStatus = paymentMethod == 'Saldo MepuPoin'
             ? 'paid'
             : 'unpaid';
@@ -782,8 +1144,9 @@ class _HomeShellState extends State<HomeShell> {
         final paymentMethodId = await _paymentMethodIdForCheckout(
           paymentMethod,
         );
+=======
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
         final branchContext = await _resolveCheckoutBranchContext();
-        final customerSnapshot = await _resolveCustomerOrderSnapshot(user.id);
         final deliveryLabel = orderType == 'delivery'
             ? _extractDeliveryLabel(address)
             : null;
@@ -794,6 +1157,7 @@ class _HomeShellState extends State<HomeShell> {
             orderType == 'delivery' && _isValidUuid(addressId)
             ? addressId
             : null;
+<<<<<<< HEAD
 
         final orderRow = await client
             .from('orders')
@@ -858,30 +1222,66 @@ class _HomeShellState extends State<HomeShell> {
               .createPayment(orderNo: orderNo);
         }
 
+=======
+        final itemPayload = _countProducts(items).entries
+            .map((entry) => {'product_id': entry.key, 'qty': entry.value})
+            .toList(growable: false);
+        final result = await _orderService.placeOrder(
+          items: itemPayload,
+          paymentMethodCode: _paymentMethodCodeForCheckout(paymentMethod),
+          orderType: orderType,
+          branchId: branchContext.branchId,
+          addressId: normalizedAddressId,
+          deliveryLabel: deliveryLabel,
+          deliveryAddress: deliveryAddress,
+          notes: voucherLabel == null ? null : 'Voucher: $voucherLabel',
+          serviceFee: 1500,
+          redeemPoints: redeemedPoints,
+        );
+        if (paymentMethod == 'Saldo MepuPoin') {
+          _mepuBalance = result.walletBalance;
+        }
+        _rewardSummary = _rewardSummary == null
+            ? null
+            : RewardSummary(
+                currentBalance: result.rewardBalance,
+                lifetimeEarned: _rewardSummary!.lifetimeEarned,
+                lifetimeRedeemed:
+                    _rewardSummary!.lifetimeRedeemed +
+                    result.rewardPointsRedeemed,
+                earnPoints: _rewardSummary!.earnPoints,
+                earnAmountSpent: _rewardSummary!.earnAmountSpent,
+                redeemPoints: _rewardSummary!.redeemPoints,
+                redeemAmount: _rewardSummary!.redeemAmount,
+                minRedeemPoints: _rewardSummary!.minRedeemPoints,
+                ruleName: _rewardSummary!.ruleName,
+                ruleDescription: _rewardSummary!.ruleDescription,
+              );
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
         return OrderItem(
-          id: orderNo,
+          id: result.orderNo,
           title: groupedItems.length == 1
               ? groupedItems.first
               : '${groupedItems.first} + ${groupedItems.length - 1} produk',
           status: _displayOrderStatus(
-            orderStatus: orderStatus,
-            paymentStatus: paymentStatus,
-            orderType: orderType,
+            orderStatus: result.orderStatus,
+            paymentStatus: result.paymentStatus,
+            orderType: result.orderType,
           ),
-          createdAt: _formatBackendOrderDate(orderRow['placed_at']),
-          total: finalTotal,
+          createdAt: _formatOrderDate(result.placedAt.toLocal()),
+          total: result.grandTotal,
           progressLabel: _backendProgressLabel(
-            orderNo: orderNo,
-            orderStatus: orderStatus,
-            paymentStatus: paymentStatus,
-            orderType: orderType,
+            orderNo: result.orderNo,
+            orderStatus: result.orderStatus,
+            paymentStatus: result.paymentStatus,
+            orderType: result.orderType,
             paymentCode: _paymentMethodCodeForCheckout(paymentMethod),
             paymentName: paymentMethod,
             providerVaNumber: paymentSummary?.providerVaNumber ?? '',
             providerBank: paymentSummary?.providerBank ?? '',
           ),
-          address: orderType == 'pickup'
-              ? '${branchContext.branchName} - Pickup Counter'
+          address: result.orderType == 'pickup'
+              ? '${result.branchName} - Pickup Counter'
               : address,
           items: [
             ...groupedItems,
@@ -993,9 +1393,13 @@ class _HomeShellState extends State<HomeShell> {
     if (_branches.isEmpty) {
       _showFeatureSnack(
         context,
+<<<<<<< HEAD
         _branchLoadError == null
             ? 'Cabang KDMP belum tersedia dari backend.'
             : 'Cabang KDMP belum tersedia dari backend. Detail: $_branchLoadError',
+=======
+        'Cabang MepuPoin belum tersedia dari backend.',
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
         title: 'Cabang Tidak Ditemukan',
       );
       return;
@@ -1011,7 +1415,11 @@ class _HomeShellState extends State<HomeShell> {
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
             children: [
               Text(
+<<<<<<< HEAD
                 'Pilih Cabang KDMP',
+=======
+                'Pilih Cabang MepuPoin',
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
                 style: Theme.of(
                   context,
                 ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
@@ -1170,7 +1578,7 @@ class _HomeShellState extends State<HomeShell> {
         .toList();
 
     final title = items.isEmpty
-        ? 'Pesanan KDMP'
+        ? 'Pesanan MepuPoin'
         : items.length == 1
         ? items.first
         : '${items.first} + ${items.length - 1} produk';
@@ -1246,22 +1654,10 @@ class _HomeShellState extends State<HomeShell> {
     }
   }
 
-  Future<String?> _paymentMethodIdForCheckout(String paymentMethod) async {
-    final paymentCode = _paymentMethodCodeForCheckout(paymentMethod);
-    if (paymentCode == 'wallet') return null;
-
-    final row = await Supabase.instance.client
-        .from('payment_methods')
-        .select('id')
-        .eq('code', paymentCode)
-        .maybeSingle();
-    return row?['id']?.toString();
-  }
-
   Future<_CheckoutBranchContext> _resolveCheckoutBranchContext() async {
     final client = Supabase.instance.client;
     final user = client.auth.currentUser;
-    const fallbackBranchName = 'KDMP Solo Banjarsari';
+    const fallbackBranchName = 'Cabang MepuPoin Solo Banjarsari';
 
     if ((_selectedBranchId ?? '').isNotEmpty) {
       return _CheckoutBranchContext(
@@ -1315,24 +1711,6 @@ class _HomeShellState extends State<HomeShell> {
     return const _CheckoutBranchContext(
       branchId: null,
       branchName: fallbackBranchName,
-    );
-  }
-
-  Future<_CustomerOrderSnapshot> _resolveCustomerOrderSnapshot(
-    String userId,
-  ) async {
-    final row = await Supabase.instance.client
-        .from('profiles')
-        .select('full_name, phone')
-        .eq('id', userId)
-        .maybeSingle();
-
-    final fullName = (row?['full_name'] ?? _profile.name).toString().trim();
-    final phone = (row?['phone'] ?? _profile.phone).toString().trim();
-
-    return _CustomerOrderSnapshot(
-      name: fullName.isEmpty ? _profile.name : fullName,
-      phone: phone.isEmpty || phone == '-' ? null : phone,
     );
   }
 
@@ -1433,16 +1811,42 @@ class _HomeShellState extends State<HomeShell> {
     return counts;
   }
 
+  List<Product> _expandCartLines(List<CartLine> items) {
+    final expanded = <Product>[];
+    for (final item in items) {
+      expanded.addAll(List<Product>.filled(item.quantity, item.product));
+    }
+    return expanded;
+  }
+
   bool _hasAvailableStock(
     List<Product> items, {
     required bool includeCartItems,
   }) {
     final requestedCounts = _countProducts(items);
     final cartCounts = includeCartItems
-        ? _countProducts(_cartItems)
+        ? {for (final item in _cartLines) item.product.id: item.quantity}
         : <String, int>{};
     for (final entry in requestedCounts.entries) {
-      final product = products.firstWhere((item) => item.id == entry.key);
+      final product = _catalogProducts.firstWhere(
+        (item) => item.id == entry.key,
+        orElse: () => Product(
+          id: entry.key,
+          name: 'Produk',
+          price: 0,
+          originalPrice: 0,
+          stock: 0,
+          claimedPercent: 0,
+          rewardPoints: 0,
+          badge: '',
+          description: '',
+          icon: Icons.inventory_2_outlined,
+          tone: const Color(0xFF8B0011),
+          categories: const ['Lainnya'],
+          highlights: const [],
+          relatedIds: const [],
+        ),
+      );
       final available = _productStocks[entry.key] ?? 0;
       final totalRequested = entry.value + (cartCounts[entry.key] ?? 0);
       if (totalRequested > available) {
@@ -1503,14 +1907,6 @@ class _HomeShellState extends State<HomeShell> {
     return _formatOrderDate(DateTime.now());
   }
 
-  void _setCartItems(List<Product> items) {
-    setState(() {
-      _cartItems
-        ..clear()
-        ..addAll(items);
-    });
-  }
-
   Future<void> _openTopUpDialog() async {
     final request = await showDialog<_TopUpRequest>(
       context: context,
@@ -1562,9 +1958,23 @@ class _HomeShellState extends State<HomeShell> {
         return;
       }
 
+<<<<<<< HEAD
       final newBalance = latestSummary.walletBalance > 0
           ? latestSummary.walletBalance
           : _mepuBalance + request.amount;
+=======
+      final confirmResult = await Supabase.instance.client.rpc(
+        'confirm_wallet_topup',
+        params: {'p_topup_id': createdRow['topup_id']},
+      );
+      final confirmRow = _rpcRow(confirmResult);
+      if (confirmRow == null) {
+        throw Exception('Konfirmasi pembayaran sandbox gagal.');
+      }
+
+      final newBalance =
+          (confirmRow['wallet_balance'] as num?)?.toInt() ?? _mepuBalance;
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
       if (!mounted) return;
       setState(() => _mepuBalance = newBalance);
       unawaited(_loadWalletBalance());
@@ -1604,6 +2014,19 @@ class _HomeShellState extends State<HomeShell> {
     }
   }
 
+<<<<<<< HEAD
+=======
+  Map<String, dynamic>? _rpcRow(dynamic result) {
+    if (result is Map<String, dynamic>) return result;
+    if (result is List &&
+        result.isNotEmpty &&
+        result.first is Map<String, dynamic>) {
+      return result.first as Map<String, dynamic>;
+    }
+    return null;
+  }
+
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
   String _walletPaymentMethodCode(String method) {
     return method == 'QRIS' ? 'qris' : 'virtual_account';
   }
@@ -1611,6 +2034,7 @@ class _HomeShellState extends State<HomeShell> {
   Future<OrderItem?> _payOrder(OrderItem order) async {
     final index = _orderItems.indexWhere((item) => item.id == order.id);
     if (index == -1) return null;
+<<<<<<< HEAD
     final isSandboxPayment =
         (order.paymentMethodCode ?? '') == 'qris' ||
         (order.paymentMethodCode ?? '').startsWith('transfer_') ||
@@ -1659,18 +2083,59 @@ class _HomeShellState extends State<HomeShell> {
             icon: Icons.schedule_outlined,
           );
         }
+=======
+    if (_canUseSupabase) {
+      try {
+        final result = await _orderService.payOrder(order.id);
+        final isTransferBank = order.progressLabel.contains('Virtual Account');
+        final updatedOrder = OrderItem(
+          id: order.id,
+          title: order.title,
+          status: _displayOrderStatus(
+            orderStatus: result.orderStatus,
+            paymentStatus: result.paymentStatus,
+            orderType: result.orderType,
+          ),
+          createdAt: order.createdAt,
+          total: order.total,
+          progressLabel: _backendProgressLabel(
+            orderNo: result.orderNo,
+            orderStatus: result.orderStatus,
+            paymentStatus: result.paymentStatus,
+            orderType: result.orderType,
+            paymentCode: isTransferBank ? 'transfer_bca' : 'cash',
+            paymentName: isTransferBank ? 'Transfer Bank' : 'Bayar di Koperasi',
+          ),
+          address: order.address,
+          items: order.items,
+        );
+        if (!mounted) return null;
+        setState(() => _orderItems[index] = updatedOrder);
+        unawaited(_loadOrders());
+        _showFeatureSnack(
+          context,
+          'Pembayaran berhasil. Pesanan masuk ke proses berikutnya.',
+          title: 'Pembayaran Berhasil',
+          icon: Icons.verified_rounded,
+        );
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
         return updatedOrder;
       } catch (error) {
         if (mounted) {
           _showFeatureSnack(
             context,
             '$error',
+<<<<<<< HEAD
             title: 'Cek Status Gagal',
+=======
+            title: 'Pembayaran Gagal',
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
             icon: Icons.error_outline_rounded,
           );
         }
         return null;
       }
+<<<<<<< HEAD
     }
     if (usesMepuBalance && _mepuBalance < order.total) {
       _showFeatureSnack(
@@ -1682,12 +2147,12 @@ class _HomeShellState extends State<HomeShell> {
         onAction: _openTopUpDialog,
       );
       return null;
+=======
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
     }
+
     late final OrderItem updatedOrder;
     setState(() {
-      if (usesMepuBalance) {
-        _mepuBalance -= order.total;
-      }
       updatedOrder = OrderItem(
         id: order.id,
         title: order.title,
@@ -1704,6 +2169,7 @@ class _HomeShellState extends State<HomeShell> {
       );
       _orderItems[index] = updatedOrder;
     });
+<<<<<<< HEAD
     if (_canUseSupabase) {
       final nextStatus = order.address.contains('Pickup Counter')
           ? 'ready_pickup'
@@ -1782,21 +2248,50 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   void _cancelOrder(OrderItem order) {
+=======
+    return updatedOrder;
+  }
+
+  Future<void> _cancelOrder(OrderItem order) async {
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
     if (_canUseSupabase) {
-      setState(() {
-        final index = _orderItems.indexWhere((item) => item.id == order.id);
-        if (index != -1) {
-          _orderItems[index] = OrderItem(
-            id: order.id,
-            title: order.title,
-            status: 'Cancelled',
-            createdAt: order.createdAt,
-            total: order.total,
-            progressLabel: 'Pesanan dibatalkan.',
-            address: order.address,
-            items: order.items,
+      try {
+        await _orderService.cancelOrder(order.id);
+        if (!mounted) return;
+        setState(() {
+          final index = _orderItems.indexWhere((item) => item.id == order.id);
+          if (index != -1) {
+            _orderItems[index] = OrderItem(
+              id: order.id,
+              title: order.title,
+              status: 'Cancelled',
+              createdAt: order.createdAt,
+              total: order.total,
+              progressLabel: 'Pesanan dibatalkan.',
+              address: order.address,
+              items: order.items,
+            );
+          }
+        });
+        unawaited(_loadCatalog());
+        unawaited(_loadOrders());
+        _showFeatureSnack(
+          context,
+          'Pesanan ${order.id} dibatalkan.',
+          title: 'Pesanan Dibatalkan',
+          icon: Icons.cancel_outlined,
+        );
+        return;
+      } catch (error) {
+        if (mounted) {
+          _showFeatureSnack(
+            context,
+            '$error',
+            title: 'Pembatalan Gagal',
+            icon: Icons.error_outline_rounded,
           );
         }
+<<<<<<< HEAD
       });
       unawaited(
         Supabase.instance.client
@@ -1813,6 +2308,10 @@ class _HomeShellState extends State<HomeShell> {
           data: {'order_no': order.id},
         ),
       );
+=======
+        return;
+      }
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
     } else {
       setState(() {
         _orderItems.removeWhere((item) => item.id == order.id);
@@ -1848,9 +2347,19 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   void _openPromoCenter() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute<void>(builder: (_) => const PromoCenterScreen()));
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PromoCenterScreen(promotions: _catalogPromotions),
+      ),
+    );
+  }
+
+  void _openRewardHistory() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => RewardHistoryScreen(summary: _rewardSummary),
+      ),
+    );
   }
 
   void _openFaq() {
@@ -2127,27 +2636,23 @@ class _TopUpDialogState extends State<_TopUpDialog> {
     final totalPayment = amount + (amount > 0 ? _adminFee : 0);
 
     return Dialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
       backgroundColor: Colors.transparent,
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 430),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: BorderRadius.circular(32),
           child: Material(
-            color: Colors.white,
+            color: const Color(0xFFF8FAFC),
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(22, 22, 22, 24),
+                    padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
                     decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Color(0xFFD9001B), Color(0xFF8B0011)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
+                      color: Color(0xFFF8FAFC),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2158,12 +2663,12 @@ class _TopUpDialogState extends State<_TopUpDialog> {
                               width: 50,
                               height: 50,
                               decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.16),
-                                borderRadius: BorderRadius.circular(18),
+                                color: const Color(0xFFFFF1F1),
+                                borderRadius: BorderRadius.circular(20),
                               ),
-                              child: const Icon(
+                              child: Icon(
                                 Icons.account_balance_wallet_outlined,
-                                color: Colors.white,
+                                color: theme.colorScheme.primary,
                               ),
                             ),
                             const SizedBox(width: 14),
@@ -2174,40 +2679,94 @@ class _TopUpDialogState extends State<_TopUpDialog> {
                                   Text(
                                     'Isi Saldo MepuPoin',
                                     style: theme.textTheme.titleLarge?.copyWith(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w900,
+                                      color: const Color(0xFF111827),
+                                      fontWeight: FontWeight.w800,
                                     ),
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
                                     'Saldo masuk instan setelah pembayaran berhasil.',
                                     style: theme.textTheme.bodyMedium?.copyWith(
-                                      color: Colors.white70,
+                                      color: const Color(0xFF64748B),
                                     ),
                                   ),
                                 ],
                               ),
                             ),
+                            InkWell(
+                              onTap: () => Navigator.of(context).pop(),
+                              borderRadius: BorderRadius.circular(16),
+                              child: Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: const Color(0xFFE5EAF1),
+                                  ),
+                                ),
+                                child: const Icon(
+                                  Icons.close_rounded,
+                                  size: 20,
+                                  color: Color(0xFF475569),
+                                ),
+                              ),
+                            ),
                           ],
                         ),
-                        const SizedBox(height: 22),
+                        const SizedBox(height: 20),
                         Container(
                           width: double.infinity,
-                          padding: const EdgeInsets.all(16),
+                          padding: const EdgeInsets.all(18),
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.18),
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFFD9001B), Color(0xFFAE0017)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
                             ),
+                            borderRadius: BorderRadius.circular(26),
+                            border: Border.all(
+                              color: const Color(0xFFFFD5D9),
+                            ),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x26D9001B),
+                                blurRadius: 24,
+                                offset: Offset(0, 12),
+                              ),
+                            ],
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(alpha: 0.16),
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: Text(
+                                      'Top up instant',
+                                      style: theme.textTheme.labelSmall?.copyWith(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 18),
                               Text(
                                 'Saldo yang akan masuk',
                                 style: theme.textTheme.labelLarge?.copyWith(
-                                  color: Colors.white70,
+                                  color: Colors.white.withValues(alpha: 0.82),
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                               const SizedBox(height: 8),
@@ -2219,6 +2778,36 @@ class _TopUpDialogState extends State<_TopUpDialog> {
                                   fontWeight: FontWeight.w900,
                                 ),
                               ),
+                              const SizedBox(height: 14),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 10,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.receipt_long_outlined,
+                                      size: 18,
+                                      color: Colors.white,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        'Total pembayaran ${formatRupiah(totalPayment)}',
+                                        style: theme.textTheme.labelLarge?.copyWith(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -2226,7 +2815,7 @@ class _TopUpDialogState extends State<_TopUpDialog> {
                     ),
                   ),
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(22, 20, 22, 18),
+                    padding: const EdgeInsets.fromLTRB(22, 8, 22, 22),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -2267,6 +2856,31 @@ class _TopUpDialogState extends State<_TopUpDialog> {
                             prefixText: 'Rp ',
                             helperText: 'Minimal top up Rp 10.000',
                             errorText: _errorText,
+                            filled: true,
+                            fillColor: Colors.white,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 18,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(20),
+                              borderSide: const BorderSide(
+                                color: Color(0xFFE2E8F0),
+                              ),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(20),
+                              borderSide: const BorderSide(
+                                color: Color(0xFFE2E8F0),
+                              ),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(20),
+                              borderSide: BorderSide(
+                                color: theme.colorScheme.primary,
+                                width: 1.4,
+                              ),
+                            ),
                           ),
                           onChanged: (_) {
                             if (_errorText != null) {
@@ -2298,11 +2912,11 @@ class _TopUpDialogState extends State<_TopUpDialog> {
                         ),
                         const SizedBox(height: 18),
                         Container(
-                          padding: const EdgeInsets.all(16),
+                          padding: const EdgeInsets.all(18),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF8FAFC),
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(color: const Color(0xFFE5EAF1)),
                           ),
                           child: Column(
                             children: [
@@ -2317,7 +2931,10 @@ class _TopUpDialogState extends State<_TopUpDialog> {
                                     ? formatRupiah(_adminFee)
                                     : '-',
                               ),
-                              const Divider(height: 24),
+                              const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 14),
+                                child: Divider(height: 1),
+                              ),
                               _TopUpSummaryRow(
                                 label: 'Total bayar',
                                 value: formatRupiah(totalPayment),
@@ -2334,8 +2951,12 @@ class _TopUpDialogState extends State<_TopUpDialog> {
                                 onPressed: () => Navigator.of(context).pop(),
                                 style: OutlinedButton.styleFrom(
                                   minimumSize: const Size.fromHeight(52),
+                                  side: const BorderSide(
+                                    color: Color(0xFFE2E8F0),
+                                  ),
+                                  backgroundColor: Colors.white,
                                   shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(16),
+                                    borderRadius: BorderRadius.circular(18),
                                   ),
                                 ),
                                 child: const Text('Batal'),
@@ -2349,7 +2970,7 @@ class _TopUpDialogState extends State<_TopUpDialog> {
                                   minimumSize: const Size.fromHeight(52),
                                   backgroundColor: theme.colorScheme.primary,
                                   shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(16),
+                                    borderRadius: BorderRadius.circular(18),
                                   ),
                                 ),
                                 icon: const Icon(
@@ -2437,6 +3058,7 @@ class _SandboxPaymentDialogState extends State<_SandboxPaymentDialog> {
               '${expiresAt.hour.toString().padLeft(2, '0')}:${expiresAt.minute.toString().padLeft(2, '0')}';
 
     return Dialog(
+<<<<<<< HEAD
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       child: ConstrainedBox(
@@ -2459,8 +3081,96 @@ class _SandboxPaymentDialogState extends State<_SandboxPaymentDialog> {
                     child: Icon(
                       Icons.account_balance_wallet_outlined,
                       color: theme.colorScheme.primary,
+=======
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+      backgroundColor: Colors.transparent,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(32),
+        child: Material(
+          color: const Color(0xFFF8FAFC),
+          child: Padding(
+            padding: const EdgeInsets.all(22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 52,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF1F1),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Icon(
+                        Icons.account_balance_wallet_outlined,
+                        color: theme.colorScheme.primary,
+                      ),
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
                     ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Pembayaran Sandbox',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              color: const Color(0xFF111827),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Simulasikan pembayaran untuk menambahkan saldo ke akun.',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: const Color(0xFF64748B),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    InkWell(
+                      onTap: () => Navigator.of(context).pop(false),
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFFE5EAF1)),
+                        ),
+                        child: const Icon(
+                          Icons.close_rounded,
+                          size: 20,
+                          color: Color(0xFF475569),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFD9001B), Color(0xFFAE0017)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(26),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x26D9001B),
+                        blurRadius: 24,
+                        offset: Offset(0, 12),
+                      ),
+                    ],
                   ),
+<<<<<<< HEAD
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
@@ -2568,10 +3278,58 @@ class _SandboxPaymentDialogState extends State<_SandboxPaymentDialog> {
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(18),
                     border: Border.all(color: const Color(0xFFE2E8F0)),
+=======
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Total bayar',
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: Colors.white.withValues(alpha: 0.82),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        formatRupiah(summary.totalPayment),
+                        style: theme.textTheme.displayLarge?.copyWith(
+                          color: Colors.white,
+                          fontSize: 32,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _CheckoutInfoChip(
+                            icon: Icons.receipt_long_outlined,
+                            label: summary.paymentMethodLabel,
+                          ),
+                          _CheckoutInfoChip(
+                            icon: Icons.schedule_rounded,
+                            label: expiresLabel,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: const Color(0xFFE5EAF1)),
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
                   ),
                   child: Column(
                     children: [
                       _TopUpSummaryRow(
+<<<<<<< HEAD
                         label: 'Bank',
                         value: _summary.providerBank.isEmpty
                             ? 'BCA'
@@ -2583,11 +3341,39 @@ class _SandboxPaymentDialogState extends State<_SandboxPaymentDialog> {
                         value: _summary.providerVaNumber.isEmpty
                             ? '-'
                             : _summary.providerVaNumber,
+=======
+                        label: 'Reference',
+                        value: summary.reference,
+                      ),
+                      const SizedBox(height: 12),
+                      _TopUpSummaryRow(
+                        label: 'Metode',
+                        value: summary.paymentMethodLabel,
+                      ),
+                      const SizedBox(height: 12),
+                      _TopUpSummaryRow(
+                        label: 'Saldo masuk',
+                        value: formatRupiah(summary.amount),
+                      ),
+                      const SizedBox(height: 12),
+                      _TopUpSummaryRow(
+                        label: 'Biaya admin',
+                        value: formatRupiah(summary.adminFee),
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 14),
+                        child: Divider(height: 1),
+                      ),
+                      _TopUpSummaryRow(
+                        label: 'Total bayar',
+                        value: formatRupiah(summary.totalPayment),
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
                         emphasized: true,
                       ),
                     ],
                   ),
                 ),
+<<<<<<< HEAD
                 const SizedBox(height: 16),
               ],
               if (_errorText != null) ...[
@@ -2632,6 +3418,42 @@ class _SandboxPaymentDialogState extends State<_SandboxPaymentDialog> {
                 ],
               ),
             ],
+=======
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(context).pop(false),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(52),
+                          side: const BorderSide(color: Color(0xFFE2E8F0)),
+                          backgroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                        ),
+                        child: const Text('Nanti Saja'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () => Navigator.of(context).pop(true),
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size.fromHeight(52),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                        ),
+                        child: const Text('Simulasikan Berhasil'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
           ),
         ),
       ),
@@ -2721,18 +3543,19 @@ class _TopUpMethodTile extends StatelessWidget {
     final theme = Theme.of(context);
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(20),
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: selected
-              ? theme.colorScheme.primary.withValues(alpha: 0.08)
+              ? theme.colorScheme.primary.withValues(alpha: 0.06)
               : Colors.white,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: selected
-                ? theme.colorScheme.primary.withValues(alpha: 0.38)
-                : const Color(0xFFE2E8F0),
+                ? theme.colorScheme.primary.withValues(alpha: 0.30)
+                : const Color(0xFFE5EAF1),
+            width: selected ? 1.5 : 1,
           ),
         ),
         child: Row(
@@ -2743,8 +3566,8 @@ class _TopUpMethodTile extends StatelessWidget {
               decoration: BoxDecoration(
                 color: selected
                     ? theme.colorScheme.primary.withValues(alpha: 0.12)
-                    : const Color(0xFFF1F5F9),
-                borderRadius: BorderRadius.circular(14),
+                    : const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(16),
               ),
               child: Icon(icon, color: theme.colorScheme.primary),
             ),
@@ -2769,13 +3592,24 @@ class _TopUpMethodTile extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(
-              selected
-                  ? Icons.check_circle_rounded
-                  : Icons.radio_button_unchecked_rounded,
-              color: selected
-                  ? theme.colorScheme.primary
-                  : const Color(0xFFCBD5E1),
+            Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                color: selected
+                    ? theme.colorScheme.primary
+                    : Colors.transparent,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: selected
+                      ? theme.colorScheme.primary
+                      : const Color(0xFFCBD5E1),
+                  width: 1.6,
+                ),
+              ),
+              child: selected
+                  ? const Icon(Icons.check_rounded, size: 14, color: Colors.white)
+                  : null,
             ),
           ],
         ),
@@ -2799,7 +3633,7 @@ class _TopUpSummaryRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final style = emphasized
-        ? theme.textTheme.titleMedium?.copyWith(
+        ? theme.textTheme.titleLarge?.copyWith(
             color: theme.colorScheme.primary,
             fontWeight: FontWeight.w900,
           )
@@ -2833,25 +3667,27 @@ class _TopUpAmountChip extends StatelessWidget {
     final theme = Theme.of(context);
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(999),
+      borderRadius: BorderRadius.circular(18),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
         decoration: BoxDecoration(
           color: selected
               ? theme.colorScheme.primary
-              : theme.colorScheme.primary.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(999),
+              : Colors.white,
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(
             color: selected
                 ? theme.colorScheme.primary
-                : theme.colorScheme.primary.withValues(alpha: 0.18),
+                : const Color(0xFFE5EAF1),
+            width: selected ? 1.4 : 1,
           ),
         ),
         child: Text(
           formatRupiah(amount),
+          textAlign: TextAlign.center,
           style: theme.textTheme.labelLarge?.copyWith(
             color: selected ? Colors.white : theme.colorScheme.primary,
-            fontWeight: FontWeight.w900,
+            fontWeight: FontWeight.w800,
           ),
         ),
       ),
@@ -2867,6 +3703,8 @@ class DashboardScreen extends StatelessWidget {
     required this.productStocks,
     required this.products,
     required this.categories,
+    required this.promotions,
+    required this.catalogErrorMessage,
     required this.selectedBranchName,
     required this.selectedBranchSubtitle,
     required this.onOpenProduct,
@@ -2874,6 +3712,7 @@ class DashboardScreen extends StatelessWidget {
     required this.onOpenCart,
     required this.onAddToCart,
     required this.onTopUp,
+    required this.onOpenSearch,
     required this.onSelectCategory,
     required this.onOpenNotifications,
     required this.onSelectBranch,
@@ -2884,6 +3723,8 @@ class DashboardScreen extends StatelessWidget {
   final Map<String, int> productStocks;
   final List<Product> products;
   final List<String> categories;
+  final List<PromoBanner> promotions;
+  final String? catalogErrorMessage;
   final String selectedBranchName;
   final String selectedBranchSubtitle;
   final ValueChanged<Product> onOpenProduct;
@@ -2891,6 +3732,7 @@ class DashboardScreen extends StatelessWidget {
   final VoidCallback onOpenCart;
   final ValueChanged<Product> onAddToCart;
   final VoidCallback onTopUp;
+  final VoidCallback onOpenSearch;
   final ValueChanged<String> onSelectCategory;
   final VoidCallback onOpenNotifications;
   final VoidCallback onSelectBranch;
@@ -2931,27 +3773,27 @@ class DashboardScreen extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
               child: _MepuPoinSearchBar(
-                onSearchTap: () => _showFeatureSnack(
-                  context,
-                  'Pencarian produk MepuPoin siap digunakan.',
-                ),
-                onFilterTap: () =>
-                    _showFeatureSnack(context, 'Filter produk siap digunakan.'),
+                onSearchTap: onOpenSearch,
               ),
             ),
           ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: _MepuPoinDeliveryActions(onShopTap: () => onChangeTab(1)),
+          if (promotions.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
+                child: _MepuPoinBannerCarousel(
+                  promotions: promotions,
+                  onTap: () => onChangeTab(1),
+                ),
+              ),
             ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
-              child: _MepuPoinBannerCarousel(onTap: () => onChangeTab(1)),
+          if (catalogErrorMessage != null)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                child: _CatalogErrorCard(message: catalogErrorMessage!),
+              ),
             ),
-          ),
           SliverToBoxAdapter(
             child: _MepuPoinSectionHeader(
               title: 'Kategori Cepat',
@@ -3207,140 +4049,50 @@ class _MepuPoinBalanceCard extends StatelessWidget {
 class _MepuPoinSearchBar extends StatelessWidget {
   const _MepuPoinSearchBar({
     required this.onSearchTap,
-    required this.onFilterTap,
   });
 
   final VoidCallback onSearchTap;
-  final VoidCallback onFilterTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Row(
-      children: [
-        Expanded(
-          child: InkWell(
-            onTap: onSearchTap,
-            borderRadius: BorderRadius.circular(8),
-            child: Container(
-              height: 42,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.search_rounded, size: 18),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Cari sembako, alat tani, pupuk...',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: const Color(0xFF94A3B8),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 10),
-        InkWell(
-          onTap: onFilterTap,
+    return InkWell(
+      onTap: onSearchTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        height: 42,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
           borderRadius: BorderRadius.circular(8),
-          child: Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.search_rounded, size: 18),
+            const SizedBox(width: 8),
+            Text(
+              'Cari sembako, alat tani, pupuk...',
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: const Color(0xFF94A3B8),
+                fontWeight: FontWeight.w500,
+              ),
             ),
-            child: const Icon(Icons.tune_rounded, size: 18),
-          ),
+          ],
         ),
-      ],
-    );
-  }
-}
-
-class _MepuPoinDeliveryActions extends StatelessWidget {
-  const _MepuPoinDeliveryActions({required this.onShopTap});
-
-  final VoidCallback onShopTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _MepuPoinPillAction(
-            label: 'Kirim ke Rumah',
-            icon: Icons.local_shipping_outlined,
-            active: true,
-            onTap: onShopTap,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _MepuPoinPillAction(
-            label: 'Ambil di Koperasi',
-            icon: Icons.storefront_rounded,
-            active: false,
-            onTap: onShopTap,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _MepuPoinPillAction extends StatelessWidget {
-  const _MepuPoinPillAction({
-    required this.label,
-    required this.icon,
-    required this.active,
-    required this.onTap,
-  });
-
-  final String label;
-  final IconData icon;
-  final bool active;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final foreground = active
-        ? theme.colorScheme.primary
-        : const Color(0xFF475569);
-
-    return OutlinedButton.icon(
-      onPressed: onTap,
-      icon: Icon(icon, size: 14),
-      label: Text(label),
-      style: OutlinedButton.styleFrom(
-        foregroundColor: foreground,
-        backgroundColor: Colors.white,
-        side: BorderSide(
-          color: active ? const Color(0xFFFFD8D8) : const Color(0xFFE2E8F0),
-        ),
-        minimumSize: const Size.fromHeight(34),
-        textStyle: theme.textTheme.labelSmall?.copyWith(
-          fontWeight: FontWeight.w800,
-        ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
       ),
     );
   }
 }
 
 class _MepuPoinBannerCarousel extends StatefulWidget {
-  const _MepuPoinBannerCarousel({required this.onTap});
+  const _MepuPoinBannerCarousel({
+    required this.promotions,
+    required this.onTap,
+  });
 
+  final List<PromoBanner> promotions;
   final VoidCallback onTap;
 
   @override
@@ -3357,8 +4109,12 @@ class _MepuPoinBannerCarouselState extends State<_MepuPoinBannerCarousel> {
   void initState() {
     super.initState();
     _timer = Timer.periodic(const Duration(seconds: 3), (_) {
-      if (!mounted || !_controller.hasClients) return;
-      final nextIndex = (_currentIndex + 1) % _bannerSlides.length;
+      if (!mounted ||
+          !_controller.hasClients ||
+          widget.promotions.length <= 1) {
+        return;
+      }
+      final nextIndex = (_currentIndex + 1) % widget.promotions.length;
       _controller.animateToPage(
         nextIndex,
         duration: const Duration(milliseconds: 360),
@@ -3377,6 +4133,7 @@ class _MepuPoinBannerCarouselState extends State<_MepuPoinBannerCarousel> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final promotions = widget.promotions;
 
     return Column(
       children: [
@@ -3384,10 +4141,10 @@ class _MepuPoinBannerCarouselState extends State<_MepuPoinBannerCarousel> {
           height: 156,
           child: PageView.builder(
             controller: _controller,
-            itemCount: _bannerSlides.length,
+            itemCount: promotions.length,
             onPageChanged: (index) => setState(() => _currentIndex = index),
             itemBuilder: (context, index) {
-              final slide = _bannerSlides[index];
+              final slide = promotions[index];
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 2),
                 child: InkWell(
@@ -3425,7 +4182,7 @@ class _MepuPoinBannerCarouselState extends State<_MepuPoinBannerCarousel> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              slide.eyebrow,
+                              'Promo Aktif',
                               style: theme.textTheme.labelLarge?.copyWith(
                                 color: Colors.white.withValues(alpha: 0.86),
                               ),
@@ -3445,7 +4202,7 @@ class _MepuPoinBannerCarouselState extends State<_MepuPoinBannerCarousel> {
                             Row(
                               children: [
                                 Text(
-                                  slide.cta,
+                                  'Lihat Promo',
                                   style: theme.textTheme.labelLarge?.copyWith(
                                     color: Colors.white,
                                     fontWeight: FontWeight.w900,
@@ -3473,7 +4230,7 @@ class _MepuPoinBannerCarouselState extends State<_MepuPoinBannerCarousel> {
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            for (var index = 0; index < _bannerSlides.length; index++)
+            for (var index = 0; index < promotions.length; index++)
               AnimatedContainer(
                 duration: const Duration(milliseconds: 220),
                 width: _currentIndex == index ? 18 : 7,
@@ -3489,6 +4246,57 @@ class _MepuPoinBannerCarouselState extends State<_MepuPoinBannerCarousel> {
           ],
         ),
       ],
+    );
+  }
+}
+
+class _CatalogErrorCard extends StatelessWidget {
+  const _CatalogErrorCard({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7ED),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFF5C38B)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.wifi_off_rounded,
+            color: theme.colorScheme.primary,
+            size: 22,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Catalog belum tersedia',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  message,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFF7C5B2A),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -3550,46 +4358,6 @@ class _CategoryShortcutList extends StatelessWidget {
     );
   }
 }
-
-class _BannerSlide {
-  const _BannerSlide({
-    required this.eyebrow,
-    required this.title,
-    required this.cta,
-    required this.icon,
-    required this.colors,
-  });
-
-  final String eyebrow;
-  final String title;
-  final String cta;
-  final IconData icon;
-  final List<Color> colors;
-}
-
-const _bannerSlides = <_BannerSlide>[
-  _BannerSlide(
-    eyebrow: 'Promo Hari Ini',
-    title: 'Diskon 50% Pupuk dan Sembako',
-    cta: 'Belanja Sekarang',
-    icon: Icons.local_offer_rounded,
-    colors: [Color(0xFFE21F26), Color(0xFF9F0016)],
-  ),
-  _BannerSlide(
-    eyebrow: 'Gratis Ongkir',
-    title: 'Kirim ke rumah untuk belanja harian',
-    cta: 'Cek Voucher',
-    icon: Icons.local_shipping_outlined,
-    colors: [Color(0xFF00608E), Color(0xFF003A5A)],
-  ),
-  _BannerSlide(
-    eyebrow: 'Produk Baru',
-    title: 'Pilihan alat tani dan kebutuhan rumah',
-    cta: 'Lihat Produk',
-    icon: Icons.storefront_rounded,
-    colors: [Color(0xFF166534), Color(0xFF0F3D25)],
-  ),
-];
 
 class _MepuPoinSectionHeader extends StatelessWidget {
   const _MepuPoinSectionHeader({
@@ -3772,7 +4540,7 @@ class _MepuPoinRecommendationCard extends StatelessWidget {
               ),
               child: ProductMedia(
                 product: product,
-                fit: BoxFit.cover,
+                fit: BoxFit.contain,
                 borderRadius: BorderRadius.circular(10),
                 padding: const EdgeInsets.all(8),
               ),
@@ -3837,7 +4605,9 @@ class ShopScreen extends StatefulWidget {
     required this.productStocks,
     required this.products,
     required this.categories,
+    required this.catalogErrorMessage,
     required this.selectedCategory,
+    required this.searchRequestToken,
     required this.selectedBranchName,
     required this.onOpenProduct,
     required this.onOpenCart,
@@ -3849,7 +4619,9 @@ class ShopScreen extends StatefulWidget {
   final Map<String, int> productStocks;
   final List<Product> products;
   final List<String> categories;
+  final String? catalogErrorMessage;
   final String selectedCategory;
+  final int searchRequestToken;
   final String selectedBranchName;
   final ValueChanged<Product> onOpenProduct;
   final VoidCallback onOpenCart;
@@ -3862,14 +4634,30 @@ class ShopScreen extends StatefulWidget {
 
 class _ShopScreenState extends State<ShopScreen> {
   late String selectedCategory = widget.selectedCategory;
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  String searchQuery = '';
   String sortOption = 'Terpopuler';
 
   @override
   void didUpdateWidget(covariant ShopScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.selectedCategory != widget.selectedCategory) {
-      selectedCategory = widget.selectedCategory;
+      setState(() => selectedCategory = widget.selectedCategory);
     }
+    if (oldWidget.searchRequestToken != widget.searchRequestToken) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _searchFocusNode.requestFocus();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchFocusNode.dispose();
+    _searchController.dispose();
+    super.dispose();
   }
 
   @override
@@ -3894,11 +4682,6 @@ class _ShopScreenState extends State<ShopScreen> {
                 ),
                 const Spacer(),
                 _HeaderActionButton(
-                  icon: Icons.store_mall_directory_outlined,
-                  onTap: widget.onSelectBranch,
-                ),
-                const SizedBox(width: 10),
-                _HeaderActionButton(
                   icon: Icons.shopping_cart_outlined,
                   badgeCount: widget.cartItemCount,
                   onTap: widget.onOpenCart,
@@ -3918,7 +4701,13 @@ class _ShopScreenState extends State<ShopScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SearchField(hintText: 'Cari produk...'),
+                SearchField(
+                  controller: _searchController,
+                  focusNode: _searchFocusNode,
+                  hintText: 'Cari produk...',
+                  onChanged: (value) =>
+                      setState(() => searchQuery = value.trim()),
+                ),
                 const SizedBox(height: 16),
                 SizedBox(
                   height: 46,
@@ -3976,6 +4765,8 @@ class _ShopScreenState extends State<ShopScreen> {
               ? SliverToBoxAdapter(
                   child: _EmptyProductState(
                     category: selectedCategory,
+                    searchQuery: searchQuery,
+                    errorMessage: widget.catalogErrorMessage,
                     onReset: () => setState(() => selectedCategory = 'Semua'),
                   ),
                 )
@@ -4029,25 +4820,56 @@ class _ShopScreenState extends State<ShopScreen> {
         overlayBox.size.width - globalPosition.dx,
         overlayBox.size.height - globalPosition.dy,
       ),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      color: Colors.white,
+      elevation: 12,
+      shadowColor: const Color(0x220F172A),
+      surfaceTintColor: Colors.white,
+      menuPadding: const EdgeInsets.all(10),
+      constraints: const BoxConstraints(minWidth: 196),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
       items: [
         for (final option in options)
           PopupMenuItem<String>(
             value: option,
-            child: Row(
-              children: [
-                Icon(
-                  sortOption == option
-                      ? Icons.radio_button_checked_rounded
-                      : Icons.radio_button_off_rounded,
+            padding: EdgeInsets.zero,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: sortOption == option
+                    ? const Color(0xFFFFF1F1)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
                   color: sortOption == option
-                      ? Theme.of(context).colorScheme.primary
-                      : const Color(0xFF94A3B8),
-                  size: 18,
+                      ? const Color(0xFFFFD8D8)
+                      : Colors.transparent,
                 ),
-                const SizedBox(width: 10),
-                Text(option),
-              ],
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    sortOption == option
+                        ? Icons.radio_button_checked_rounded
+                        : Icons.radio_button_off_rounded,
+                    color: sortOption == option
+                        ? Theme.of(context).colorScheme.primary
+                        : const Color(0xFF94A3B8),
+                    size: 18,
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    option,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: sortOption == option
+                          ? const Color(0xFF111827)
+                          : const Color(0xFF475569),
+                      fontWeight: sortOption == option
+                          ? FontWeight.w800
+                          : FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
       ],
@@ -4065,7 +4887,21 @@ class _ShopScreenState extends State<ShopScreen> {
                 (product) => productMatchesCategory(product, selectedCategory),
               )
               .toList();
-    final sortedProducts = List<Product>.of(filteredProducts);
+    final normalizedQuery = searchQuery.trim().toLowerCase();
+    final queryProducts = normalizedQuery.isEmpty
+        ? filteredProducts
+        : filteredProducts.where((product) {
+            final haystacks = [
+              product.name,
+              product.description,
+              product.badge,
+              ...product.categories,
+            ];
+            return haystacks.any(
+              (value) => value.toLowerCase().contains(normalizedQuery),
+            );
+          }).toList();
+    final sortedProducts = List<Product>.of(queryProducts);
 
     switch (sortOption) {
       case 'Harga Terendah':
@@ -4096,9 +4932,16 @@ class _ShopScreenState extends State<ShopScreen> {
 }
 
 class _EmptyProductState extends StatelessWidget {
-  const _EmptyProductState({required this.category, required this.onReset});
+  const _EmptyProductState({
+    required this.category,
+    required this.searchQuery,
+    required this.errorMessage,
+    required this.onReset,
+  });
 
   final String category;
+  final String searchQuery;
+  final String? errorMessage;
   final VoidCallback onReset;
 
   @override
@@ -4124,7 +4967,12 @@ class _EmptyProductState extends StatelessWidget {
           Text('Produk tidak ditemukan', style: theme.textTheme.headlineMedium),
           const SizedBox(height: 8),
           Text(
-            'Belum ada produk untuk kategori $category.',
+            errorMessage ??
+                (searchQuery.isNotEmpty
+                    ? 'Tidak ada produk yang cocok dengan pencarian "$searchQuery".'
+                    : category == 'Semua'
+                    ? 'Belum ada produk untuk ditampilkan.'
+                    : 'Belum ada produk untuk kategori $category.'),
             textAlign: TextAlign.center,
             style: theme.textTheme.bodyMedium,
           ),
@@ -4225,7 +5073,7 @@ class OrdersScreen extends StatefulWidget {
   final List<OrderItem> orders;
   final ValueChanged<OrderItem> onOpenOrder;
   final ValueChanged<OrderItem> onPayOrder;
-  final ValueChanged<OrderItem> onCancelOrder;
+  final Future<void> Function(OrderItem order) onCancelOrder;
 
   @override
   State<OrdersScreen> createState() => _OrdersScreenState();
@@ -4321,7 +5169,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
                       ? _PendingPaymentCard(
                           order: order,
                           onPay: () => widget.onPayOrder(order),
-                          onCancel: () => widget.onCancelOrder(order),
+                          onCancel: () =>
+                              unawaited(widget.onCancelOrder(order)),
                         )
                       : OrderCard(
                           order: order,
@@ -4815,12 +5664,17 @@ class ProfileScreen extends StatelessWidget {
     super.key,
     required this.profile,
     required this.mepuBalance,
+<<<<<<< HEAD
     required this.vouchers,
+=======
+    required this.rewardSummary,
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
     required this.onTopUp,
     required this.onEditProfile,
     required this.onOpenSetting,
     required this.onChangeTab,
     required this.onOpenPromo,
+    required this.onOpenRewardHistory,
     required this.onOpenFaq,
     required this.onOpenContactSupport,
     required this.onLogout,
@@ -4828,12 +5682,17 @@ class ProfileScreen extends StatelessWidget {
 
   final UserProfile profile;
   final int mepuBalance;
+<<<<<<< HEAD
   final List<CheckoutVoucher> vouchers;
+=======
+  final RewardSummary? rewardSummary;
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
   final VoidCallback onTopUp;
   final VoidCallback onEditProfile;
   final ValueChanged<SettingShortcut> onOpenSetting;
   final ValueChanged<int> onChangeTab;
   final VoidCallback onOpenPromo;
+  final VoidCallback onOpenRewardHistory;
   final VoidCallback onOpenFaq;
   final VoidCallback onOpenContactSupport;
   final VoidCallback onLogout;
@@ -5010,6 +5869,91 @@ class ProfileScreen extends StatelessWidget {
                     ],
                   ),
                 ),
+                const SizedBox(height: 18),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: const Color(0xFFE8BCB8)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFF4C7),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: const Icon(
+                              Icons.stars_rounded,
+                              color: Color(0xFFC38B00),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Mepu Point',
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  rewardSummary?.ruleDescription ??
+                                      'Poin reward dari transaksi akan tampil di sini.',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: const Color(0xFF6D5A58),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: onOpenRewardHistory,
+                            child: const Text('Riwayat'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _RewardStatTile(
+                              label: 'Saldo',
+                              value:
+                                  '${rewardSummary?.currentBalance ?? 0} poin',
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _RewardStatTile(
+                              label: 'Terkumpul',
+                              value:
+                                  '${rewardSummary?.lifetimeEarned ?? 0} poin',
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _RewardStatTile(
+                              label: 'Dipakai',
+                              value:
+                                  '${rewardSummary?.lifetimeRedeemed ?? 0} poin',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 22),
                 Card(
                   child: Padding(
@@ -5084,12 +6028,314 @@ class ProfileScreen extends StatelessWidget {
   }
 }
 
+class _RewardStatTile extends StatelessWidget {
+  const _RewardStatTile({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF8EA),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: const Color(0xFF8A6A2B),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class RewardHistoryScreen extends StatefulWidget {
+  const RewardHistoryScreen({super.key, required this.summary});
+
+  final RewardSummary? summary;
+
+  @override
+  State<RewardHistoryScreen> createState() => _RewardHistoryScreenState();
+}
+
+class _RewardHistoryScreenState extends State<RewardHistoryScreen> {
+  static const RewardService _rewardService = RewardService();
+  bool _isLoading = true;
+  String? _errorMessage;
+  List<RewardTransactionEntry> _entries = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadHistory());
+  }
+
+  Future<void> _loadHistory() async {
+    try {
+      final entries = await _rewardService.getHistory();
+      if (!mounted) return;
+      setState(() {
+        _entries = entries;
+        _errorMessage = null;
+        _isLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _entries = const [];
+        _errorMessage =
+            'Riwayat Mepu Point belum berhasil dimuat. Coba lagi beberapa saat.';
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Riwayat Mepu Point')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFFD9001B), Color(0xFF8B0011)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(26),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Saldo saat ini',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: Colors.white70,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${widget.summary?.currentBalance ?? 0} poin',
+                  style: theme.textTheme.displayLarge?.copyWith(
+                    color: Colors.white,
+                    fontSize: 34,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  widget.summary?.ruleDescription ??
+                      'Aturan loyalitas aktif akan tampil dari backend.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: Colors.white.withValues(alpha: 0.9),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          if (_isLoading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 48),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_errorMessage != null)
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF7ED),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: const Color(0xFFF5C38B)),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    _errorMessage!,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton(
+                    onPressed: () {
+                      setState(() => _isLoading = true);
+                      unawaited(_loadHistory());
+                    },
+                    child: const Text('Coba Lagi'),
+                  ),
+                ],
+              ),
+            )
+          else if (_entries.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(22),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: const Color(0xFFE8BCB8)),
+              ),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.history_toggle_off_rounded,
+                    size: 44,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Belum ada transaksi poin',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Poin akan tercatat setelah pesanan selesai atau saat poin digunakan di checkout.',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            ..._entries.map(
+              (entry) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _RewardHistoryTile(entry: entry),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RewardHistoryTile extends StatelessWidget {
+  const _RewardHistoryTile({required this.entry});
+
+  final RewardTransactionEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isPositive = entry.pointsDelta >= 0;
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE8BCB8)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: isPositive
+                  ? const Color(0xFFE8FFF1)
+                  : const Color(0xFFFFF1F2),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(
+              _rewardTransactionIcon(entry.transactionType),
+              color: isPositive
+                  ? const Color(0xFF15803D)
+                  : theme.colorScheme.primary,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _rewardTransactionTitle(entry.transactionType),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  entry.description.isEmpty
+                      ? 'Transaksi poin tercatat di sistem.'
+                      : entry.description,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${_formatRewardDate(entry.createdAt.toLocal())}${entry.orderNo.isEmpty ? '' : ' • ${entry.orderNo}'}',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: const Color(0xFF9A7B76),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '${isPositive ? '+' : ''}${entry.pointsDelta} pts',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  color: isPositive
+                      ? const Color(0xFF15803D)
+                      : theme.colorScheme.primary,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              if (entry.rupiahValue > 0) ...[
+                const SizedBox(height: 4),
+                Text(
+                  formatRupiah(entry.rupiahValue),
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: const Color(0xFF6D5A58),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class ProductDetailScreen extends StatefulWidget {
   const ProductDetailScreen({
     super.key,
     required this.product,
     required this.cartItemCount,
     required this.stock,
+    required this.rewardEarnLabel,
+    required this.catalogProducts,
     required this.productStocks,
     required this.onOpenCart,
     required this.onAddToCart,
@@ -5100,6 +6346,8 @@ class ProductDetailScreen extends StatefulWidget {
   final Product product;
   final int cartItemCount;
   final int stock;
+  final String? rewardEarnLabel;
+  final List<Product> catalogProducts;
   final Map<String, int> productStocks;
   final VoidCallback onOpenCart;
   final ValueChanged<Product> onAddToCart;
@@ -5337,28 +6585,13 @@ class _EmptyVoucherState extends StatelessWidget {
 }
 
 class PromoCenterScreen extends StatelessWidget {
-  const PromoCenterScreen({super.key});
+  const PromoCenterScreen({super.key, required this.promotions});
+
+  final List<PromoBanner> promotions;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    const promos = [
-      (
-        'Gratis Ongkir Anggota',
-        'Potongan ongkir sampai Rp 8.000 untuk pembelian kebutuhan harian.',
-        Icons.local_shipping_outlined,
-      ),
-      (
-        'Flash Sale Poin Member',
-        'Tukar poin untuk harga spesial produk koperasi pilihan.',
-        Icons.workspace_premium_outlined,
-      ),
-      (
-        'Hemat Belanja Mingguan',
-        'Diskon bundling untuk sembako dan produk rumah tangga.',
-        Icons.shopping_basket_outlined,
-      ),
-    ];
 
     return Scaffold(
       appBar: AppBar(title: const Text('Promo MepuPoin')),
@@ -5396,47 +6629,89 @@ class PromoCenterScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
-          for (final promo in promos)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 14),
-              child: Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: const Color(0xFFE8BCB8)),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 52,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Icon(promo.$3, color: theme.colorScheme.primary),
+          if (promotions.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: const Color(0xFFE8BCB8)),
+              ),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.local_offer_outlined,
+                    size: 40,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Belum ada promo aktif',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
                     ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(promo.$1, style: theme.textTheme.titleMedium),
-                          const SizedBox(height: 4),
-                          Text(
-                            promo.$2,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: const Color(0xFF64748B),
-                            ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Promo dari Supabase akan tampil di sini setelah diaktifkan oleh admin cabang.',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            for (final promo in promotions)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 14),
+                child: Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: const Color(0xFFE8BCB8)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 52,
+                        height: 52,
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary.withValues(
+                            alpha: 0.1,
                           ),
-                        ],
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Icon(
+                          promo.icon,
+                          color: theme.colorScheme.primary,
+                        ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              promo.title,
+                              style: theme.textTheme.titleMedium,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              promo.subtitle,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: const Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
         ],
       ),
     );
@@ -5671,7 +6946,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   Widget build(BuildContext context) {
     final product = widget.product;
     final stock = widget.stock;
-    final related = products
+    final related = widget.catalogProducts
         .where((item) => product.relatedIds.contains(item.id))
         .toList();
     final theme = Theme.of(context);
@@ -5682,6 +6957,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     final subtotal = product.price * quantity;
 
     return Scaffold(
+<<<<<<< HEAD
       backgroundColor: const Color(0xFFF4F6F5),
       body: CustomScrollView(
         slivers: [
@@ -5710,6 +6986,86 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   IconButton(
                     onPressed: widget.onOpenCart,
                     icon: const Icon(Icons.shopping_cart_outlined),
+=======
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: CustomScrollView(
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: Stack(
+                      children: [
+                        Container(
+                          height: 420,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                product.tone.withValues(alpha: 0.95),
+                                const Color(0xFF201F1F),
+                                product.tone.withValues(alpha: 0.7),
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                          ),
+                          child: Center(
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                28,
+                                68,
+                                28,
+                                24,
+                              ),
+                              child: ProductMedia(
+                                product: product,
+                                borderRadius: BorderRadius.circular(28),
+                                fit: BoxFit.contain,
+                                iconSize: 132,
+                              ),
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          top: 18,
+                          left: 18,
+                          child: _CircleActionButton(
+                            icon: Icons.arrow_back_rounded,
+                            onTap: () => Navigator.of(context).pop(),
+                          ),
+                        ),
+                        Positioned(
+                          top: 18,
+                          right: 18,
+                          child: _CircleActionButton(
+                            icon: Icons.shopping_cart_outlined,
+                            badgeCount: widget.cartItemCount,
+                            onTap: widget.onOpenCart,
+                          ),
+                        ),
+                        Positioned(
+                          left: 24,
+                          bottom: 20,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFC9A900),
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: Text(
+                              product.badge,
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                color: const Color(0xFF221B00),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
                   ),
                   if (widget.cartItemCount > 0)
                     Positioned(
@@ -5790,11 +7146,107 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                               color: const Color(0xFFFFF1F2),
                               borderRadius: BorderRadius.circular(8),
                             ),
+<<<<<<< HEAD
                             child: Text(
                               '$discount%',
                               style: theme.textTheme.labelLarge?.copyWith(
                                 color: const Color(0xFFD9001B),
                                 fontWeight: FontWeight.w900,
+=======
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.stars_rounded,
+                                  color: Color(0xFF221B00),
+                                ),
+                                const SizedBox(width: 10),
+                                Text(
+                                  widget.rewardEarnLabel ??
+                                      'Mepu Point mengikuti aturan belanja aktif',
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    color: const Color(0xFF221B00),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          StatusPill(
+                            label: stock > 0
+                                ? 'Stok tersedia: $stock'
+                                : 'Stok habis',
+                            foreground: stock > 0
+                                ? const Color(0xFF116C46)
+                                : theme.colorScheme.error,
+                            background: stock > 0
+                                ? const Color(0xFFDFF5E8)
+                                : const Color(0xFFFFE4E6),
+                          ),
+                          const SizedBox(height: 26),
+                          const Divider(color: Color(0xFFE9C7C3)),
+                          const SizedBox(height: 22),
+                          Text(
+                            'Deskripsi Produk',
+                            style: theme.textTheme.headlineMedium,
+                          ),
+                          const SizedBox(height: 14),
+                          Text(
+                            product.description,
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              height: 1.7,
+                              color: const Color(0xFF5F4A45),
+                            ),
+                          ),
+                          const SizedBox(height: 28),
+                          Text(
+                            'Produk Terkait',
+                            style: theme.textTheme.headlineMedium,
+                          ),
+                          const SizedBox(height: 18),
+                          SizedBox(
+                            height: 256,
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: related.length,
+                              separatorBuilder: (_, _) =>
+                                  const SizedBox(width: 16),
+                              itemBuilder: (context, index) => SizedBox(
+                                width: 220,
+                                child: ProductCard(
+                                  product: related[index],
+                                  stock:
+                                      widget.productStocks[related[index].id] ??
+                                      0,
+                                  variant: ProductCardVariant.compact,
+                                  onTap: () {
+                                    Navigator.of(context).pushReplacement(
+                                      MaterialPageRoute<void>(
+                                        builder: (_) => ProductDetailScreen(
+                                          cartItemCount: widget.cartItemCount,
+                                          product: related[index],
+                                          stock:
+                                              widget
+                                                  .productStocks[related[index]
+                                                  .id] ??
+                                              0,
+                                          rewardEarnLabel:
+                                              widget.rewardEarnLabel,
+                                          catalogProducts:
+                                              widget.catalogProducts,
+                                          productStocks: widget.productStocks,
+                                          onOpenCart: widget.onOpenCart,
+                                          onAddToCart: widget.onAddToCart,
+                                          onAddItemsToCart:
+                                              widget.onAddItemsToCart,
+                                          onBuyNow: widget.onBuyNow,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
                               ),
                             ),
                           ),
@@ -6406,6 +7858,7 @@ class CheckoutScreen extends StatefulWidget {
     super.key,
     required this.items,
     required this.mepuBalance,
+    required this.rewardSummary,
     required this.productStocks,
     required this.vouchers,
     required this.onCompletePayment,
@@ -6415,10 +7868,16 @@ class CheckoutScreen extends StatefulWidget {
 
   final List<Product> items;
   final int mepuBalance;
+  final RewardSummary? rewardSummary;
   final Map<String, int> productStocks;
+<<<<<<< HEAD
   final List<CheckoutVoucher> vouchers;
   final Future<OrderItem?> Function(OrderItem order) onCompletePayment;
   final ValueChanged<OrderItem> onCancelOrder;
+=======
+  final Future<OrderItem?> Function(OrderItem order) onCompletePayment;
+  final Future<void> Function(OrderItem order) onCancelOrder;
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
   final Future<OrderItem?> Function(
     List<Product> items,
     String paymentMethod,
@@ -6426,8 +7885,13 @@ class CheckoutScreen extends StatefulWidget {
     String? addressId,
     String address,
     int finalTotal,
+<<<<<<< HEAD
     CheckoutVoucher? voucher,
     int voucherDiscount,
+=======
+    String? voucherLabel,
+    int redeemedPoints,
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
   )
   onPlaceOrder;
 
@@ -6436,9 +7900,13 @@ class CheckoutScreen extends StatefulWidget {
 }
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
+  static const RewardService _rewardService = RewardService();
   String deliveryMethod = 'Kirim ke Rumah';
   String paymentMethod = 'Saldo MepuPoin';
   CheckoutVoucher? selectedVoucher;
+  bool _useRewardPoints = false;
+  bool _isLoadingRewardPreview = false;
+  RewardRedeemPreview? _rewardPreview;
   int selectedAddressIndex = 0;
   bool _isLoadingAddresses = true;
   List<CheckoutAddress> deliveryAddresses = [
@@ -6464,6 +7932,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   void initState() {
     super.initState();
     unawaited(_loadDeliveryAddresses());
+    unawaited(_loadRewardPreview());
   }
 
   CheckoutAddress get selectedAddress =>
@@ -6523,6 +7992,40 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
+  Future<void> _loadRewardPreview() async {
+    if (widget.rewardSummary == null) {
+      if (!mounted) return;
+      setState(() => _rewardPreview = null);
+      return;
+    }
+
+    setState(() => _isLoadingRewardPreview = true);
+    try {
+      final subtotal = widget.items.fold<int>(
+        0,
+        (sum, product) => sum + product.price,
+      );
+      final deliveryFee = deliveryMethod == 'Kirim ke Rumah' ? 8000 : 0;
+      final preview = await _rewardService.previewRedeem(
+        subtotal: subtotal,
+        deliveryFee: deliveryFee,
+        serviceFee: 1500,
+        requestedPoints: _useRewardPoints
+            ? widget.rewardSummary!.currentBalance
+            : 0,
+      );
+      if (!mounted) return;
+      setState(() => _rewardPreview = preview);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _rewardPreview = null);
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingRewardPreview = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -6539,15 +8042,40 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       deliveryFee,
       serviceFee,
     );
-    final total = (subtotal + deliveryFee + serviceFee - voucherDiscount)
-        .clamp(0, subtotal + deliveryFee + serviceFee)
-        .toInt();
+    final rewardDiscount = _useRewardPoints
+        ? (_rewardPreview?.discountAmount ?? 0)
+        : 0;
+    final redeemedPoints = _useRewardPoints
+        ? (_rewardPreview?.appliedPoints ?? 0)
+        : 0;
+    final total =
+        (subtotal + deliveryFee + serviceFee - voucherDiscount - rewardDiscount)
+            .clamp(0, subtotal + deliveryFee + serviceFee)
+            .toInt();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Checkout')),
+      backgroundColor: const Color(0xFFF5F7FA),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFFF5F7FA),
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        title: Text(
+          'Checkout Pesanan',
+          style: theme.textTheme.headlineMedium?.copyWith(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 140),
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 164),
         children: [
+          _CheckoutHeroCard(
+            itemCount: widget.items.length,
+            total: total,
+            deliveryMethod: deliveryMethod,
+            paymentMethod: paymentMethod,
+          ),
+          const SizedBox(height: 16),
           _CheckoutSection(
             title: 'Produk Dibeli',
             child: Column(
@@ -6555,51 +8083,64 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 for (final item in groupedItems)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 58,
-                          height: 58,
-                          child: ProductMedia(
-                            product: item.product,
-                            borderRadius: BorderRadius.circular(12),
-                            fit: BoxFit.cover,
-                            padding: const EdgeInsets.all(6),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: const Color(0xFFE7ECF2)),
+                      ),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 58,
+                            height: 58,
+                            child: ProductMedia(
+                              product: item.product,
+                              borderRadius: BorderRadius.circular(14),
+                              fit: BoxFit.cover,
+                              padding: const EdgeInsets.all(6),
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                item.product.name,
-                                style: theme.textTheme.titleMedium,
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '${formatRupiah(item.product.price)} x ${item.quantity}',
-                                style: theme.textTheme.bodyMedium,
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                'Stok tersedia: ${widget.productStocks[item.product.id] ?? 0}',
-                                style: theme.textTheme.labelMedium?.copyWith(
-                                  color: const Color(0xFF15803D),
-                                  fontWeight: FontWeight.w700,
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  item.product.name,
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
-                              ),
-                            ],
+                                const SizedBox(height: 4),
+                                Text(
+                                  '${formatRupiah(item.product.price)} x ${item.quantity}',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: const Color(0xFF64748B),
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                StatusPill(
+                                  label:
+                                      'Stok tersedia: ${widget.productStocks[item.product.id] ?? 0}',
+                                  foreground: const Color(0xFF116C46),
+                                  background: const Color(0xFFE8F7EE),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        Text(
-                          formatRupiah(item.product.price * item.quantity),
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            color: theme.colorScheme.primary,
-                            fontWeight: FontWeight.w800,
+                          const SizedBox(width: 12),
+                          Text(
+                            formatRupiah(item.product.price * item.quantity),
+                            textAlign: TextAlign.right,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: theme.colorScheme.primary,
+                              fontWeight: FontWeight.w900,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
               ],
@@ -6659,6 +8200,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   serviceFee: serviceFee,
                   vouchers: widget.vouchers,
                   onSelect: (voucher) => setState(() {
+                    if (_useRewardPoints) {
+                      _useRewardPoints = false;
+                      unawaited(_loadRewardPreview());
+                      _showFeatureSnack(
+                        context,
+                        'Redeem Mepu Point dilepas agar voucher dapat digunakan.',
+                        title: 'Voucher Dipilih',
+                      );
+                    }
                     selectedVoucher = voucher;
                   }),
                 ),
@@ -6673,6 +8223,65 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ],
             ),
           ),
+          if (widget.rewardSummary != null) ...[
+            const SizedBox(height: 14),
+            _CheckoutSection(
+              title: 'Mepu Point',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SwitchListTile(
+                    value: _useRewardPoints,
+                    contentPadding: EdgeInsets.zero,
+                    onChanged: _isLoadingRewardPreview
+                        ? null
+                        : (value) {
+                            if (value && selectedVoucher != null) {
+                              setState(() => selectedVoucher = null);
+                              _showFeatureSnack(
+                                context,
+                                'Voucher checkout dilepas agar Mepu Point bisa digunakan.',
+                                title: 'Mepu Point Aktif',
+                              );
+                            }
+                            setState(() => _useRewardPoints = value);
+                            unawaited(_loadRewardPreview());
+                          },
+                    title: const Text('Gunakan Mepu Point'),
+                    subtitle: Text(
+                      'Saldo ${widget.rewardSummary!.currentBalance} poin • '
+                      '${widget.rewardSummary!.redeemLabel}',
+                    ),
+                  ),
+                  if (_isLoadingRewardPreview)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8),
+                      child: LinearProgressIndicator(minHeight: 3),
+                    )
+                  else if (_useRewardPoints)
+                    Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(top: 8),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF8E6),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFFF4D38A)),
+                      ),
+                      child: Text(
+                        redeemedPoints > 0
+                            ? '$redeemedPoints poin akan dipakai untuk potongan ${formatRupiah(rewardDiscount)}.'
+                            : 'Belum ada poin yang bisa dipakai untuk transaksi ini. Minimal redeem ${widget.rewardSummary!.minRedeemPoints} poin.',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: const Color(0xFF6D5A00),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 14),
           _CheckoutSection(
             title: 'Metode Pembayaran',
@@ -6729,6 +8338,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     value: -voucherDiscount,
                     isDiscount: true,
                   ),
+                if (rewardDiscount > 0)
+                  _PriceRow(
+                    label: 'Redeem Mepu Point',
+                    value: -rewardDiscount,
+                    isDiscount: true,
+                  ),
                 const Divider(height: 24),
                 _PriceRow(label: 'Total Bayar', value: total, emphasized: true),
               ],
@@ -6739,38 +8354,65 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       bottomNavigationBar: SafeArea(
         top: false,
         child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
           decoration: const BoxDecoration(
             color: Colors.white,
-            border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            boxShadow: [
+              BoxShadow(
+                color: Color(0x12000000),
+                blurRadius: 22,
+                offset: Offset(0, -6),
+              ),
+            ],
           ),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Total Bayar', style: theme.textTheme.labelMedium),
-                    const SizedBox(height: 4),
-                    Text(
-                      formatRupiah(total),
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        color: theme.colorScheme.primary,
-                        fontWeight: FontWeight.w900,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: const Color(0xFFE7ECF2)),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Total Bayar',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: const Color(0xFF64748B),
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 4),
+                      Text(
+                        formatRupiah(total),
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
+              const SizedBox(width: 14),
               FilledButton.icon(
                 onPressed: _placeOrder,
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(160, 52),
                   backgroundColor: theme.colorScheme.primary,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(18),
                   ),
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
                 ),
                 icon: const Icon(Icons.check_circle_outline_rounded),
                 label: const Text('Buat Pesanan'),
@@ -6809,9 +8451,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       deliveryFee,
       serviceFee,
     );
-    final total = (subtotal + deliveryFee + serviceFee - voucherDiscount)
-        .clamp(0, subtotal + deliveryFee + serviceFee)
-        .toInt();
+    final rewardDiscount = _useRewardPoints
+        ? (_rewardPreview?.discountAmount ?? 0)
+        : 0;
+    final redeemedPoints = _useRewardPoints
+        ? (_rewardPreview?.appliedPoints ?? 0)
+        : 0;
+    final total =
+        (subtotal + deliveryFee + serviceFee - voucherDiscount - rewardDiscount)
+            .clamp(0, subtotal + deliveryFee + serviceFee)
+            .toInt();
     if (paymentMethod == 'Saldo MepuPoin' && widget.mepuBalance < total) {
       _showFeatureSnack(
         context,
@@ -6843,8 +8492,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       selectedAddressId,
       destinationAddress,
       total,
+<<<<<<< HEAD
       selectedVoucher,
       voucherDiscount,
+=======
+      selectedVoucher?.code,
+      redeemedPoints,
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
     );
     if (!mounted || order == null) return;
     Navigator.of(context).pushReplacement(
@@ -6890,6 +8544,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         selectedVoucher = null;
       }
     });
+    unawaited(_loadRewardPreview());
 
     if (shouldCancelFreeDeliveryVoucher) {
       _showFeatureSnack(
@@ -6975,7 +8630,11 @@ class TransactionCompletionScreen extends StatefulWidget {
 
   final OrderItem initialOrder;
   final Future<OrderItem?> Function(OrderItem order) onCompletePayment;
+<<<<<<< HEAD
   final ValueChanged<OrderItem> onCancelOrder;
+=======
+  final Future<void> Function(OrderItem order) onCancelOrder;
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
 
   @override
   State<TransactionCompletionScreen> createState() =>
@@ -7257,6 +8916,7 @@ class _TransactionCompletionScreenState
           ),
         ],
       ),
+<<<<<<< HEAD
     );
   }
 
@@ -7270,11 +8930,59 @@ class _TransactionCompletionScreenState
         trailing: const Icon(
           Icons.storefront_rounded,
           color: Color(0xFFE60023),
+=======
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+          ),
+          child: Row(
+            children: [
+              if (_isPending) ...[
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () async {
+                      final navigator = Navigator.of(context);
+                      await widget.onCancelOrder(currentOrder);
+                      if (!mounted) return;
+                      navigator.popUntil((route) => route.isFirst);
+                    },
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(52),
+                    ),
+                    child: const Text('Batalkan'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+              ],
+              Expanded(
+                child: FilledButton(
+                  onPressed: _isPending ? _completeTransaction : _backToHome,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                    backgroundColor: theme.colorScheme.primary,
+                  ),
+                  child: Text(
+                    _isPending
+                        ? (_isTransferBank
+                              ? 'Saya Sudah Bayar'
+                              : 'Selesaikan Transaksi')
+                        : 'Kembali ke Beranda',
+                  ),
+                ),
+              ),
+            ],
+          ),
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
         ),
       ),
     );
   }
 
+<<<<<<< HEAD
   Widget _buildOrderSummaryCard(BuildContext context) {
     return _PremiumSection(
       title: 'Ringkasan Pesanan',
@@ -7470,6 +9178,12 @@ class _TransactionCompletionScreenState
         currentOrder = updatedOrder;
       }
     });
+=======
+  Future<void> _completeTransaction() async {
+    final updatedOrder = await widget.onCompletePayment(currentOrder);
+    if (updatedOrder == null || !mounted) return;
+    setState(() => currentOrder = updatedOrder);
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
   }
 
   void _backToHome() {
@@ -8590,6 +10304,192 @@ class _AppliedVoucherCard extends StatelessWidget {
   }
 }
 
+class _CheckoutHeroCard extends StatelessWidget {
+  const _CheckoutHeroCard({
+    required this.itemCount,
+    required this.total,
+    required this.deliveryMethod,
+    required this.paymentMethod,
+  });
+
+  final int itemCount;
+  final int total;
+  final String deliveryMethod;
+  final String paymentMethod;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFFFFFFF), Color(0xFFF8FAFC)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: const Color(0xFFE8EDF3)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0D0F172A),
+            blurRadius: 24,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Ringkas, cepat, dan siap dibayar',
+            style: theme.textTheme.titleLarge?.copyWith(
+              color: const Color(0xFF111827),
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Pastikan metode pengiriman, pembayaran, dan total pesanan sudah sesuai.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: const Color(0xFF64748B),
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Expanded(
+                child: _CheckoutHeroStat(
+                  label: 'Item',
+                  value: '$itemCount produk',
+                  icon: Icons.shopping_bag_outlined,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _CheckoutHeroStat(
+                  label: 'Total',
+                  value: formatRupiah(total),
+                  icon: Icons.receipt_long_outlined,
+                  accent: true,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _CheckoutInfoChip(
+                icon: deliveryMethod == 'Kirim ke Rumah'
+                    ? Icons.local_shipping_outlined
+                    : Icons.storefront_outlined,
+                label: deliveryMethod,
+              ),
+              _CheckoutInfoChip(
+                icon: Icons.account_balance_wallet_outlined,
+                label: paymentMethod,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CheckoutHeroStat extends StatelessWidget {
+  const _CheckoutHeroStat({
+    required this.label,
+    required this.value,
+    required this.icon,
+    this.accent = false,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final bool accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: accent ? const Color(0xFFFFF3F3) : const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: accent ? const Color(0xFFFFD8D8) : const Color(0xFFE7ECF2),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            icon,
+            size: 18,
+            color: accent ? theme.colorScheme.primary : const Color(0xFF64748B),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            label,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: const Color(0xFF64748B),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: accent ? theme.colorScheme.primary : const Color(0xFF111827),
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CheckoutInfoChip extends StatelessWidget {
+  const _CheckoutInfoChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFE7ECF2)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: const Color(0xFF64748B)),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: const Color(0xFF475569),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _CheckoutSection extends StatelessWidget {
   const _CheckoutSection({required this.title, required this.child});
 
@@ -8599,17 +10499,29 @@ class _CheckoutSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE8EDF3)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A0F172A),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: Theme.of(context).textTheme.headlineMedium),
-          const SizedBox(height: 14),
+          Text(
+            title,
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 16),
           child,
         ],
       ),
@@ -8637,22 +10549,51 @@ class _CheckoutOption extends StatelessWidget {
     final theme = Theme.of(context);
     return InkWell(
       onTap: enabled ? onTap : null,
-      borderRadius: BorderRadius.circular(14),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
+      borderRadius: BorderRadius.circular(20),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: !enabled
+              ? const Color(0xFFF8FAFC)
+              : selected
+              ? theme.colorScheme.primary.withValues(alpha: 0.07)
+              : const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: !enabled
+                ? const Color(0xFFE2E8F0)
+                : selected
+                ? theme.colorScheme.primary.withValues(alpha: 0.45)
+                : const Color(0xFFE7ECF2),
+            width: selected ? 1.5 : 1,
+          ),
+        ),
         child: Row(
           children: [
-            Icon(
-              selected
-                  ? Icons.radio_button_checked_rounded
-                  : Icons.radio_button_off_rounded,
-              color: !enabled
-                  ? const Color(0xFFCBD5E1)
-                  : selected
-                  ? theme.colorScheme.primary
-                  : const Color(0xFF94A3B8),
+            Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                color: selected
+                    ? theme.colorScheme.primary
+                    : Colors.transparent,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: !enabled
+                      ? const Color(0xFFCBD5E1)
+                      : selected
+                      ? theme.colorScheme.primary
+                      : const Color(0xFF94A3B8),
+                  width: 1.8,
+                ),
+              ),
+              child: selected
+                  ? const Icon(Icons.check_rounded, size: 14, color: Colors.white)
+                  : null,
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -8660,17 +10601,21 @@ class _CheckoutOption extends StatelessWidget {
                   DefaultTextStyle(
                     style: (theme.textTheme.titleMedium ?? const TextStyle())
                         .copyWith(
-                          color: enabled ? null : const Color(0xFF94A3B8),
+                          fontWeight: FontWeight.w700,
+                          color: enabled
+                              ? const Color(0xFF111827)
+                              : const Color(0xFF94A3B8),
                         ),
                     child: title,
                   ),
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 4),
                   DefaultTextStyle(
                     style:
                         theme.textTheme.bodyMedium?.copyWith(
                           color: enabled
                               ? const Color(0xFF64748B)
                               : const Color(0xFF94A3B8),
+                          height: 1.4,
                         ) ??
                         const TextStyle(),
                     child: subtitle,
@@ -8707,12 +10652,12 @@ class _PriceRow extends StatelessWidget {
             fontWeight: FontWeight.w900,
           )
         : theme.textTheme.bodyLarge?.copyWith(
-            color: isDiscount ? const Color(0xFF15803D) : null,
-            fontWeight: isDiscount ? FontWeight.w800 : null,
+            color: isDiscount ? const Color(0xFF15803D) : const Color(0xFF475569),
+            fontWeight: isDiscount ? FontWeight.w800 : FontWeight.w600,
           );
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         children: [
           Expanded(child: Text(label, style: style)),
@@ -8913,7 +10858,9 @@ class OrderDetailScreen extends StatelessWidget {
               ),
             ),
             child: Text(
-              isPickupOrder ? 'Perbarui Status Pickup' : 'Segarkan Tracking',
+              isPickupOrder
+                  ? 'Perbarui Status Pickup'
+                  : 'Segarkan Status Pengiriman',
             ),
           ),
         ],
@@ -9264,32 +11211,43 @@ class CartScreen extends StatefulWidget {
   const CartScreen({
     super.key,
     required this.items,
-    required this.onCartChanged,
+    required this.errorMessage,
+    required this.onReload,
+    required this.onClearCart,
+    required this.onRemoveItem,
+    required this.onUpdateQuantity,
     required this.onCheckout,
   });
 
-  final List<Product> items;
-  final ValueChanged<List<Product>> onCartChanged;
-  final ValueChanged<List<Product>> onCheckout;
+  final List<CartLine> items;
+  final String? errorMessage;
+  final Future<List<CartLine>> Function() onReload;
+  final Future<List<CartLine>> Function({bool showFeedback}) onClearCart;
+  final Future<List<CartLine>> Function(String cartItemId) onRemoveItem;
+  final Future<List<CartLine>> Function(String cartItemId, int quantity)
+  onUpdateQuantity;
+  final Future<List<CartLine>> Function(List<CartLine> selectedItems)
+  onCheckout;
 
   @override
   State<CartScreen> createState() => _CartScreenState();
 }
 
 class _CartScreenState extends State<CartScreen> {
-  late final List<_CartEntry> cartEntries = _groupCartItems(widget.items);
-  late final Set<String> selectedProductIds = {
-    for (final entry in cartEntries) entry.product.id,
+  late List<CartLine> cartEntries = List<CartLine>.of(widget.items);
+  late final Set<String> selectedCartItemIds = {
+    for (final entry in cartEntries) entry.id,
   };
+  bool _isMutating = false;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final allSelected =
         cartEntries.isNotEmpty &&
-        selectedProductIds.length == cartEntries.length;
+        selectedCartItemIds.length == cartEntries.length;
     final totalPrice = cartEntries.fold<int>(0, (total, entry) {
-      if (!selectedProductIds.contains(entry.product.id)) {
+      if (!selectedCartItemIds.contains(entry.id)) {
         return total;
       }
       return total + (entry.product.price * entry.quantity);
@@ -9300,16 +11258,7 @@ class _CartScreenState extends State<CartScreen> {
         title: const Text('Keranjang'),
         actions: [
           TextButton(
-            onPressed: cartEntries.isEmpty
-                ? null
-                : () {
-                    setState(() {
-                      cartEntries.clear();
-                      selectedProductIds.clear();
-                    });
-                    _notifyCartChanged();
-                    _showFeatureSnack(context, 'Keranjang dikosongkan.');
-                  },
+            onPressed: cartEntries.isEmpty || _isMutating ? null : _clearCart,
             child: const Text('Hapus Semua'),
           ),
         ],
@@ -9322,21 +11271,34 @@ class _CartScreenState extends State<CartScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      Icons.shopping_cart_outlined,
+                      widget.errorMessage == null
+                          ? Icons.shopping_cart_outlined
+                          : Icons.wifi_off_rounded,
                       size: 84,
                       color: theme.colorScheme.primary,
                     ),
                     const SizedBox(height: 18),
                     Text(
-                      'Keranjang masih kosong',
+                      widget.errorMessage == null
+                          ? 'Keranjang masih kosong'
+                          : 'Keranjang belum tersedia',
                       style: theme.textTheme.headlineMedium,
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Tambahkan produk favorit dari Home atau Shop.',
+                      widget.errorMessage ??
+                          'Tambahkan produk favorit dari Home atau Shop.',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodyLarge,
                     ),
+                    if (widget.errorMessage != null) ...[
+                      const SizedBox(height: 18),
+                      OutlinedButton.icon(
+                        onPressed: _isMutating ? null : _reloadCart,
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('Coba Lagi'),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -9349,13 +11311,11 @@ class _CartScreenState extends State<CartScreen> {
                   onChanged: (value) {
                     setState(() {
                       if (value ?? false) {
-                        selectedProductIds
+                        selectedCartItemIds
                           ..clear()
-                          ..addAll(
-                            cartEntries.map((entry) => entry.product.id),
-                          );
+                          ..addAll(cartEntries.map((entry) => entry.id));
                       } else {
-                        selectedProductIds.clear();
+                        selectedCartItemIds.clear();
                       }
                     });
                   },
@@ -9372,7 +11332,7 @@ class _CartScreenState extends State<CartScreen> {
                         final entry = cartEntries[index];
                         final product = entry.product;
                         return Dismissible(
-                          key: ValueKey(product.id),
+                          key: ValueKey(entry.id),
                           direction: DismissDirection.endToStart,
                           background: Container(
                             alignment: Alignment.centerRight,
@@ -9386,9 +11346,7 @@ class _CartScreenState extends State<CartScreen> {
                               color: Colors.white,
                             ),
                           ),
-                          onDismissed: (_) {
-                            _removeEntryAt(index);
-                          },
+                          confirmDismiss: (_) => _removeEntry(entry),
                           child: Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
@@ -9401,15 +11359,13 @@ class _CartScreenState extends State<CartScreen> {
                             child: Row(
                               children: [
                                 Checkbox(
-                                  value: selectedProductIds.contains(
-                                    product.id,
-                                  ),
+                                  value: selectedCartItemIds.contains(entry.id),
                                   onChanged: (value) {
                                     setState(() {
                                       if (value ?? false) {
-                                        selectedProductIds.add(product.id);
+                                        selectedCartItemIds.add(entry.id);
                                       } else {
-                                        selectedProductIds.remove(product.id);
+                                        selectedCartItemIds.remove(entry.id);
                                       }
                                     });
                                   },
@@ -9450,9 +11406,11 @@ class _CartScreenState extends State<CartScreen> {
                                         children: [
                                           _QuantityMiniButton(
                                             icon: Icons.remove,
-                                            onTap: entry.quantity > 1
+                                            onTap:
+                                                entry.quantity > 1 &&
+                                                    !_isMutating
                                                 ? () => _changeQuantity(
-                                                    index,
+                                                    entry,
                                                     entry.quantity - 1,
                                                   )
                                                 : null,
@@ -9465,10 +11423,12 @@ class _CartScreenState extends State<CartScreen> {
                                           ),
                                           _QuantityMiniButton(
                                             icon: Icons.add,
-                                            onTap: () => _changeQuantity(
-                                              index,
-                                              entry.quantity + 1,
-                                            ),
+                                            onTap: _isMutating
+                                                ? null
+                                                : () => _changeQuantity(
+                                                    entry,
+                                                    entry.quantity + 1,
+                                                  ),
                                           ),
                                         ],
                                       ),
@@ -9476,13 +11436,9 @@ class _CartScreenState extends State<CartScreen> {
                                   ),
                                 ),
                                 IconButton(
-                                  onPressed: () {
-                                    _removeEntryAt(index);
-                                    _showFeatureSnack(
-                                      context,
-                                      '${product.name} dihapus dari keranjang.',
-                                    );
-                                  },
+                                  onPressed: _isMutating
+                                      ? null
+                                      : () => unawaited(_removeEntry(entry)),
                                   icon: const Icon(Icons.delete_outline),
                                 ),
                               ],
@@ -9522,9 +11478,7 @@ class _CartScreenState extends State<CartScreen> {
                 ),
               ),
               FilledButton(
-                onPressed: totalPrice == 0
-                    ? null
-                    : () => widget.onCheckout(_selectedProducts()),
+                onPressed: totalPrice == 0 || _isMutating ? null : _checkout,
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(138, 52),
                   backgroundColor: theme.colorScheme.primary,
@@ -9541,52 +11495,107 @@ class _CartScreenState extends State<CartScreen> {
     );
   }
 
-  List<_CartEntry> _groupCartItems(List<Product> items) {
-    final entries = <String, _CartEntry>{};
-    for (final product in items) {
-      final existing = entries[product.id];
-      entries[product.id] = existing == null
-          ? _CartEntry(product: product, quantity: 1)
-          : _CartEntry(product: product, quantity: existing.quantity + 1);
+  Future<void> _reloadCart() async {
+    setState(() => _isMutating = true);
+    try {
+      final updated = await widget.onReload();
+      if (!mounted) return;
+      setState(() {
+        cartEntries = List<CartLine>.of(updated);
+        selectedCartItemIds
+          ..clear()
+          ..addAll(updated.map((entry) => entry.id));
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isMutating = false);
+      }
     }
-    return entries.values.toList();
   }
 
-  void _removeEntryAt(int index) {
-    if (index < 0 || index >= cartEntries.length) return;
-    setState(() {
-      selectedProductIds.remove(cartEntries[index].product.id);
-      cartEntries.removeAt(index);
-    });
-    _notifyCartChanged();
+  Future<void> _clearCart() async {
+    setState(() => _isMutating = true);
+    try {
+      final updated = await widget.onClearCart(showFeedback: true);
+      if (!mounted) return;
+      setState(() {
+        cartEntries = List<CartLine>.of(updated);
+        selectedCartItemIds
+          ..clear()
+          ..addAll(updated.map((entry) => entry.id));
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isMutating = false);
+      }
+    }
   }
 
-  void _changeQuantity(int index, int newQuantity) {
-    if (index < 0 || index >= cartEntries.length || newQuantity < 1) return;
-    setState(() {
-      cartEntries[index] = _CartEntry(
-        product: cartEntries[index].product,
-        quantity: newQuantity,
+  Future<bool> _removeEntry(CartLine entry) async {
+    setState(() => _isMutating = true);
+    try {
+      final updated = await widget.onRemoveItem(entry.id);
+      if (!mounted) return false;
+      setState(() {
+        cartEntries = List<CartLine>.of(updated);
+        selectedCartItemIds
+          ..remove(entry.id)
+          ..removeWhere(
+            (id) => !updated.any((updatedEntry) => updatedEntry.id == id),
+          );
+      });
+      _showFeatureSnack(
+        context,
+        '${entry.product.name} dihapus dari keranjang.',
       );
-    });
-    _notifyCartChanged();
+      return true;
+    } catch (_) {
+      return false;
+    } finally {
+      if (mounted) {
+        setState(() => _isMutating = false);
+      }
+    }
   }
 
-  List<Product> _selectedProducts() {
-    final selected = <Product>[];
-    for (final entry in cartEntries) {
-      if (!selectedProductIds.contains(entry.product.id)) continue;
-      selected.addAll(List<Product>.filled(entry.quantity, entry.product));
+  Future<void> _changeQuantity(CartLine entry, int newQuantity) async {
+    if (newQuantity < 1) return;
+    setState(() => _isMutating = true);
+    try {
+      final updated = await widget.onUpdateQuantity(entry.id, newQuantity);
+      if (!mounted) return;
+      setState(() {
+        cartEntries = List<CartLine>.of(updated);
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isMutating = false);
+      }
     }
-    return selected;
   }
 
-  void _notifyCartChanged() {
-    final items = <Product>[];
-    for (final entry in cartEntries) {
-      items.addAll(List<Product>.filled(entry.quantity, entry.product));
+  Future<void> _checkout() async {
+    setState(() => _isMutating = true);
+    try {
+      final updated = await widget.onCheckout(_selectedProducts());
+      if (!mounted) return;
+      setState(() {
+        cartEntries = List<CartLine>.of(updated);
+        selectedCartItemIds
+          ..clear()
+          ..addAll(updated.map((entry) => entry.id));
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isMutating = false);
+      }
     }
-    widget.onCartChanged(items);
+  }
+
+  List<CartLine> _selectedProducts() {
+    return cartEntries
+        .where((entry) => selectedCartItemIds.contains(entry.id))
+        .toList(growable: false);
   }
 }
 
@@ -9618,13 +11627,6 @@ class _QuantityMiniButton extends StatelessWidget {
       ),
     );
   }
-}
-
-class _CartEntry {
-  const _CartEntry({required this.product, required this.quantity});
-
-  final Product product;
-  final int quantity;
 }
 
 class BalanceCard extends StatelessWidget {
@@ -10175,11 +12177,13 @@ class NetworkImageBox extends StatelessWidget {
     super.key,
     required this.imageUrl,
     this.fit = BoxFit.cover,
+    this.alignment = Alignment.center,
     this.fallback,
   });
 
   final String imageUrl;
   final BoxFit fit;
+  final Alignment alignment;
   final Widget? fallback;
 
   @override
@@ -10187,6 +12191,7 @@ class NetworkImageBox extends StatelessWidget {
     return Image.network(
       imageUrl,
       fit: fit,
+      alignment: alignment,
       loadingBuilder: (context, child, loadingProgress) {
         if (loadingProgress == null) {
           return child;
@@ -10231,13 +12236,16 @@ class ProductMedia extends StatelessWidget {
     if (product.imageUrl case final String imageUrl) {
       return DecoratedBox(
         decoration: decoration,
-        child: Padding(
-          padding: padding,
-          child: NetworkImageBox(
-            imageUrl: imageUrl,
-            fit: fit,
-            fallback: Center(
-              child: Icon(product.icon, size: iconSize, color: product.tone),
+        child: Center(
+          child: Padding(
+            padding: padding,
+            child: NetworkImageBox(
+              imageUrl: imageUrl,
+              fit: fit,
+              alignment: Alignment.center,
+              fallback: Center(
+                child: Icon(product.icon, size: iconSize, color: product.tone),
+              ),
             ),
           ),
         ),
@@ -10290,9 +12298,18 @@ class PromoPlaceholder extends StatelessWidget {
 }
 
 class SearchField extends StatelessWidget {
-  const SearchField({super.key, required this.hintText});
+  const SearchField({
+    super.key,
+    required this.hintText,
+    this.controller,
+    this.focusNode,
+    this.onChanged,
+  });
 
   final String hintText;
+  final TextEditingController? controller;
+  final FocusNode? focusNode;
+  final ValueChanged<String>? onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -10308,6 +12325,9 @@ class SearchField extends StatelessWidget {
         ],
       ),
       child: TextField(
+        controller: controller,
+        focusNode: focusNode,
+        onChanged: onChanged,
         decoration: InputDecoration(
           hintText: hintText,
           prefixIcon: const Icon(Icons.search_rounded),
@@ -10915,6 +12935,7 @@ class SupportButton extends StatelessWidget {
   }
 }
 
+<<<<<<< HEAD
 class FeatureCard extends StatelessWidget {
   const FeatureCard({super.key, required this.label, required this.icon});
 
@@ -10943,6 +12964,43 @@ class FeatureCard extends StatelessWidget {
           ),
         ],
       ),
+=======
+class _CircleActionButton extends StatelessWidget {
+  const _CircleActionButton({
+    required this.icon,
+    this.onTap,
+    this.badgeCount = 0,
+  });
+
+  final IconData icon;
+  final VoidCallback? onTap;
+  final int badgeCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Material(
+          color: Colors.white.withValues(alpha: 0.92),
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Icon(icon, color: const Color(0xFF2A2727)),
+            ),
+          ),
+        ),
+        if (badgeCount > 0)
+          Positioned(
+            right: -2,
+            top: -2,
+            child: _CartCountBadge(count: badgeCount),
+          ),
+      ],
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
     );
   }
 }
@@ -11155,12 +13213,50 @@ int discountPercent(Product product) {
   return ((discount / product.originalPrice) * 100).round();
 }
 
-IconData _featureIcon(int index) {
-  const icons = [
-    Icons.eco_outlined,
-    Icons.groups_outlined,
-    Icons.verified_outlined,
-    Icons.local_shipping_outlined,
-  ];
-  return icons[index % icons.length];
+IconData _rewardTransactionIcon(String transactionType) {
+  switch (transactionType) {
+    case 'redeem':
+      return Icons.redeem_rounded;
+    case 'adjustment':
+      return Icons.tune_rounded;
+    case 'expired':
+      return Icons.timer_off_outlined;
+    case 'earn':
+    default:
+      return Icons.stars_rounded;
+  }
 }
+
+String _rewardTransactionTitle(String transactionType) {
+  switch (transactionType) {
+    case 'redeem':
+      return 'Redeem Point';
+    case 'adjustment':
+      return 'Adjustment Point';
+    case 'expired':
+      return 'Point Expired';
+    case 'earn':
+    default:
+      return 'Earn Point';
+  }
+}
+
+String _formatRewardDate(DateTime date) {
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  String twoDigits(int value) => value.toString().padLeft(2, '0');
+  return '${date.day} ${months[date.month - 1]} ${date.year}, ${twoDigits(date.hour)}:${twoDigits(date.minute)}';
+}
+

@@ -59,7 +59,11 @@ class OrderCard extends StatelessWidget {
 
         boxShadow: [
           BoxShadow(
+<<<<<<< HEAD
             color: Colors.black.withValues(alpha: .06),
+=======
+            color: Colors.black.withValues(alpha: 0.06),
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
             blurRadius: 15,
             offset: const Offset(0, 4),
           ),
@@ -78,7 +82,11 @@ class OrderCard extends StatelessWidget {
                   radius: 25,
                   backgroundColor: const Color(
                     0xffE60012,
+<<<<<<< HEAD
                   ).withValues(alpha: .1),
+=======
+                  ).withValues(alpha: 0.1),
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
 
                   child: const Icon(Icons.person, color: Color(0xffE60012)),
                 ),
@@ -117,7 +125,11 @@ class OrderCard extends StatelessWidget {
                   ),
 
                   decoration: BoxDecoration(
+<<<<<<< HEAD
                     color: getStatusColor().withValues(alpha: .12),
+=======
+                    color: getStatusColor().withValues(alpha: 0.12),
+>>>>>>> 8a05f08 (feat: finalize mepupoin backend sync and release prep)
                     borderRadius: BorderRadius.circular(30),
                   ),
 

@@ -18,12 +18,12 @@ class DeliveryTrackingScreen extends StatelessWidget {
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: Text('Track Order', style: TextStyle(color: primary, fontWeight: FontWeight.w700)),
+        title: Text('Status Pengiriman', style: TextStyle(color: primary, fontWeight: FontWeight.w700)),
       ),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          // Map placeholder
+          // Status header
           Container(
             height: 200,
             decoration: BoxDecoration(
@@ -60,7 +60,7 @@ class DeliveryTrackingScreen extends StatelessWidget {
                           boxShadow: const [BoxShadow(color: Color(0x20000000), blurRadius: 8)],
                         ),
                         child: Text(
-                          'Courier is on the way',
+                          'Pesanan sedang dikirim',
                           style: theme.textTheme.labelLarge?.copyWith(color: primary, fontWeight: FontWeight.w700),
                         ),
                       ),
@@ -96,8 +96,8 @@ class DeliveryTrackingScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Estimated Arrival', style: theme.textTheme.labelMedium?.copyWith(color: const Color(0xFF6D5A58))),
-                      Text('Today, 02:30 PM', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+                      Text('Estimasi Tiba', style: theme.textTheme.labelMedium?.copyWith(color: const Color(0xFF6D5A58))),
+                      Text('Hari ini, 14:30', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
                     ],
                   ),
                 ),
@@ -131,7 +131,7 @@ class DeliveryTrackingScreen extends StatelessWidget {
           ),
           const SizedBox(height: 20),
 
-          // Tracking timeline
+          // Timeline status
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -142,29 +142,29 @@ class DeliveryTrackingScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Tracking Timeline', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+                Text('Timeline Status', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
                 const SizedBox(height: 16),
                 _TimelineTile(
-                  title: 'Order Placed',
+                  title: 'Pesanan dibuat',
                   time: '26 May 2026, 09:15',
                   isDone: true,
                   isFirst: true,
                 ),
                 _TimelineTile(
-                  title: 'Order Prepared',
+                  title: 'Pesanan disiapkan',
                   time: '26 May 2026, 10:00',
                   isDone: true,
                   isFirst: false,
                 ),
                 _TimelineTile(
-                  title: 'Out for Delivery',
+                  title: 'Pesanan dikirim',
                   time: '26 May 2026, 11:30',
                   isDone: true,
                   isFirst: false,
                 ),
                 _TimelineTile(
-                  title: 'Delivered',
-                  time: 'Expected ~02:30 PM',
+                  title: 'Pesanan sampai',
+                  time: 'Estimasi sekitar 14:30',
                   isDone: false,
                   isFirst: false,
                 ),
@@ -197,7 +197,7 @@ class DeliveryTrackingScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text('Ahmad Kurniawan', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-                      Text('KDMP Delivery Partner', style: theme.textTheme.bodyMedium?.copyWith(color: const Color(0xFF6D5A58))),
+                      Text('Kurir MepuPoin', style: theme.textTheme.bodyMedium?.copyWith(color: const Color(0xFF6D5A58))),
                     ],
                   ),
                 ),

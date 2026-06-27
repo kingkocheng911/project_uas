@@ -19,28 +19,23 @@ create table if not exists public.wallet_topups (
   constraint wallet_topups_metadata_is_object
     check (jsonb_typeof(metadata) = 'object')
 );
-
 drop trigger if exists set_wallet_topups_updated_at on public.wallet_topups;
 create trigger set_wallet_topups_updated_at
 before update on public.wallet_topups
 for each row execute procedure public.set_updated_at();
-
 alter table public.wallet_topups enable row level security;
-
 drop policy if exists "users read own wallet topups" on public.wallet_topups;
 create policy "users read own wallet topups"
 on public.wallet_topups
 for select
 to authenticated
 using (auth.uid() = user_id or public.is_superadmin());
-
 drop policy if exists "users create own wallet topups" on public.wallet_topups;
 create policy "users create own wallet topups"
 on public.wallet_topups
 for insert
 to authenticated
 with check (auth.uid() = user_id);
-
 drop policy if exists "users update own pending wallet topups" on public.wallet_topups;
 create policy "users update own pending wallet topups"
 on public.wallet_topups
@@ -48,7 +43,6 @@ for update
 to authenticated
 using (auth.uid() = user_id and status = 'pending')
 with check (auth.uid() = user_id);
-
 create or replace function public.create_wallet_topup(
   p_amount integer,
   p_payment_method text
@@ -130,7 +124,6 @@ begin
     v_topup.expires_at;
 end;
 $$;
-
 create or replace function public.confirm_wallet_topup(
   p_topup_id uuid
 )
@@ -194,14 +187,13 @@ begin
   where id = v_topup.id;
 
   update public.profiles
-  set wallet_balance = public.profiles.wallet_balance + v_topup.amount
+  set wallet_balance = wallet_balance + v_topup.amount
   where id = v_user_id
-  returning public.profiles.wallet_balance into v_wallet_balance;
+  returning profiles.wallet_balance into v_wallet_balance;
 
   return query
   select v_topup.id, 'paid'::text, coalesce(v_wallet_balance, 0), now();
 end;
 $$;
-
 grant execute on function public.create_wallet_topup(integer, text) to authenticated;
 grant execute on function public.confirm_wallet_topup(uuid) to authenticated;

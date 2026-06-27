@@ -1,5 +1,4 @@
 create extension if not exists "pgcrypto";
-
 create table if not exists public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   full_name text not null,
@@ -9,7 +8,6 @@ create table if not exists public.profiles (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create table if not exists public.addresses (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
@@ -22,7 +20,6 @@ create table if not exists public.addresses (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create table if not exists public.notification_settings (
   user_id uuid primary key references auth.users (id) on delete cascade,
   orders_enabled boolean not null default true,
@@ -37,7 +34,6 @@ create table if not exists public.notification_settings (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create table if not exists public.payment_methods (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
@@ -50,7 +46,6 @@ create table if not exists public.payment_methods (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create table if not exists public.products (
   id text primary key,
   name text not null,
@@ -64,7 +59,6 @@ create table if not exists public.products (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create table if not exists public.orders (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
@@ -78,7 +72,6 @@ create table if not exists public.orders (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create table if not exists public.order_items (
   id uuid primary key default gen_random_uuid(),
   order_id uuid not null references public.orders (id) on delete cascade,
@@ -88,7 +81,6 @@ create table if not exists public.order_items (
   unit_price integer not null,
   created_at timestamptz not null default now()
 );
-
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
@@ -98,37 +90,30 @@ begin
   return new;
 end;
 $$;
-
 drop trigger if exists set_profiles_updated_at on public.profiles;
 create trigger set_profiles_updated_at
 before update on public.profiles
 for each row execute procedure public.set_updated_at();
-
 drop trigger if exists set_addresses_updated_at on public.addresses;
 create trigger set_addresses_updated_at
 before update on public.addresses
 for each row execute procedure public.set_updated_at();
-
 drop trigger if exists set_notification_settings_updated_at on public.notification_settings;
 create trigger set_notification_settings_updated_at
 before update on public.notification_settings
 for each row execute procedure public.set_updated_at();
-
 drop trigger if exists set_payment_methods_updated_at on public.payment_methods;
 create trigger set_payment_methods_updated_at
 before update on public.payment_methods
 for each row execute procedure public.set_updated_at();
-
 drop trigger if exists set_products_updated_at on public.products;
 create trigger set_products_updated_at
 before update on public.products
 for each row execute procedure public.set_updated_at();
-
 drop trigger if exists set_orders_updated_at on public.orders;
 create trigger set_orders_updated_at
 before update on public.orders
 for each row execute procedure public.set_updated_at();
-
 alter table public.profiles enable row level security;
 alter table public.addresses enable row level security;
 alter table public.notification_settings enable row level security;
@@ -136,21 +121,18 @@ alter table public.payment_methods enable row level security;
 alter table public.products enable row level security;
 alter table public.orders enable row level security;
 alter table public.order_items enable row level security;
-
 drop policy if exists "users can read own profile" on public.profiles;
 create policy "users can read own profile"
 on public.profiles
 for select
 to authenticated
 using (auth.uid() = id);
-
 drop policy if exists "users can insert own profile" on public.profiles;
 create policy "users can insert own profile"
 on public.profiles
 for insert
 to authenticated
 with check (auth.uid() = id);
-
 drop policy if exists "users can update own profile" on public.profiles;
 create policy "users can update own profile"
 on public.profiles
@@ -158,7 +140,6 @@ for update
 to authenticated
 using (auth.uid() = id)
 with check (auth.uid() = id);
-
 drop policy if exists "users can manage own addresses" on public.addresses;
 create policy "users can manage own addresses"
 on public.addresses
@@ -166,7 +147,6 @@ for all
 to authenticated
 using (auth.uid() = user_id)
 with check (auth.uid() = user_id);
-
 drop policy if exists "users can manage own notification settings" on public.notification_settings;
 create policy "users can manage own notification settings"
 on public.notification_settings
@@ -174,7 +154,6 @@ for all
 to authenticated
 using (auth.uid() = user_id)
 with check (auth.uid() = user_id);
-
 drop policy if exists "users can manage own payment methods" on public.payment_methods;
 create policy "users can manage own payment methods"
 on public.payment_methods
@@ -182,14 +161,12 @@ for all
 to authenticated
 using (auth.uid() = user_id)
 with check (auth.uid() = user_id);
-
 drop policy if exists "authenticated can read products" on public.products;
 create policy "authenticated can read products"
 on public.products
 for select
 to authenticated, anon
 using (true);
-
 drop policy if exists "users can manage own orders" on public.orders;
 create policy "users can manage own orders"
 on public.orders
@@ -197,7 +174,6 @@ for all
 to authenticated
 using (auth.uid() = user_id)
 with check (auth.uid() = user_id);
-
 drop policy if exists "users can read own order items" on public.order_items;
 create policy "users can read own order items"
 on public.order_items
@@ -211,7 +187,6 @@ using (
       and orders.user_id = auth.uid()
   )
 );
-
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -235,7 +210,6 @@ begin
   return new;
 end;
 $$;
-
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
 after insert on auth.users
